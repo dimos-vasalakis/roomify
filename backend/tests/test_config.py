@@ -35,3 +35,21 @@ async def test_storage_gives_readable_error_when_off(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("REPLAY", "1")
     with pytest.raises(storage.StorageError, match="Storage is off"):
         await storage.upload("runs/x/photo.jpg", b"jpg", "image/jpeg")
+
+
+async def test_bad_storage_answer_gives_no_link_instead_of_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("REPLAY", "0")
+    monkeypatch.setenv("SUPABASE_URL", "https://x.supabase.co")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_test")
+    original = storage.httpx.AsyncClient
+
+    def fake_client(**kwargs: object) -> object:
+        transport = storage.httpx.MockTransport(
+            lambda _request: storage.httpx.Response(200, text="<html>captive portal</html>")
+        )
+        return original(transport=transport, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(storage.httpx, "AsyncClient", fake_client)
+    assert await storage.try_signed_url("avatars/x") is None

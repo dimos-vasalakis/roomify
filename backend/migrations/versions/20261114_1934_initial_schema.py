@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 648ee07dde73
+Revision ID: 36ab721770d5
 Revises:
-Create Date: 2026-11-14 19:18:53.340407
+Create Date: 2026-11-14 19:34:45.196968
 
 """
 
@@ -13,13 +13,18 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "648ee07dde73"
+revision: str = "36ab721770d5"
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+OWN_CONVERSATION = "exists (select 1 from conversations c where c.id = {t}.conversation_id and c.user_id = (select auth.uid()))"
+OWN_RUN = (
+    "exists (select 1 from runs r join conversations c on c.id = r.conversation_id "
+    "where r.id = {t}.run_id and c.user_id = (select auth.uid()))"
+)
 RUN_CHILD_TABLES = ("run_events", "candidates", "renders", "walkins")
-ALL_TABLES = ("runs", "products", *RUN_CHILD_TABLES)
+ALL_TABLES = ("profiles", "conversations", "messages", "runs", "products", *RUN_CHILD_TABLES)
 
 
 def upgrade() -> None:
@@ -47,15 +52,64 @@ def upgrade() -> None:
         sa.UniqueConstraint("url", name=op.f("uq_products_url")),
     )
     op.create_table(
+        "conversations",
+        sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
+        sa.Column("user_id", sa.UUID(), nullable=False),
+        sa.Column("title", sa.Text(), nullable=False),
+        sa.Column("room_photo_path", sa.Text(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["auth.users.id"],
+            name=op.f("fk_conversations_user_id_users"),
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_conversations")),
+    )
+    op.create_index(op.f("ix_conversations_user_id"), "conversations", ["user_id"], unique=False)
+    op.create_table(
+        "profiles",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("display_name", sa.Text(), nullable=True),
+        sa.Column("avatar_path", sa.Text(), nullable=True),
+        sa.Column("home_city", sa.Text(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["id"], ["auth.users.id"], name=op.f("fk_profiles_id_users"), ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_profiles")),
+    )
+    op.create_table(
         "runs",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
-        sa.Column("user_id", sa.UUID(), nullable=True),
+        sa.Column("conversation_id", sa.UUID(), nullable=False),
         sa.Column("status", sa.String(length=20), server_default="created", nullable=False),
         sa.Column("prompt", sa.Text(), nullable=False),
         sa.Column("budget_eur", sa.Numeric(precision=10, scale=2, asdecimal=False), nullable=False),
         sa.Column("wall_width_cm", sa.Float(), nullable=True),
         sa.Column("city", sa.Text(), nullable=True),
-        sa.Column("room_photo_path", sa.Text(), nullable=True),
         sa.Column("room_analysis", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("total_eur", sa.Numeric(precision=10, scale=2, asdecimal=False), nullable=True),
         sa.Column("error", sa.Text(), nullable=True),
@@ -77,11 +131,14 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint("budget_eur > 0", name=op.f("ck_runs_budget_positive")),
         sa.ForeignKeyConstraint(
-            ["user_id"], ["auth.users.id"], name=op.f("fk_runs_user_id_users"), ondelete="SET NULL"
+            ["conversation_id"],
+            ["conversations.id"],
+            name=op.f("fk_runs_conversation_id_conversations"),
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_runs")),
     )
-    op.create_index(op.f("ix_runs_user_id"), "runs", ["user_id"], unique=False)
+    op.create_index(op.f("ix_runs_conversation_id"), "runs", ["conversation_id"], unique=False)
     op.create_table(
         "candidates",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
@@ -110,6 +167,34 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_candidates")),
         sa.UniqueConstraint("run_id", "slot", "product_id", name=op.f("uq_candidates_run_id")),
+    )
+    op.create_table(
+        "messages",
+        sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
+        sa.Column("conversation_id", sa.UUID(), nullable=False),
+        sa.Column("role", sa.String(length=10), nullable=False),
+        sa.Column("content", sa.Text(), nullable=False),
+        sa.Column("run_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint("role in ('user', 'agent')", name=op.f("ck_messages_role")),
+        sa.ForeignKeyConstraint(
+            ["conversation_id"],
+            ["conversations.id"],
+            name=op.f("fk_messages_conversation_id_conversations"),
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["run_id"], ["runs.id"], name=op.f("fk_messages_run_id_runs"), ondelete="SET NULL"
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_messages")),
+    )
+    op.create_index(
+        op.f("ix_messages_conversation_id"), "messages", ["conversation_id"], unique=False
     )
     op.create_table(
         "renders",
@@ -183,27 +268,82 @@ def upgrade() -> None:
     op.create_index(op.f("ix_walkins_run_id"), "walkins", ["run_id"], unique=False)
     # ### end Alembic commands ###
 
-    # Row level security (written by hand: autogenerate does not see it).
-    # The backend connects as the database owner and bypasses RLS. These policies
-    # only decide what a browser holding a Supabase user token may read: its own runs.
+    # Written by hand: autogenerate does not see RLS, triggers or storage.
+
+    # Row level security. The backend connects as the database owner and bypasses it
+    # (so it filters by user itself). These rules decide what a browser holding a
+    # Supabase login token may read directly: only its own data.
     for table in ("alembic_version", *ALL_TABLES):
         op.execute(f"alter table {table} enable row level security")
+    me = "(select auth.uid())"
     op.execute(
-        "create policy runs_read_own on runs for select to authenticated "
-        "using (user_id = (select auth.uid()))"
+        f"create policy profiles_read_own on profiles for select to authenticated using (id = {me})"
     )
+    # No update policy: profile edits go through the API, which controls avatar_path.
+    op.execute(
+        f"create policy conversations_read_own on conversations for select to authenticated "
+        f"using (user_id = {me})"
+    )
+    for table in ("messages", "runs"):
+        op.execute(
+            f"create policy {table}_read_own on {table} for select to authenticated "
+            f"using ({OWN_CONVERSATION.format(t=table)})"
+        )
     for table in RUN_CHILD_TABLES:
         op.execute(
             f"create policy {table}_read_own on {table} for select to authenticated "
-            "using (exists (select 1 from runs r "
-            f"where r.id = {table}.run_id and r.user_id = (select auth.uid())))"
+            f"using ({OWN_RUN.format(t=table)})"
         )
-    # Products are public shop data.
     op.execute(
         "create policy products_read_all on products for select to anon, authenticated using (true)"
     )
 
-    # Private bucket for room photos, renders and walk-in videos (browser gets signed URLs).
+    # Every sign-up gets a profile row. The name comes from the sign-up form's metadata.
+    op.execute(
+        """
+        create function public.handle_new_user() returns trigger
+        language plpgsql security definer set search_path = ''
+        as $$
+        begin
+          insert into public.profiles (id, display_name)
+          values (new.id, new.raw_user_meta_data ->> 'display_name')
+          on conflict (id) do nothing;
+          return new;
+        end;
+        $$
+        """
+    )
+    op.execute(
+        "revoke execute on function public.handle_new_user() from public, anon, authenticated"
+    )
+    op.execute(
+        "create trigger on_auth_user_created after insert on auth.users "
+        "for each row execute function public.handle_new_user()"
+    )
+
+    # "Newest first" means latest activity: a new message or run bumps its conversation.
+    op.execute(
+        """
+        create function public.touch_conversation() returns trigger
+        language plpgsql security definer set search_path = ''
+        as $$
+        begin
+          update public.conversations set updated_at = now() where id = new.conversation_id;
+          return new;
+        end;
+        $$
+        """
+    )
+    op.execute(
+        "revoke execute on function public.touch_conversation() from public, anon, authenticated"
+    )
+    for table in ("messages", "runs"):
+        op.execute(
+            f"create trigger {table}_touch_conversation after insert on {table} "
+            "for each row execute function public.touch_conversation()"
+        )
+
+    # Private bucket for room photos, avatars, renders and walk-in videos (browser gets signed URLs).
     op.execute(
         "insert into storage.buckets (id, name, public) values ('roomify', 'roomify', false) "
         "on conflict (id) do nothing"
@@ -213,14 +353,22 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
     # The storage bucket is kept: Supabase only lets the Storage API delete buckets.
+    op.execute("drop trigger if exists on_auth_user_created on auth.users")
+    op.execute("drop function if exists public.handle_new_user()")
     # ### commands auto generated by Alembic - please adjust! ###
     op.drop_index(op.f("ix_walkins_run_id"), table_name="walkins")
     op.drop_table("walkins")
     op.drop_table("run_events")
     op.drop_index(op.f("ix_renders_run_id"), table_name="renders")
     op.drop_table("renders")
+    op.drop_index(op.f("ix_messages_conversation_id"), table_name="messages")
+    op.drop_table("messages")
     op.drop_table("candidates")
-    op.drop_index(op.f("ix_runs_user_id"), table_name="runs")
+    op.drop_index(op.f("ix_runs_conversation_id"), table_name="runs")
     op.drop_table("runs")
+    op.drop_table("profiles")
+    op.drop_index(op.f("ix_conversations_user_id"), table_name="conversations")
+    op.drop_table("conversations")
     op.drop_table("products")
     # ### end Alembic commands ###
+    op.execute("drop function if exists public.touch_conversation()")

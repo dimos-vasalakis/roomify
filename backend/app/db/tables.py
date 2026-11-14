@@ -43,7 +43,8 @@ class Base(DeclarativeBase):
     )
 
 
-# Supabase's own auth table. Declared only so runs.user_id can reference it;
+# Supabase's own login table. Declared only so profiles and conversations can
+# reference it;
 # migrations/env.py skips the auth schema so Alembic never tries to manage it.
 auth_users = Table(
     "users",
@@ -57,8 +58,66 @@ def _created_at() -> Mapped[datetime]:
     return mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+def _updated_at() -> Mapped[datetime]:
+    return mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class Profile(Base):
+    """One per login. Created by a database trigger when someone signs up."""
+
+    __tablename__ = "profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("auth.users.id", ondelete="CASCADE"), primary_key=True
+    )
+    display_name: Mapped[str | None] = mapped_column(Text)
+    avatar_path: Mapped[str | None] = mapped_column(Text)
+    home_city: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class Conversation(Base):
+    """One room project: its photo, the chat with the agent, and every run for that room."""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("auth.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    room_photo_path: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class Message(Base):
+    """One chat line: what the user typed or what the agent said back."""
+
+    __tablename__ = "messages"
+    __table_args__ = (CheckConstraint("role in ('user', 'agent')", name="role"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(10), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # The run this message started or belongs to, if any.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _created_at()
+
+
 class Run(Base):
-    """One request: a room photo, what the user asked for, and how it ended."""
+    """One go of the agent inside a conversation: first shop or a swap, and how it ended."""
 
     __tablename__ = "runs"
     __table_args__ = (
@@ -72,22 +131,19 @@ class Run(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("auth.users.id", ondelete="SET NULL"), index=True
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     status: Mapped[str] = mapped_column(String(20), server_default="created", nullable=False)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     budget_eur: Mapped[float] = mapped_column(Money, nullable=False)
     wall_width_cm: Mapped[float | None] = mapped_column(Float)
     city: Mapped[str | None] = mapped_column(Text)
-    room_photo_path: Mapped[str | None] = mapped_column(Text)
     room_analysis: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     total_eur: Mapped[float | None] = mapped_column(Money)
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-    )
+    updated_at: Mapped[datetime] = _updated_at()
 
 
 class RunEvent(Base):

@@ -1,7 +1,9 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import cache
+from typing import Annotated
 
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -42,3 +44,23 @@ async def session() -> AsyncIterator[AsyncSession]:
         except Exception:
             await db.rollback()
             raise
+
+
+async def db_session() -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency. Saved data is off in replay mode, which must run with no network."""
+    settings = get_settings()
+    if settings.replay:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Saved conversations are not available in replay mode.",
+        )
+    if not settings.database_url:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Database is not configured: set DATABASE_URL."
+        )
+    async with session() as db:
+        yield db
+
+
+# scope="function": commit before the response goes out, so a 2xx means it is saved.
+DB = Annotated[AsyncSession, Depends(db_session, scope="function")]

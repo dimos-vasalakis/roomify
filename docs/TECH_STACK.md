@@ -106,8 +106,23 @@ class Product(BaseModel):
 SSE events, all JSON with `type`, `run_id`, `t`:
 `step.started`, `step.result`, `ask`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `budget.update`, `render.ready`, `verify.result`, `video.ready`, `error`, `done`.
 
+## Accounts and data
+Every user logs in with email and password through Supabase Auth (supabase-js in the front end). Each sign-up gets a `profiles` row automatically (name from sign-up metadata `display_name`, avatar, home city). A **conversation** is one room project: its photo, the chat with the agent, and every run for that room.
+
+Tables (`backend/app/db/tables.py`, Alembic migrations in `backend/migrations/`): `profiles`, `conversations`, `messages`, `runs`, `run_events`, `products`, `candidates`, `renders`, `walkins`. Row level security is on everywhere: with a user token, the browser can read only that user's own rows (and edit its own profile); products are readable by all. Files go in the private `roomify` storage bucket; the API returns signed URLs.
+
+API routes (all except `/health` need `Authorization: Bearer <supabase access token>`; `401` with a readable `detail` otherwise). In `REPLAY=1` login is skipped and saved-data routes return `503`.
+
+| Route | Does |
+|---|---|
+| `GET /me`, `PATCH /me` | Own profile: `display_name`, `home_city`, `avatar_url` |
+| `POST /me/avatar` | Upload avatar (JPEG, PNG, WebP, under 5 MB) |
+| `GET /conversations`, `POST /conversations` | List own (newest first), create with `title` |
+| `GET /conversations/{id}` | One conversation with `messages`, `runs`, `room_photo_url` |
+| `PATCH /conversations/{id}`, `DELETE /conversations/{id}` | Rename, delete (with its runs) |
+
 ## Keys (`.env`, gitignored; names in `.env.example`)
-`GEMINI_API_KEY`, `FAL_KEY`, `TREG_TOKEN`, and the optional direct fallbacks `SERPER_API_KEY`, `FIRECRAWL_API_KEY`. Plus `REPLAY`, `RETAILERS`, `DEFAULT_CITY`.
+`GEMINI_API_KEY`, `FAL_KEY`, `TREG_TOKEN`, and the optional direct fallbacks `SERPER_API_KEY`, `FIRECRAWL_API_KEY`. Plus `REPLAY`, `RETAILERS`, `DEFAULT_CITY`. Database and login: `DATABASE_URL` (Supabase session pooler), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_JWT_SECRET` (older projects only), `FRONTEND_ORIGINS`.
 
 ## Cost per full run (estimate)
 Three renders (about $0.12), one 5-second video (about $0.40), 10 to 20 search and scrape calls through treg (a few cents), Gemini and judge calls (cents). About **$0.60 per run**.

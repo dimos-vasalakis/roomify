@@ -55,4 +55,17 @@ async def signed_url(path: str, expires_in: int = 3600) -> str:
         raise StorageError(f"Signing {path} failed: {exc.__class__.__name__}") from exc
     if response.status_code >= 400:
         raise StorageError(f"Signing {path} failed: HTTP {response.status_code}")
-    return base + response.json()["signedURL"]
+    try:
+        return base + response.json()["signedURL"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise StorageError(f"Signing {path} failed: unexpected answer from storage") from exc
+
+
+async def try_signed_url(path: str | None) -> str | None:
+    """For display only: a missing image must not break the page."""
+    if not path:
+        return None
+    try:
+        return await signed_url(path)
+    except StorageError:
+        return None

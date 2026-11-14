@@ -13,6 +13,7 @@ class Settings(BaseModel):
     database_url: str | None
     supabase_url: str | None
     supabase_secret_key: str | None
+    supabase_jwt_secret: str | None
     frontend_origins: list[str]
 
     @property
@@ -36,5 +37,6 @@ def get_settings() -> Settings:
         database_url=os.getenv("DATABASE_URL") or None,
         supabase_url=(os.getenv("SUPABASE_URL") or "").rstrip("/") or None,
         supabase_secret_key=os.getenv("SUPABASE_SECRET_KEY") or None,
+        supabase_jwt_secret=os.getenv("SUPABASE_JWT_SECRET") or None,
         frontend_origins=_csv(os.getenv("FRONTEND_ORIGINS", "http://localhost:5173")),
     )
