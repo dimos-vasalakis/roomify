@@ -33,11 +33,17 @@ Full details, model IDs, fallbacks and costs: [docs/TECH_STACK.md](docs/TECH_STA
 Content & Digital Art (fal). Open as backup.
 
 ## Running it locally
-The build starts Saturday 20:00. Setup steps land here once the back end and front end exist.
-
 ```bash
 cp .env.example .env   # then fill in the keys
+
+# back end (Python 3.12)
+cd backend
+python3.12 -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/uvicorn app.main:app --reload --port 8000   # http://localhost:8000/health
 ```
+
+Front end steps land here once `frontend/` exists.
 
 `REPLAY=1` runs the full demo from cached results with no network.
 
