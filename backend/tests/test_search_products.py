@@ -44,6 +44,15 @@ def test_greek_and_greeklish_spellings_meet(spellings: tuple[str, ...]) -> None:
         (["γραφείο"], ["140"], "mittzon grafeio 140x80 cm", [], 2.0),  # a size inside 140x80
         (["γραφείο"], ["14"], "mittzon grafeio 140x80 cm", [], 1.0),  # but not part of a number
         (["γραφείο"], ["με", "για"], "grafeio", [], 1.0),  # little words are ignored
+        (["κουρτίνα"], [], "lill diafanis koyrtina 2 tem", [], 1.0),
+        (["κουρτίνα"], [], "teresia koyrtines", [], 1.0),  # an ending
+        (["κουρτίνα"], [], "hugad koyrtinoksylo", [], 0.0),  # a curtain rod is another word
+        (["στόρι"], [], "tretur stori pliroys syskotisis", [], 1.0),
+        (["στόρι"], [], "storsint karafa", [], 0.0),  # a product name is not a blind
+        (["στόρι"], [], "koyrtina austra 1x140x175 veloydo", [], 0.0),  # AUSTRA is 'str' too
+        (["στόρι"], [], "stroma elatirion reva", [], 0.0),  # a mattress is not a blind
+        (["ντουλάπα"], [], "doulapa royxon", [], 1.0),
+        (["τραπέζι"], [], "trapezaki salonioy agerby", [], 1.0),  # the diminutive
     ],
 )  # fmt: skip
 def test_score_entry(item: list[str], keywords: list[str], slug: str, exclude: list[str],

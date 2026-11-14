@@ -299,7 +299,25 @@ def test_no_retry_when_the_run_is_out_of_time(pipeline, monkeypatch):
     )
     stream = events(finish())
     assert loop._render.await_count == 1
+    # The picture still arrives, with the doubt said in plain words.
+    assert any("look different" in d.get("text", "") for k, d in stream if k == "step.started")
+    assert stream[-1][0] == "done"
+
+
+def test_a_piece_missing_from_the_picture_still_fails(pipeline, monkeypatch):
+    empty = loop.RenderCheck(room_preserved=True, no_extra_products=True, products=[])
+    monkeypatch.setattr(loop, "_check", AsyncMock(return_value=empty))
+    stream = events(finish())
+    assert loop._render.await_count == 2
     assert stream[-1][0] == "error"
+    assert not any(kind == "render.ready" for kind, _ in stream)
+
+
+def test_unlabelled_bed_size_is_a_footprint_with_its_length():
+    bed = extract_listing(*fixture("ikea_mittzon_desk")).model_copy(
+        update={"width_cm": 90.0, "depth_cm": 200.0, "height_cm": None, "sizes_order_known": False}
+    )
+    assert loop._size(bed) == "footprint 200 × 90 cm (the 200 cm side is its length)"
 
 
 def test_doubted_piece_on_last_try_loses_its_dot_not_the_room(pipeline, monkeypatch):
@@ -353,3 +371,17 @@ async def test_render_asks_for_true_size_at_high_quality(pipeline, monkeypatch):
     image["width"], image["height"] = 1024, 1024
     with pytest.raises(LLMError):
         await loop._render(b"jpeg", {"Desk": pipeline}, "desk", "calm", None)
+
+
+def test_a_piece_the_shops_lack_does_not_cost_the_whole_room(pipeline, monkeypatch):
+    specs = [
+        loop.Spec(slot="Desk", spec=ProductSpec(item=["γραφείο"])),
+        loop.Spec(slot="Roller blinds", spec=ProductSpec(item=["στόρι"])),
+    ]
+    monkeypatch.setattr(loop, "_specs", AsyncMock(return_value=("Calm workspace", specs)))
+    stream = events(finish())
+    assert stream[-1][0] == "done"
+    assert any(
+        "No suitable roller blinds" in d.get("text", "") for k, d in stream if k == "step.started"
+    )
+    assert list(loop._render.await_args.args[1]) == ["Desk"]

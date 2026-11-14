@@ -33,6 +33,9 @@ item searches and short keywords so real products can be found. Never infer meas
 from pixels. Only constrain width if the user gave a wall measurement.
 Use concrete catalogue words for keywords (δρυς, φυσικό, μπεζ, λευκό), not abstract
 adjectives such as minimal, comfortable or neutral. Respect explicit materials and colours.
+For "item" use the plain noun Greek shops print on the product: curtains κουρτίνα (exclude
+μπάνιου, ντους, κρεβατιού), curtain rod κουρτινόξυλο, roller or blackout blinds στόρι or
+ρόλο σκίασης, never invented compounds such as ρολοκουρτίνα.
 Return JSON: {"direction":"A short English design direction",
 "items":[{"slot":"Desk","item":["γραφείο"],"keywords":[],"exclude":["παιδικό"],
 "max_price_eur":150,"max_width_cm":null}]}.
@@ -55,7 +58,8 @@ and say where it is and what share of the photo's height or width it spans.
 go. A product may never overlap, intersect or stand in front of existing furniture, plants or
 lamps. If it is wider than a gap, choose another spot where it fits; take an existing item's
 place only when the brief replaces that item.
-3. Placement: for each product give a short, concrete spot, its orientation, and how large it
+3. Placement: for each product give a short, concrete spot, its orientation (for a bed: which
+end is against the wall and that its full length runs into the room), and how large it
 must look, as shares of the photo computed from the anchor, e.g. "about 40% of the photo's
 width, top about a third of the door's height above the floor".
 Respect the brief, keep walkways and doors clear, keep the other existing furniture, and make
@@ -147,6 +151,11 @@ async def _specs(
 
 
 def _size(p: ProductListing) -> str:
+    if not p.sizes_order_known and p.width_cm and p.depth_cm:
+        # "200x90" does not say which side is which; for a bed the longer side is its length.
+        long, short = max(p.width_cm, p.depth_cm), min(p.width_cm, p.depth_cm)
+        footprint = f"footprint {long:g} × {short:g} cm (the {long:g} cm side is its length)"
+        return footprint + (f" × H {p.height_cm:g} cm" if p.height_cm else "")
     dims = [
         f"{name} {value:g} cm"
         for name, value in (("W", p.width_cm), ("D", p.depth_cm), ("H", p.height_cm))
@@ -232,7 +241,8 @@ async def _render(
         "unless the brief asks to replace it, and never resize, reshape or move what you keep: "
         "if a product does not fit beside it, place the product elsewhere.\n"
         "PRODUCTS: Add ONLY the supplied reference products, once each, with their exact shape, "
-        "colours, materials and details. Do not add unlisted decor, plants, rugs, furniture or artwork.\n"
+        "colours, materials and details. A bed frame gets a plain mattress and simple white bedding. "
+        "Do not add any other unlisted decor, plants, rugs, furniture or artwork.\n"
         "TRUE SCALE: every product must be its real listed size relative to the room. "
         + (f"Room scale anchors: {layout.scale_anchors}. " if layout else "")
         + "A standard interior door is about 200 cm tall, a seat about 45 cm high, a desk or "
@@ -294,7 +304,8 @@ async def _check(photo: bytes, url: str, chosen: dict[str, ProductListing]) -> R
             "actually appear and match its reference design, shape and colour? Judge shape and design from the "
             "reference PHOTOS only: a size in a title such as 60x100 is the bounding box, and oval or round "
             "pieces have one too. "
-            "Are there no invented extra products? Be practical about lighting, not about missing or wrong "
+            "Are there no invented extra products? A plain mattress and bedding on a bed, and anything already "
+            "in the original photo, are not extra. Be practical about lighting, not about missing or wrong "
             "furniture.\nThen check each product's SCALE against its listed real size, using the room's own "
             "anchors (doors about 200 cm, sockets, windows, existing furniture): scale_ok is false only when "
             "it looks clearly wrong, about 30% or more too big or too small. placement_ok is false when it "
@@ -356,15 +367,35 @@ def unlike(check: RenderCheck, chosen: dict[str, ProductListing]) -> list[str]:
     return [slot for slot, p in chosen.items() if p.id in found and not found[p.id].match]
 
 
+def caveats(check: RenderCheck, chosen: dict[str, ProductListing]) -> list[str]:
+    """What the shown preview gets wrong, in plain words. The shopping list stays exact."""
+    notes = []
+    if not check.room_preserved:
+        notes.append(
+            "Parts of your room look different in the preview; compare it with your photo."
+        )
+    if not check.no_extra_products:
+        notes.append("The preview also shows decor that isn't on your shopping list.")
+    if doubted := unlike(check, chosen):
+        notes.append(
+            f"The {', '.join(doubted).lower()} in the preview differs from the shop photo, "
+            "so it has no price dot. Check the listing photo."
+        )
+    return notes
+
+
 def render_items(
     check: RenderCheck, chosen: dict[str, ProductListing], final: bool = False
 ) -> list[dict[str, Any]]:
-    """Price dots for a checked preview. On the final try a piece that doesn't look like its
-    shop photo loses its dot instead of costing the whole room; a changed room, an invented
-    piece or a missing one still fails."""
+    """Price dots for a checked preview. On the final try the person still gets the picture
+    when every chosen piece is in it: a piece unlike its shop photo loses its dot, and the
+    loop says what else is off. Only a missing piece fails, because then the picture is not
+    the basket."""
     problems = identity_problems(check, chosen)
     doubted = {chosen[slot].id for slot in unlike(check, chosen)}
-    if problems and not (final and len(problems) == len(doubted)):
+    shown = {p.product_id for p in check.products}
+    missing = any(p.id not in shown for p in chosen.values())
+    if problems and (not final or missing):
         raise LLMError(
             "The preview didn't match your room and chosen pieces closely enough. Try creating it again."
         )
@@ -468,10 +499,22 @@ async def _run(
                         {"slot": pick.slot, "product": product_out(product), "reason": pick.reason},
                     )
                 )
-            missing = [s.slot for s in specs if s.slot not in chosen]
-            if missing:
+            missing = ", ".join(s.slot.lower() for s in specs if s.slot not in chosen)
+            if not chosen:
                 raise LLMError(
-                    f"I couldn't find a suitable {', '.join(missing).lower()} for this design. Adjust the brief or budget and try again."
+                    f"I couldn't find anything suitable in the shops for {missing}. "
+                    "Try other pieces, other words or a different budget."
+                )
+            if missing:
+                # One piece the shops don't stock should not cost the whole room.
+                send(
+                    (
+                        "step.started",
+                        {
+                            "text": f"No suitable {missing} in the shops right now, "
+                            "so I'm designing the room without it."
+                        },
+                    )
                 )
             send(("plan.ready", {"text": basket.text, "slots": list(chosen)}))
             send(
@@ -527,17 +570,8 @@ async def _run(
                     break
                 why = "; ".join(fix)
             items = render_items(check, chosen, final=True)
-            if doubted := unlike(check, chosen):
-                send(
-                    (
-                        "step.started",
-                        {
-                            "text": f"The {', '.join(doubted).lower()} in the preview differs from "
-                            "the shop photo, so it has no price dot. Check the listing photo.",
-                            "phase": "checking",
-                        },
-                    )
-                )
+            for note in caveats(check, chosen):
+                send(("step.started", {"text": note, "phase": "checking"}))
             send(
                 (
                     "render.ready",

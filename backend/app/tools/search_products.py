@@ -52,12 +52,21 @@ class SearchResult(BaseModel):
 def _word_matches(query: Word, slug_words: Sequence[Word]) -> bool:
     # Short words (χαλί: 'xl') could be anything with those consonants ('XL'), so they
     # must match with their vowels. Longer ones may be a prefix of the consonants,
-    # which covers Greek endings and spellings (γραφείο / grafeioy / grafeiou).
+    # which covers Greek endings and spellings (γραφείο / grafeioy / grafeiou), with at
+    # most one consonant more: an ending (κουρτίν-ες, τραπεζ-άκι), not another word
+    # (κουρτιν-όξυλο is a curtain rod; STOR-SINT is not a blind).
     if query.skeleton.isdigit():  # 140 matches 140x80, 14 does not
         return any(query.skeleton in re.findall(r"\d+", w.skeleton) for w in slug_words)
     if len(query.skeleton) < 3:
         return any(w.loose.startswith(query.loose) for w in slug_words)
-    return any(w.skeleton.startswith(query.skeleton) for w in slug_words)
+    # Three consonants are still ambiguous (στόρι 'str' = AUSTRA = στρώμα), so those
+    # must also start with the same sounds.
+    return any(
+        w.skeleton.startswith(query.skeleton)
+        and len(w.skeleton) - len(query.skeleton) <= 1
+        and (len(query.skeleton) > 3 or w.loose[:3] == query.loose[:3])
+        for w in slug_words
+    )
 
 
 def _querysplit_words(texts: list[str]) -> list[Word]:
