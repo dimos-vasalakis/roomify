@@ -3,7 +3,7 @@
 Shared between the front end (`frontend/src/api/`) and the back end (`backend/app/`). Written 2026-11-14 by the front end owner from the routes and tables already in `backend/`. The back end owner decides the implementation; change a shape here first and tell the team.
 
 - Base URL: `VITE_API_URL` on the front end. JSON everywhere, `snake_case` on the wire.
-- Every route except `/health` needs `Authorization: Bearer <Supabase access token>` (already enforced by `app/auth.py`).
+- Saved-data routes need `Authorization: Bearer <Supabase access token>` (enforced by `app/auth.py`). `/health` and the demo `/offer` route do not require login.
 - Errors: FastAPI's `{"detail": "<one readable sentence>"}`. The front end shows `detail` as is, so write it for a person.
 - Images and videos are short-lived signed URLs (already done by `app/storage.py`).
 
@@ -85,6 +85,12 @@ Server-sent events. The front end reads it with `fetch` (not `EventSource`), so 
 
 ## Event types
 
+Live offer refinement: `step.started` also accepts optional `phase` (`planning`, `shopping`, `rendering`, `checking`).
+`product.chosen` may include `reason` (one sentence explaining relevance).
+`plan.ready` carries `{text, slots: string[]}`: a short design direction and the requested pieces.
+Offer completion requires a successful render. Unknown product positions are omitted from `render.ready.items`.
+The client refines an offer by submitting the revised complete brief to `/offer`; receipt-only swaps and walk-ins are not offered on this path.
+
 The front end ignores types it does not know, so new ones never break it. Names follow `docs/TECH_STACK.md`.
 
 | Type | Payload | The screen |
@@ -148,11 +154,12 @@ Built 2026-11-14 for the stage and Vercel (`?demo=1` on the front end). Code: `b
 
 ### `POST /offer`
 Multipart: `photo` (JPEG, PNG or WebP, under 8 MB), `brief`, `budget_eur`, optional `city`, optional `wall_cm`.
-Answers with the run's events as a stream (same names as above): `run.status`, `step.started`, `candidate.rejected`, `product.chosen`, `render.ready`, `done`, or `error`.
-- Searches come from Gemini reading the photo and brief (`GEMINI_API_KEY`); without it, a word list maps the brief to Greek shop words.
-- Products come from the scraper (`app/tools/find_products.py`); one per item is picked to fit the budget.
-- The render runs on fal (`FAL_KEY`, model `FAL_RENDER_MODEL`, default `fal-ai/nano-banana/edit`); without it the offer arrives without a picture.
-- At most two runs at once (429 otherwise). Every AI and render call is cached, so a rehearsed demo replays.
+Answers with the run's events as a stream: `run.status`, `step.started`, `plan.ready`, `candidate.rejected`, `product.chosen`, `render.ready`, `done`, or `error`.
+- The loop lives in `app/agent/loop.py`. Vision reads the photo and brief through `llm()`: direct Gemini when configured, otherwise the existing fal key (`FAL_LLM_MODEL`, default `google/gemini-2.5-flash`). There is no silent keyword-only fallback.
+- The scraper supplies real listings. A single vision judge chooses a coherent basket and checks its claims against evidence using `app/judges/basket.yaml` through the documented LLM fallback. IDs and total are validated before rendering.
+- The preview uses fal (`FAL_RENDER_MODEL`, default `fal-ai/nano-banana-2/edit`) with the room photo, brief and exact product images. Vision checks the room and products before `render.ready`.
+- Missing product positions are omitted. Render failure ends with `error`, preserving the basket; `done` requires a preview. Every model, image-read and render call is cached. A run has a six-minute deadline.
+- Completed offers are retained for this browser tab, scoped to the signed-in account. They are not yet durable database runs.
 
 ### `POST /offer/swap`
-JSON `{slot, title, price_eur, instruction, budget_left_eur, wall_cm, product_id}` → a `product.swapped` payload, or 404 with the reason in `detail`.
+Deprecated: returns 409 with instructions to refresh and adjust the brief. The client submits a new complete `/offer` so the preview and shopping list always update together.
