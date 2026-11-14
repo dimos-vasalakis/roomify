@@ -4,6 +4,7 @@ Run `python -m app.tools.catalogue` once to download all of them ahead of a demo
 """
 
 import asyncio
+import logging
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -16,6 +17,7 @@ from app.cache import WEEK, cache_path, cached, load_saved
 from app.tools.shops import Shop, enabled_shops, is_product_url
 from app.tools.web_fetch import FetchError, fetch_text
 
+log = logging.getLogger("roomify")
 MAX_SITEMAP_FILES = 200  # largest shop today: 15
 # A refresh that lost more than this share of sitemap files is refused, so a
 # rate-limited run cannot replace a full catalogue with a sliver of one.
@@ -141,6 +143,9 @@ async def refresh_catalogues(max_age_s: float = WEEK) -> list[ShopCatalogue | st
             return await shop_catalogue(shop, max_age_s)
         except CatalogueError as exc:
             return str(exc)
+        except Exception:  # one shop's surprise must not cancel the other downloads
+            log.exception("Refreshing %s failed", shop.name)
+            return f"Could not refresh {shop.name}'s product list (unexpected error, see the log)"
 
     return list(await asyncio.gather(*(one(s) for s in enabled_shops())))
 

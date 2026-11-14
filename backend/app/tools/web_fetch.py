@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel
 
-from app.cache import WEEK, cached
+from app.cache import HOUR, WEEK, cached
 from app.tools.shops import host_of
 
 # Shops block obvious bots; a normal browser identity with low volume is what we send.
@@ -38,6 +38,7 @@ class FetchError(Exception):
 
 class Robots(BaseModel):
     text: str
+    locked: bool = False  # robots.txt itself answered 401/403: often a passing bot check
 
 
 def _check_response(url: str, response: httpx.Response) -> None:
@@ -125,7 +126,7 @@ def robots_allow(rules: list[_Rule], url: str) -> bool:
     return best is None or best.allow
 
 
-async def _robots(url: str) -> list[_Rule]:
+async def _robots(url: str) -> Robots:
     parts = urlsplit(url)
     robots_url = f"{parts.scheme}://{parts.netloc}/robots.txt"
 
@@ -133,8 +134,8 @@ async def _robots(url: str) -> list[_Rule]:
         try:
             return Robots(text=await _download(robots_url))
         except FetchError as exc:
-            if exc.status in (401, 403):
-                return Robots(text="User-agent: *\nDisallow: /")  # locked away: read nothing
+            if exc.status in (401, 403):  # read nothing now; ask again in an hour, not a week
+                return Robots(text="User-agent: *\nDisallow: /", locked=True)
             if exc.status is not None and 400 <= exc.status < 500 and exc.status != 429:
                 return Robots(text="")  # the site has no robots.txt: no rules
             # Server trouble: its rules are unknown, so read nothing now and try again later.
@@ -142,8 +143,11 @@ async def _robots(url: str) -> list[_Rule]:
                 f"Could not check what {host_of(url)} allows; try again soon", transient=True
             ) from exc
 
-    robots = await cached("robots", {"url": robots_url}, load, Robots, max_age_s=WEEK)
-    return robots_rules(robots.text)
+    robots = await cached(
+        "robots", {"url": robots_url}, load, Robots,
+        max_age_s=lambda r: HOUR if r.locked else WEEK,
+    )  # fmt: skip
+    return robots
 
 
 def _check_address(url: str) -> None:
@@ -159,6 +163,9 @@ def _check_address(url: str) -> None:
 async def fetch_text(url: str) -> str:
     """Raw page text, uncached: callers cache what they extract, not megabytes of HTML."""
     _check_address(url)
-    if not robots_allow(await _robots(url), url):
+    robots = await _robots(url)
+    if robots.locked:  # passing trouble: an earlier read of the page may stand in
+        raise FetchError(f"{host_of(url)} is refusing requests right now", transient=True)
+    if not robots_allow(robots_rules(robots.text), url):
         raise FetchError(f"{host_of(url)} does not allow reading this page")
     return await _download(url)

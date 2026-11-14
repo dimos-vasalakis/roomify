@@ -118,7 +118,7 @@ Flow: the LLM turns the photo and the user's words into a `ProductSpec` (item, k
 
 Checked and not usable on 2026-11-14: Leroy Merlin, e-Jumbo, Public, Woodwell (block plain requests), Pakoworld (no public prices), Notos (no product images in page data).
 
-To add a shop: check that a product page has `schema.org/Product` with a price (or `product:price:amount`) and a photo, that robots.txt allows it, and that its sitemap lists product URLs. Add a `Shop` in `shops.py`, add the domain to `RETAILERS`, and run `python -m app.tools.catalogue`.
+To add a shop: check that a product page has `schema.org/Product` with a price (or `product:price:amount`) and a photo, that robots.txt allows it, and that its sitemap lists product URLs. Add a `Shop` in `shops.py` (if `RETAILERS` is set, add the domain there too; empty means every shop) and run `python -m app.tools.catalogue`.
 
 Tests: `pytest` (offline, includes fixtures saved from real pages); `pytest -m live` reads the real shops end to end (about 3 minutes).
 

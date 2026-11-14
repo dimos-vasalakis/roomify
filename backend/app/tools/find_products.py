@@ -117,7 +117,10 @@ async def find_products(spec: ProductSpec, want: int = 8) -> FindResult:
             candidates.append(listing)
     if saved_copies:
         notes.append(f"{saved_copies} shop pages were slow, so earlier reads of them were used")
-    searched = sum(r.error != "Not read: the search ran out of time" for r in reads)
+    searched = sum(
+        task not in late or read.listing is not None
+        for task, read in zip(tasks, reads, strict=True)
+    )
     return FindResult(candidates=candidates, rejected=rejected, searched=searched,
                       note="; ".join(notes) or None)  # fmt: skip
 

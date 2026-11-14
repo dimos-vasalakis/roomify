@@ -46,3 +46,27 @@ async def test_rate_limit_is_a_plain_message(monkeypatch: pytest.MonkeyPatch) ->
     mock_http(monkeypatch, lambda r: httpx.Response(429))
     with pytest.raises(WebSearchError, match="rate limited"):
         await web_search("γραφείο", enabled_shops())
+
+
+async def test_replay_uses_the_recording_even_without_a_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.config import get_settings
+
+    monkeypatch.setenv("SERPER_API_KEY", "recording-key")
+    get_settings.cache_clear()
+    organic = [
+        {"link": "https://www.ikea.gr/proioda/mittzon-grafeio/59528113/", "title": "MITTZON"}
+    ]
+    mock_http(monkeypatch, lambda r: httpx.Response(200, json={"organic": organic}))
+    recorded = await web_search("γραφείο", enabled_shops())
+
+    monkeypatch.setenv("SERPER_API_KEY", "")  # the stage laptop has no key
+    monkeypatch.setenv("REPLAY", "1")
+    get_settings.cache_clear()
+
+    def no_network(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no network in replay")
+
+    mock_http(monkeypatch, no_network)
+    assert await web_search("γραφείο", enabled_shops()) == recorded

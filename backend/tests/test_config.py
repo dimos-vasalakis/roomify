@@ -53,3 +53,12 @@ async def test_bad_storage_answer_gives_no_link_instead_of_error(
 
     monkeypatch.setattr(storage.httpx, "AsyncClient", fake_client)
     assert await storage.try_signed_url("avatars/x") is None
+
+
+def test_cache_folder_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CACHE_DIR")
+    monkeypatch.setenv("REPLAY", "0")
+    assert get_settings().cache_dir.parts[-2:] == ("backend", ".cache")  # gitignored
+    get_settings.cache_clear()
+    monkeypatch.setenv("REPLAY", "1")
+    assert get_settings().cache_dir.parts[-2:] == ("demo", "cache")  # the committed recording

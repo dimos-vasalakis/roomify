@@ -37,6 +37,12 @@ def _csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _default_cache(replay: bool) -> Path:
+    """Day-to-day runs write to a gitignored folder; replay reads the committed recording.
+    To record the demo run: CACHE_DIR=../demo/cache."""
+    return REPO_DIR / "demo" / "cache" if replay else BACKEND_DIR / ".cache"
+
+
 @cache
 def get_settings() -> Settings:
     return Settings(
@@ -48,6 +54,6 @@ def get_settings() -> Settings:
         frontend_origins=_csv(os.getenv("FRONTEND_ORIGINS") or "http://localhost:5173"),
         retailers=[d.removeprefix("www.") for d in _csv(os.getenv("RETAILERS", ""))],
         serper_api_key=os.getenv("SERPER_API_KEY") or None,
-        cache_dir=Path(os.getenv("CACHE_DIR") or REPO_DIR / "demo" / "cache"),
+        cache_dir=Path(os.getenv("CACHE_DIR") or _default_cache(os.getenv("REPLAY", "0") == "1")),
         refresh_catalogues=(os.getenv("REFRESH_CATALOGUES") or "1") == "1",
     )

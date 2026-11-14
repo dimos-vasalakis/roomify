@@ -79,7 +79,7 @@ def _variant_for(group: dict[str, Any], url: str) -> dict[str, Any]:
         links = [str(v.get("url", "")), str(v.get("@id", "")), str(_first_offer(v).get("url", ""))]
         sku = str(v.get("sku") or "")
         return any(link and _same_page(link, url) for link in links) or (
-            len(sku) >= 4 and sku in url
+            len(sku) >= 4 and sku in re.split(r"[/?#&=._-]", url)  # a whole id, not part of one
         )
 
     matching = [v for v in variants if shows(v)]
@@ -397,7 +397,8 @@ def extract_listing(url: str, html: str) -> ProductListing:
         for field, value in compact.items():  # labelled sizes win; the rest fill gaps
             if field not in dims:
                 dims[field], dims_evidence[field] = value, compact_evidence[field]
-                order_known = order_known and compact_known
+                if field in ("width", "depth"):  # a guessed height does not turn the item
+                    order_known = order_known and compact_known
     evidence.update({f"{field}_cm": snippet for field, snippet in dims_evidence.items()})
 
     delivery = delivery_text(text)

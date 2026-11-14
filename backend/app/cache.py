@@ -2,7 +2,8 @@
 
 Live: a fresh enough saved result is reused, otherwise the call runs and is saved.
 REPLAY=1: only saved results are used, so the demo runs with no network.
-Files live in demo/cache/<namespace>/<hash>.json and can be committed for replay.
+Files live in <CACHE_DIR>/<namespace>/<hash>.json: backend/.cache day to day (gitignored),
+demo/cache for the committed demo recording that REPLAY=1 reads.
 """
 
 import hashlib

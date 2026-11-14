@@ -115,9 +115,19 @@ async def test_robots_locked_away_means_read_nothing(monkeypatch: pytest.MonkeyP
             return httpx.Response(403)
         return httpx.Response(200, text="page")
 
-    mock_http(monkeypatch, handler)
-    with pytest.raises(FetchError, match="does not allow reading"):
+    requests = mock_http(monkeypatch, handler)
+    with pytest.raises(FetchError, match="refusing requests right now") as error:
         await fetch_text(PAGE)
+    assert error.value.transient  # an earlier read may stand in
+    assert [r.url.path for r in requests] == ["/robots.txt"]  # the page itself was not read
+
+    import time
+
+    later = time.time() + 2 * 3600  # a bot check passes: robots.txt is asked again
+    monkeypatch.setattr(time, "time", lambda: later)
+    with pytest.raises(FetchError):
+        await fetch_text(PAGE)
+    assert [r.url.path for r in requests].count("/robots.txt") == 2
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,8 @@
 """The shops the agent may buy from. Priority 1 is searched and shown first.
 
 To add a shop: check its product pages carry schema.org Product data (or og:price
-tags) and that robots.txt allows them, then add an entry and its domain to RETAILERS.
+tags) and that robots.txt allows them, then add an entry. If RETAILERS is set, add the domain
+there too (empty RETAILERS means every shop here).
 """
 
 import re

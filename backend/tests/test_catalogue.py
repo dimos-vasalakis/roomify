@@ -187,3 +187,21 @@ async def test_saved_catalogue_never_downloads_and_parses_once(
     await shop_catalogue(IKEA)
     first = saved_catalogue(IKEA)
     assert first is not None and saved_catalogue(IKEA) is first  # same object: parsed once
+
+
+async def test_one_shop_crashing_does_not_cancel_the_others(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fetch(url: str) -> str:
+        if "jysk" in url:
+            raise OSError("disk full")
+        return "<urlset><url><loc>https://www.ikea.gr/proioda/a/1/</loc></url></urlset>"
+
+    monkeypatch.setattr(catalogue, "fetch_text", fetch)
+    monkeypatch.setenv("RETAILERS", "ikea.gr,jysk.gr")
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    results = await refresh_catalogues()
+    assert [type(r).__name__ for r in results] == ["ShopCatalogue", "str"]
+    assert "Could not refresh JYSK's product list" in str(results[1])

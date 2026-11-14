@@ -354,3 +354,21 @@ async def test_unexpected_failure_is_a_plain_error(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(reader, "fetch_text", broken)
     result = await read_product_page("https://www.ikea.gr/proioda/x/123/")
     assert result.listing is None and result.error == "Could not read this page"
+
+
+def test_a_guessed_height_does_not_make_labelled_sizes_turnable() -> None:
+    product = ('{"@type":"Product","name":"Γραφείο 160x60x75 εκ","image":"https://i/x.jpg",'
+               '"offers":{"price":99,"priceCurrency":"EUR"}}')  # fmt: skip
+    html = _page(product).replace("<p>text</p>", "<p>Πλάτος: 160 εκ Βάθος: 60 εκ</p>")
+    listing = extract_listing(IKEA_URL, html)
+    assert (listing.width_cm, listing.depth_cm, listing.height_cm) == (160, 60, 75)
+    assert listing.sizes_order_known is True
+
+
+def test_variant_codes_match_whole_ids_only() -> None:
+    group = ('{"@type":"ProductGroup","name":"X","image":"https://i/x.jpg","hasVariant":['
+             '{"@type":"Product","sku":"1234","offers":{"price":99,"priceCurrency":"EUR"}},'
+             '{"@type":"Product","sku":"5678","offers":{"price":199,"priceCurrency":"EUR"}}]}')  # fmt: skip
+    with pytest.raises(NotAProduct, match="several sizes"):
+        extract_listing("https://www.ikea.gr/proioda/x/91234567/", _page(group))
+    assert extract_listing("https://www.ikea.gr/proioda/x/5678/", _page(group)).price_eur == 199
