@@ -2,7 +2,18 @@ import type { Session as AuthSession } from '@supabase/supabase-js'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { LIVE } from '../api/config'
 import { supabase } from '../api/supabase'
-import { LoginScreen } from './LoginScreen'
+import { Landing } from '../components/landing/Landing'
+import { LoginScreen, type Mode } from './LoginScreen'
+
+/** Sample mode skips login; remember per tab that the landing page was passed. */
+const SAMPLE_KEY = 'roomify.entered'
+const sampleEntered = () => {
+  try {
+    return sessionStorage.getItem(SAMPLE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 type Auth = { email: string | null; signedIn: boolean; signOut: () => Promise<void> }
 
@@ -14,6 +25,8 @@ export const useAuth = () => useContext(AuthCtx)
 export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null)
   const [checked, setChecked] = useState(!LIVE)
+  const [login, setLogin] = useState<Mode | null>(null)
+  const [entered, setEntered] = useState(sampleEntered)
 
   useEffect(() => {
     if (!supabase) return
@@ -25,9 +38,25 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => data.subscription.unsubscribe()
   }, [])
 
-  if (!LIVE) return <AuthCtx.Provider value={{ email: null, signedIn: true, signOut: async () => {} }}>{children}</AuthCtx.Provider>
+  if (!LIVE) {
+    if (!entered) {
+      const enterApp = () => {
+        try {
+          sessionStorage.setItem(SAMPLE_KEY, '1')
+        } catch {
+          // private window: the landing page simply shows again next time
+        }
+        setEntered(true)
+      }
+      return <Landing onLogIn={enterApp} />
+    }
+    return <AuthCtx.Provider value={{ email: null, signedIn: true, signOut: async () => {} }}>{children}</AuthCtx.Provider>
+  }
   if (!checked) return <div className="min-h-dvh bg-ground" aria-busy="true" />
-  if (!session) return <LoginScreen />
+  if (!session) {
+    if (!login) return <Landing onLogIn={() => setLogin('in')} onSignUp={() => setLogin('up')} />
+    return <LoginScreen key={login} initialMode={login} onBack={() => setLogin(null)} />
+  }
 
   return (
     <AuthCtx.Provider

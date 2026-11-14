@@ -6,7 +6,7 @@ Owner: front end. Decided 2026-11-14 before the build window. Every screen follo
 - **Style:** Achromatic ledger (light), dealt by the `design-taste-frontend` skill, seed 2041574039. Screen pattern: builder canvas.
 - **World:** paper and ink. No colour in the chrome. The room photo is the only colourful thing on screen.
 - **The move:** the one primary action is near-black; the one hue marks only what the agent chose; everything else is ink and grey.
-- **Mode:** Operate. One workspace that changes state; no marketing page.
+- **Mode:** Operate. One workspace that changes state. The only page outside it is the landing page, shown before login.
 
 ## The screen's one question
 "What goes in my room, and does it fit my budget?"
@@ -57,6 +57,16 @@ receipt panel: full height; Now line on top, sections, totals pinned at the bott
 ```
 Phone (390): top bar, room full width, shelf scrolls sideways, receipt below, total in a sticky bottom bar. 16px margins, 44px touch targets.
 Stage (`?stage=1`): the root font size goes up 12.5% for the projector; layout uses rem so nothing else changes.
+
+## Landing (before login)
+One page that says what Roomify does and leads to login. Same paper and ink as the app; no hero gradients, no stock photos, no icon tiles.
+- **Top bar:** the mark on the left; "Create account" (text link) and "Log in" (secondary fill) on the right. The one primary (near-black) button is the "Log in" under the opening line.
+- **Opening:** the promise in title type ("Photograph a room. Get a basket you can actually buy."), one sentence of how, then "Log in" and "Create an account".
+- **Signature:** an example receipt beside the opening (below it on a phone), printing line by line like the app's feed: chosen lines with the one hue, rejected lines struck through in grey with the reason in ink. It is labelled "Example" and its total is computed from its lines.
+- **How it works:** four numbered steps in plain words, as a ledger (number, line, sentence), not cards.
+- **Shops it reads:** the shop names as plain text, priority shops first.
+- **Close:** the trust line ("Every price, size and link is read from the shop's own page") and "Log in" again.
+- Without a back end (sample mode) the buttons read "Open the sample rooms" and go straight into the app.
 
 ## Rooms (sessions)
 Each room is one session, like a chat in a chatbot.

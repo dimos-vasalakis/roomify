@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { supabase } from '../api/supabase'
 import { Mark } from '../components/shell/Mark'
 
-type Mode = 'in' | 'up'
+export type Mode = 'in' | 'up'
+
+type Props = { initialMode?: Mode; onBack?: () => void }
 
 /** Email and password, so a demo account can be typed in on stage. */
-export function LoginScreen() {
-  const [mode, setMode] = useState<Mode>('in')
+export function LoginScreen({ initialMode = 'in', onBack }: Props) {
+  const [mode, setMode] = useState<Mode>(initialMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -34,7 +36,13 @@ export function LoginScreen() {
   return (
     <main className="grid min-h-dvh place-items-center bg-ground px-4">
       <div className="w-full max-w-sm">
-        <Mark />
+        {onBack ? (
+          <button type="button" onClick={onBack} aria-label="Back to the start page" className="rounded-control">
+            <Mark />
+          </button>
+        ) : (
+          <Mark />
+        )}
         <h1 className="mt-8 text-title font-semibold tracking-[-0.01em]">{mode === 'in' ? 'Log in to your rooms' : 'Create an account'}</h1>
         <p className="mt-1 text-chrome text-muted">Your rooms, baskets and walk-ins are saved to your account.</p>
 
