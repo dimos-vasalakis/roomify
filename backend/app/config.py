@@ -51,7 +51,14 @@ def get_settings() -> Settings:
         supabase_url=(os.getenv("SUPABASE_URL") or "").rstrip("/") or None,
         supabase_secret_key=os.getenv("SUPABASE_SECRET_KEY") or None,
         supabase_jwt_secret=os.getenv("SUPABASE_JWT_SECRET") or None,
-        frontend_origins=_csv(os.getenv("FRONTEND_ORIGINS") or "http://localhost:5173"),
+        frontend_origins=list(
+            dict.fromkeys(
+                [
+                    "https://roomify-rosy.vercel.app",
+                    *_csv(os.getenv("FRONTEND_ORIGINS") or "http://localhost:5173"),
+                ]
+            )
+        ),
         retailers=[d.removeprefix("www.") for d in _csv(os.getenv("RETAILERS", ""))],
         serper_api_key=os.getenv("SERPER_API_KEY") or None,
         cache_dir=Path(os.getenv("CACHE_DIR") or _default_cache(os.getenv("REPLAY", "0") == "1")),
