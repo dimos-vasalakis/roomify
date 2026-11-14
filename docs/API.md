@@ -14,7 +14,7 @@ Shared between the front end (`frontend/src/api/`) and the back end (`backend/ap
 | `GET /health` | Built |
 | `GET /me`, `PATCH /me`, `POST /me/avatar` | Built |
 | `GET /conversations`, `POST /conversations`, `GET/PATCH/DELETE /conversations/{id}` | Built |
-| `POST /conversations/{id}/photo` | **Needed** |
+| `POST /conversations/{id}/photo` | Built |
 | `POST /conversations/{id}/runs` | **Needed** |
 | `GET /runs/{run_id}/events` (stream) | **Needed** |
 | `POST /runs/{run_id}/answer` | **Needed** |

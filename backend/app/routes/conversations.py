@@ -1,6 +1,7 @@
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,6 +77,31 @@ async def get_conversation(
         messages=[MessageOut.model_validate(m, from_attributes=True) for m in messages],
         runs=[RunSummary.model_validate(r, from_attributes=True) for r in runs],
     )
+
+
+@router.post("/{conversation_id}/photo")
+async def upload_photo(
+    conversation_id: uuid.UUID,
+    file: Annotated[UploadFile, File()],
+    user: CurrentUser,
+    db: DB,
+) -> ConversationDetail:
+    conversation = await owned_conversation(db, conversation_id, user)
+    if file.content_type != "image/jpeg":
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Use a JPEG room photo.")
+    max_bytes = 5 * 1024 * 1024
+    data = await file.read(max_bytes + 1)
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The room photo is empty.")
+    if len(data) > max_bytes:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Room photo must be under 5 MB.")
+    try:
+        path = await storage.upload(f"rooms/{conversation_id}.jpg", data, "image/jpeg")
+    except storage.StorageError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    conversation.room_photo_path = path
+    await db.flush()
+    return await get_conversation(conversation_id, user, db)
 
 
 @router.patch("/{conversation_id}")
