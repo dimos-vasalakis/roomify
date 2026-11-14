@@ -36,7 +36,9 @@ React app ◀──server-sent events: every step, decision, rejection, render�
 | One-item swap | Re-render from the original photo with the new list, then paste only that item's region back with Pillow and a mask | Rest of the room stays pixel-identical | Full re-render |
 | Walk-in video | fal `minimax/h3-max/camera-controls` (about $0.08 per second at 768p) | "Scene frozen, only the camera moves" | `kling/v4/image-to-video`, `fal-ai/veo3.1/fast/image-to-video` |
 | Optional 3D | fal `tripo3d/h3.1/image-to-3d` for one product as GLB | Stretch: one product in phone AR | Cut |
-| State | In memory, plus `runs/{run_id}/` with JSON and images | No database | none needed |
+| Database and auth | Supabase | Hosted Postgres and login in one service | Local `runs/{run_id}/` JSON and images |
+| Front end hosting | Vercel | Deploys the Vite app from the repo | Run locally on the demo laptop |
+| Back end hosting | Render | Deploys the FastAPI app from the repo | Run locally on the demo laptop |
 | Demo safety | Every tool call cached by a hash of its inputs; `REPLAY=1` serves the cache | Same code path live and replayed | Recorded video |
 
 ## fal: where it is used
