@@ -4,8 +4,11 @@ import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import RequestResponseEndpoint
+from starlette.responses import Response
 
 from app.config import get_settings
 from app.routes import conversations, me
@@ -40,6 +43,25 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Roomify", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def readable_server_error(request: Request, call_next: RequestResponseEndpoint) -> Response:
+    """Keep unexpected failures inside CORS so browsers can display the actual error."""
+    try:
+        return await call_next(request)
+    except Exception as exc:  # noqa: BLE001 - final HTTP boundary; never expose raw errors
+        # Exception text can contain database credentials or SQL parameters.
+        log.error(
+            "Request failed: %s %s (%s)", request.method, request.url.path, type(exc).__name__
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "The server could not complete this request. Check the backend configuration and logs."
+            },
+        )
+
 
 app.add_middleware(
     CORSMiddleware,

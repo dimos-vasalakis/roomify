@@ -4,6 +4,7 @@ from functools import cache
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
+from sqlalchemy.exc import ProgrammingError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -58,8 +59,19 @@ async def db_session() -> AsyncIterator[AsyncSession]:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "Database is not configured: set DATABASE_URL."
         )
-    async with session() as db:
-        yield db
+    try:
+        async with session() as db:
+            yield db
+    except ProgrammingError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Database setup is incomplete. Run alembic upgrade head on the backend.",
+        ) from exc
+    except (SQLAlchemyError, OSError, TimeoutError) as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Cannot connect to the database. Check the backend DATABASE_URL and database availability.",
+        ) from exc
 
 
 # scope="function": commit before the response goes out, so a 2xx means it is saved.
