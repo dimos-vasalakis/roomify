@@ -34,7 +34,7 @@ Content & Digital Art (fal). Open as backup.
 
 ## Running it locally
 ```bash
-cp .env.example .env   # then fill in the keys
+cp backend/.env.example backend/.env   # then fill in the keys
 
 # back end (Python 3.12)
 cd backend
