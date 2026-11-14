@@ -48,6 +48,7 @@ loop.judge_basket = AsyncMock(
         ],
     )
 )
+loop._layout = AsyncMock(return_value=None)
 loop._render = AsyncMock(return_value="http://127.0.0.1:8173/test-room.jpg")
 loop._check = AsyncMock(
     return_value=loop.RenderCheck(

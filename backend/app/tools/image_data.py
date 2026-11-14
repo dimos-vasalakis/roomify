@@ -4,7 +4,7 @@ import base64
 from io import BytesIO
 
 import httpx
-from PIL import Image
+from PIL import Image, ImageOps
 from pydantic import BaseModel
 
 from app.cache import cached
@@ -19,6 +19,21 @@ def jpeg_image(data: bytes) -> bytes:
         image.thumbnail((1280, 1024))
         out = BytesIO()
         image.convert("RGB").save(out, "JPEG", quality=85)
+        return out.getvalue()
+
+
+def room_jpeg(data: bytes) -> bytes:
+    """Centre-crop to 3:2 landscape and cap at 1536 × 1024, the geometry the render, the
+    before/after reveal and the price dots share (docs/API.md), whatever the client sent."""
+    with Image.open(BytesIO(data)) as image:
+        image = ImageOps.exif_transpose(image).convert("RGB")
+        w, h = image.size
+        cw, ch = (round(h * 1.5), h) if w / h > 1.5 else (w, round(w / 1.5))
+        left, top = (w - cw) // 2, (h - ch) // 2
+        image = image.crop((left, top, left + cw, top + ch))
+        image.thumbnail((1536, 1024))
+        out = BytesIO()
+        image.save(out, "JPEG", quality=90)
         return out.getvalue()
 
 

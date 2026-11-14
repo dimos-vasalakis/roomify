@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from app.agent import loop
 from app.llm import llm_available
-from app.tools.image_data import jpeg_image
+from app.tools.image_data import room_jpeg
 
 router = APIRouter(tags=["offer"])
 PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
@@ -41,7 +41,7 @@ async def offer(
     if len(data) > PHOTO_MAX_BYTES:
         raise HTTPException(413, "The photo must be under 8 MB.")
     try:
-        data = jpeg_image(data)
+        data = room_jpeg(data)
     except (OSError, ValueError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
         raise HTTPException(
             415, "This photo couldn't be opened. Choose another JPEG, PNG or WebP."

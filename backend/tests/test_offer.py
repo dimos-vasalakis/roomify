@@ -84,6 +84,7 @@ def pipeline(monkeypatch):
             )
         ),
     )
+    monkeypatch.setattr(loop, "_layout", AsyncMock(return_value=None))
     monkeypatch.setattr(loop, "_render", AsyncMock(return_value="https://example.com/render.jpg"))
     monkeypatch.setattr(
         loop,
@@ -124,8 +125,10 @@ def test_finish_streams_basket_checked_preview_and_total(pipeline):
         "planning",
         "shopping",
         "rendering",
+        "rendering",
         "checking",
     ]
+    loop._render.assert_awaited_once()
 
 
 @pytest.mark.parametrize(
@@ -244,3 +247,109 @@ def test_replay_offer_works_without_provider_keys(pipeline, monkeypatch):
     response = finish()
     assert response.status_code == 200
     assert events(response)[-1][0] == "done"
+
+
+def _check_result(product_id, **flags):
+    return loop.RenderCheck(
+        room_preserved=flags.pop("room_preserved", True),
+        no_extra_products=True,
+        products=[
+            loop.BoxCheck(
+                product_id=product_id,
+                note="Twice its 120 cm width",
+                box_2d=[200, 100, 600, 600],
+                **{"match": True, "scale_ok": True, "placement_ok": True} | flags,
+            )
+        ],
+    )
+
+
+def test_wrong_scale_is_rendered_again_with_the_reason(pipeline, monkeypatch):
+    monkeypatch.setattr(
+        loop,
+        "_check",
+        AsyncMock(
+            side_effect=[
+                _check_result(pipeline.id, scale_ok=False),
+                _check_result(pipeline.id),
+            ]
+        ),
+    )
+    stream = events(finish())
+    assert stream[-1][0] == "done"
+    assert loop._render.await_count == 2
+    assert loop._render.await_args.args[-1] == ["desk: Twice its 120 cm width"]
+    feed = [data["text"] for kind, data in stream if kind == "step.started"]
+    assert any("Twice its 120 cm width" in text for text in feed)
+
+
+def test_size_doubt_on_last_try_still_shows_the_room(pipeline, monkeypatch):
+    monkeypatch.setattr(
+        loop, "_check", AsyncMock(return_value=_check_result(pipeline.id, scale_ok=False))
+    )
+    stream = events(finish())
+    assert loop._render.await_count == 2
+    assert stream[-1][0] == "done"
+
+
+def test_no_retry_when_the_run_is_out_of_time(pipeline, monkeypatch):
+    monkeypatch.setattr(loop, "RETRY_NEEDS_S", loop.RUN_TIMEOUT_S + 1)
+    monkeypatch.setattr(
+        loop, "_check", AsyncMock(return_value=_check_result(pipeline.id, room_preserved=False))
+    )
+    stream = events(finish())
+    assert loop._render.await_count == 1
+    assert stream[-1][0] == "error"
+
+
+def test_doubted_piece_on_last_try_loses_its_dot_not_the_room(pipeline, monkeypatch):
+    monkeypatch.setattr(
+        loop, "_check", AsyncMock(return_value=_check_result(pipeline.id, match=False))
+    )
+    stream = events(finish())
+    assert loop._render.await_count == 2
+    assert loop._render.await_args.args[-1] == ["the desk must look exactly like its shop photo"]
+    assert next(data for kind, data in stream if kind == "render.ready")["items"] == []
+    assert any("differs from the shop photo" in d.get("text", "") for _, d in stream)
+    assert stream[-1][0] == "done"
+
+
+@pytest.mark.parametrize("size", [(4000, 3000), (1080, 1920), (3000, 2000)])
+def test_room_photo_is_cropped_to_the_render_geometry(size):
+    from app.tools.image_data import room_jpeg
+
+    image = BytesIO()
+    Image.new("RGB", size).save(image, "JPEG")
+    with Image.open(BytesIO(room_jpeg(image.getvalue()))) as out:
+        assert abs(out.width / out.height - 1.5) < 0.01
+        assert out.width <= 1536 and out.height <= 1024
+
+
+async def test_render_asks_for_true_size_at_high_quality(pipeline, monkeypatch):
+    from app.tools.fal_client import FalResult
+
+    monkeypatch.undo()  # the real _render, not the pipeline mock
+    monkeypatch.delenv("FAL_RENDER_MODEL", raising=False)
+    image = {"url": "https://example.com/r.jpg", "width": 2048, "height": 1365}
+    fal = AsyncMock(return_value=FalResult(data={"images": [image]}))
+    monkeypatch.setattr(loop, "fal", fal)
+    layout = loop.Layout(
+        scale_anchors="door 200 cm on the right",
+        placements=[
+            loop.Placement(
+                product_id=pipeline.id,
+                where="under the window",
+                facing="the room",
+                apparent_size="half the window width",
+            )
+        ],
+    )
+    assert await loop._render(b"jpeg", {"Desk": pipeline}, "desk", "calm", layout) == image["url"]
+    args = fal.await_args.args[1]
+    assert args["resolution"] == "2K" and args["thinking_level"] == "high"
+    assert f"W {pipeline.width_cm:g} cm" in args["prompt"]
+    assert "under the window" in args["prompt"] and "door 200 cm" in args["prompt"]
+
+    image["width"], image["height"] = 1024, 1024
+    with pytest.raises(LLMError):
+        await loop._render(b"jpeg", {"Desk": pipeline}, "desk", "calm", None)

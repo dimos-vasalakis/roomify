@@ -159,7 +159,10 @@ Answers with the run's events as a stream: `run.status`, `step.started`, `plan.r
 - The loop lives in `app/agent/loop.py`. Vision reads the photo and brief through `llm()`, using the existing fal key (`FAL_LLM_MODEL`, default `google/gemini-2.5-flash`), or direct Gemini when only its key is configured. There is no silent keyword-only fallback.
 - The scraper supplies real listings. A single vision judge chooses a coherent basket and checks its claims against evidence using `app/judges/basket.yaml` through the documented LLM fallback. IDs and total are validated before rendering.
 - Budget preference: aim to use 50–80% of the entered allowance (around 70% ideally), choosing suitable upgrades over the cheapest basket. The full amount remains the hard ceiling; do not pad the room with unrequested items.
-- The preview uses fal (`FAL_RENDER_MODEL`, default `fal-ai/nano-banana-2/edit`) with the room photo, brief and exact product images. Vision checks the room and products before `render.ready`.
+- The preview uses fal (`FAL_RENDER_MODEL`, default `fal-ai/nano-banana-2/edit`) with the room photo, brief and exact product images.
+- Before rendering, a placement step reads the room's scale from visible anchors (doors, sockets, seats) and gives each product a spot and an apparent size from its listed W × D × H. The render gets those sizes, the spots and the anchors, at 2K (`FAL_RENDER_RESOLUTION`, `FAL_RENDER_THINKING`).
+- Vision (`VISION_MODEL`, default `google/gemini-3-flash-preview`) then checks that the room is unchanged, that each product matches its shop photo, and its scale and placement. If something fails and time allows, the agent renders once more and says why in a `step.started` line. On that last try, a piece that differs from its shop photo loses its price dot instead of the whole room failing. A changed room or an invented piece is still an `error`.
+- `/offer` centre-crops any photo to 3:2 and at most 1536 × 1024, so render, reveal and dots share one geometry whatever the client sends.
 - Missing product positions are omitted. Render failure ends with `error`, preserving the basket; `done` requires a preview. Every model, image-read and render call is cached. A run has a six-minute deadline.
 - Completed offers are retained for this browser tab, scoped to the signed-in account. They are not yet durable database runs.
 

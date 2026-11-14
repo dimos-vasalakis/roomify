@@ -79,6 +79,7 @@ async def judge_basket(
         ),
         images=images,
         json_out=True,
+        vision=True,
     )
     basket = Basket.model_validate(raw)
     if options:

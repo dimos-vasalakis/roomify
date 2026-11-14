@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from typing import Any
 
 from google import genai
@@ -22,6 +23,9 @@ from app.config import get_settings
 from app.tools.fal_client import FalError, fal
 
 DEFAULT_MODEL = "gemini-flash-latest"
+# Judging pictures (placement, render check, basket fit) needs the sharper eye: the older
+# flash model misread shapes and missed furniture clipping into furniture.
+VISION_MODEL = "google/gemini-3-flash-preview"
 log = logging.getLogger("roomify.llm")
 TIMEOUT_S = 45.0
 
@@ -39,16 +43,48 @@ class LLMText(BaseModel):
 
 
 async def llm(
-    prompt: str, images: list[tuple[bytes, str]] | None = None, json_out: bool = False
+    prompt: str,
+    images: list[tuple[bytes, str]] | None = None,
+    json_out: bool = False,
+    vision: bool = False,
 ) -> Any:
-    """Text (or parsed JSON when `json_out`) from the model. `images`: (bytes, mime type) pairs."""
+    """Text (or parsed JSON when `json_out`) from the model. `images`: (bytes, mime type) pairs.
+    `vision`: a judgement that rests on looking closely at the images."""
     key = os.getenv("GEMINI_API_KEY")
     use_fal = bool(os.getenv("FAL_KEY"))
-    model = (
-        os.getenv("FAL_LLM_MODEL") or "google/gemini-2.5-flash"
-        if use_fal
-        else os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
-    )
+    if vision:
+        chosen = os.getenv("VISION_MODEL") or VISION_MODEL
+        model = chosen if use_fal else chosen.removeprefix("google/")
+    else:
+        model = (
+            os.getenv("FAL_LLM_MODEL") or "google/gemini-2.5-flash"
+            if use_fal
+            else os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
+        )
+    try:
+        return await _answer(prompt, images, json_out, key, use_fal, model)
+    except _Unreadable:
+        # One typo in a long JSON answer should not end a run: ask once more, strictly.
+        try:
+            return await _answer(
+                prompt + "\nReturn strictly valid JSON.", images, json_out, key, use_fal, model
+            )
+        except _Unreadable as exc:
+            raise LLMError("The AI answered in a shape we could not read.") from exc
+
+
+class _Unreadable(Exception):
+    pass
+
+
+async def _answer(
+    prompt: str,
+    images: list[tuple[bytes, str]] | None,
+    json_out: bool,
+    key: str | None,
+    use_fal: bool,
+    model: str,
+) -> Any:
 
     async def call() -> LLMText:
         if use_fal or not key:
@@ -118,9 +154,14 @@ async def llm(
     text = result.text.strip()
     if not json_out:
         return text
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     try:
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         return json.loads(text)
+    except ValueError:
+        pass
+    try:
+        # Gemini 3 sometimes closes a four-number box with "}" or "}}" instead of "]}".
+        return json.loads(re.sub(r"(\[\s*-?[\d.]+(?:\s*,\s*-?[\d.]+){3})\s*\}+", r"\1]}", text))
     except ValueError as exc:
-        raise LLMError("The AI answered in a shape we could not read.") from exc
+        raise _Unreadable from exc

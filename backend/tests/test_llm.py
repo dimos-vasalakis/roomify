@@ -27,3 +27,30 @@ def test_replay_planning_does_not_require_provider_credentials(monkeypatch):
     monkeypatch.delenv("FAL_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     assert module.llm_available()
+
+
+async def test_vision_judgements_use_the_sharper_model_and_survive_one_broken_answer(
+    monkeypatch,
+):
+    monkeypatch.setenv("FAL_KEY", "test-only")
+    monkeypatch.delenv("VISION_MODEL", raising=False)
+    answers = [FalResult(data={"output": '{"ok": [1}}'}), FalResult(data={"output": '{"ok": 1}'})]
+    call = AsyncMock(side_effect=answers)
+    monkeypatch.setattr(module, "fal", call)
+    assert await module.llm("Judge", json_out=True, vision=True) == {"ok": 1}
+    assert call.await_count == 2
+    assert call.await_args.args[1]["model"] == module.VISION_MODEL
+    assert call.await_args.args[1]["prompt"].endswith("Return strictly valid JSON.")
+
+
+async def test_box_closed_with_a_brace_is_repaired(monkeypatch):
+    monkeypatch.setenv("FAL_KEY", "test-only")
+    raw = '{"products": [{"box_2d": [1, 2, 3, 4]}, {"box_2d": [764, 356, 988, 644}]}'
+    monkeypatch.setattr(module, "fal", AsyncMock(return_value=FalResult(data={"output": raw})))
+    assert await module.llm("Judge", json_out=True, vision=True) == {
+        "products": [{"box_2d": [1, 2, 3, 4]}, {"box_2d": [764, 356, 988, 644]}]
+    }
+    raw = raw.replace("644}]}", "659}}]}")
+    monkeypatch.setattr(module, "fal", AsyncMock(return_value=FalResult(data={"output": raw})))
+    result = await module.llm("Judge again", json_out=True, vision=True)
+    assert result["products"][1]["box_2d"] == [764, 356, 988, 659]
