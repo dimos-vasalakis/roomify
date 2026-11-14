@@ -31,8 +31,6 @@ export type State = {
   errors: Partial<Record<Block, { sessionId: string; message: string }>>
   /** Bumped to listen to a room's run again (after a swap or walk-in on a finished run). */
   refollow: number
-  /** Talking to the room: live caption, and a sentence waiting for the person to tap an item. */
-  voice: { listening: boolean; caption: string; pending: string | null; error: string | null }
 }
 
 export type Action =
@@ -64,7 +62,6 @@ export type Action =
   | { type: 'setError'; block: Block; sessionId: string; message: string | null }
   | { type: 'cancelSwap' }
   | { type: 'refollow' }
-  | { type: 'setVoice'; voice: Partial<State['voice']> }
 
 const updateActive = (state: State, fn: (s: Session) => Session): State => ({
   ...state,
@@ -105,7 +102,7 @@ const blankRoom = (): Session => ({
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'select':
-      return { ...state, ...clearTransient, activeId: action.id, sheetOpen: false, voice: { ...state.voice, pending: null, caption: '' } }
+      return { ...state, ...clearTransient, activeId: action.id, sheetOpen: false }
 
     case 'newRoom': {
       const room = blankRoom()
@@ -125,7 +122,7 @@ function reducer(state: State, action: Action): State {
       return {
         ...updateActive(state, (s) => ({
           ...s,
-          now: { text: `Working on “${action.instruction}”`, startedAt: Date.now() },
+          now: { text: `Looking for a ${action.instruction.toLowerCase()} option`, startedAt: Date.now() },
         })),
         swapping: { productId: action.productId, instruction: action.instruction },
       }
@@ -309,9 +306,6 @@ function reducer(state: State, action: Action): State {
       return { ...state, errors }
     }
 
-    case 'setVoice':
-      return { ...state, voice: { ...state.voice, ...action.voice } }
-
     case 'refollow':
       return { ...state, refollow: state.refollow + 1 }
 
@@ -341,7 +335,6 @@ const initial: State = {
   roomsLoading: LIVE,
   errors: {},
   refollow: 0,
-  voice: { listening: false, caption: '', pending: null, error: null },
 }
 
 const Ctx = createContext<{ state: State; dispatch: Dispatch<Action> } | null>(null)

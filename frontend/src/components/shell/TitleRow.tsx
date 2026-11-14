@@ -2,7 +2,6 @@ import { Columns2, Footprints, X } from 'lucide-react'
 import { money } from '../../lib/format'
 import { shopsOf, totalOf } from '../../lib/session'
 import { useStore } from '../../state/store'
-import { VoiceBar } from '../talk/VoiceBar'
 
 /** The room's name, the one finding, and the two things you do with a finished room. */
 export function TitleRow() {
@@ -35,8 +34,7 @@ export function TitleRow() {
         <p className="num mt-0.5 text-chrome text-muted">{finding}</p>
       </div>
       {done && (
-        <div className="flex flex-wrap items-center gap-2">
-          <VoiceBar />
+        <div className="flex items-center gap-2">
           <button
             type="button"
             aria-pressed={state.compare}

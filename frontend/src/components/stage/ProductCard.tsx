@@ -4,10 +4,7 @@ import { money, shopName, size } from '../../lib/format'
 import { enter, useGSAP } from '../../lib/motion'
 import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
-import { instructionOf } from '../../lib/match'
-import { useSpeech } from '../../lib/speech'
 import { BlockError } from '../common/BlockError'
-import { MicButton } from '../common/MicButton'
 import type { Product } from '../../types'
 import { Crop } from '../common/Crop'
 
@@ -30,8 +27,6 @@ export function ProductCard({ product, picture }: { product: Product; picture: s
     },
     { scope: card, dependencies: [product.id] },
   )
-
-  const speech = useSpeech({ onFinal: (said) => send(instructionOf(said)) })
 
   const send = (instruction: string) => {
     const v = instruction.trim()
@@ -112,13 +107,12 @@ export function ProductCard({ product, picture }: { product: Product; picture: s
             <div className="mt-1.5 flex gap-1.5">
               <input
                 id="swap"
-                value={speech.listening ? speech.interim : text}
+                value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder={speech.listening ? 'Listening…' : 'warmer, cheaper, no metal'}
+                placeholder="warmer, cheaper, no metal"
                 autoComplete="off"
                 className="h-control min-w-0 flex-1 rounded-control border border-control bg-surface px-2.5 text-chrome placeholder:text-muted focus:border-ink focus:outline-none"
               />
-              <MicButton listening={speech.listening} supported={speech.supported} onStart={speech.start} onStop={speech.stop} label="Say what instead" />
               <button
                 type="submit"
                 aria-label="Swap"
