@@ -43,7 +43,9 @@ Source of truth: `frontend/src/styles/tokens.css`.
 | Warning pill | `#fffbeb` / `#92400e` |
 
 Radius: panel 16, card 8, control 6, dot full. Gap 12 everywhere. Control height 36. Row height 44.
-Type: Geist variable, self-hosted (`@fontsource-variable/geist`). Weights 400, 500, 700 (700 for money only). Sizes: title 24, section 16, total 30, body 16 on the canvas and receipt, 14 in the chrome, small 12. Tabular figures on every number. No monospace.
+Type: Manrope variable, self-hosted (`@fontsource-variable/manrope`). Weights 400, 500, 700 (700 for money only). Sizes: title 24, section 16, total 30, body 16 on the canvas and receipt, 14 in the chrome, small 12. Tabular figures on every number. No monospace.
+
+Why not the dealt Geist: product names, shops and delivery text arrive in Greek, and Geist has no Greek glyphs. Commissioner was tested and rejected: it has Greek but no tabular figures, so prices jitter while they count. IBM Plex Sans and Roboto Flex were rejected because their figures are fixed-width even in running text. Manrope has Greek, proportional figures in text, and real tabular figures when `tabular-nums` is set (checked by measuring digit widths in the browser).
 
 ## Layout (1440 × 900)
 ```
