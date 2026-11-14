@@ -14,6 +14,7 @@ Built in a 36-hour agentic AI hackathon by a team of three. Read `README.md` for
 
 ## Architecture rules
 - Back end: Python 3.12, FastAPI, in `backend/`. Front end: React + Vite + TypeScript + Tailwind + GSAP, in `frontend/`.
+- Hosting: database and auth on **Supabase**, front end deployed on **Vercel**, back end deployed on **Render**.
 - The agent loop lives in `backend/app/agent/loop.py` and nowhere else.
 - **All LLM calls go through `llm()` in `backend/app/llm.py`.** Never import a provider SDK anywhere else.
 - **Tools are plain functions** in `backend/app/tools/`, one file per tool or service, with typed inputs and a Pydantic result.

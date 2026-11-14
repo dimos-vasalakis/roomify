@@ -26,6 +26,8 @@ You get the keys to a student flat. One empty room, €400, and forty browser ta
 | Trust and decisions | oumi judges: checks every extracted product against its page, and scores candidates on fit, budget, style and convenience |
 | Render, swap, walk-in video | fal (Nano Banana 2.1 edit, MiniMax camera controls) |
 | App | FastAPI back end, React + Vite + TypeScript + Tailwind + GSAP front end, live steps over server-sent events |
+| Database and auth | Supabase |
+| Hosting | Front end on Vercel, back end on Render |
 
 Full details, model IDs, fallbacks and costs: [docs/TECH_STACK.md](docs/TECH_STACK.md).
 
