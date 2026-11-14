@@ -7,8 +7,7 @@ skeleton so those spellings meet.
 
 import asyncio
 import re
-import unicodedata
-from functools import lru_cache
+from collections.abc import Sequence
 from typing import NamedTuple
 
 from pydantic import BaseModel, Field
@@ -16,6 +15,7 @@ from pydantic import BaseModel, Field
 from app.cache import ReplayMiss
 from app.config import get_settings
 from app.tools.catalogue import ShopCatalogue, saved_catalogue
+from app.tools.greeklish import Word, index_words, split_words, word_keys
 from app.tools.shops import Shop, enabled_shops
 from app.tools.web_search import WebSearchError, web_search
 
@@ -49,78 +49,7 @@ class SearchResult(BaseModel):
     note: str | None  # e.g. why web search was skipped
 
 
-_GREEK_TO_LATIN = str.maketrans(
-    {
-        "α": "a", "β": "v", "γ": "g", "δ": "d", "ε": "e", "ζ": "z", "η": "i", "θ": "th",
-        "ι": "i", "κ": "k", "λ": "l", "μ": "m", "ν": "n", "ξ": "ks", "ο": "o", "π": "p",
-        "ρ": "r", "σ": "s", "ς": "s", "τ": "t", "υ": "y", "φ": "f", "χ": "x", "ψ": "ps",
-        "ω": "o",
-    }
-)  # fmt: skip
-# Order matters: multi-letter spellings first.
-_SPELLINGS = (
-    ("mp", "v"), ("nt", "d"), ("gk", "g"), ("gg", "g"), ("th", "t"), ("ph", "f"),
-    ("ch", "x"), ("h", "x"), ("b", "v"), ("ks", "x"), ("w", "o"), ("j", "g"), ("c", "k"),
-)  # fmt: skip
-_VOWELS = re.compile(r"[aeiouy]")
-
-
-def latin(text: str) -> str:
-    """'Γραφείο' -> 'grafeio'. Accents dropped, Greek transliterated."""
-    plain = unicodedata.normalize("NFD", text.lower())
-    plain = "".join(c for c in plain if not unicodedata.combining(c))
-    return plain.translate(_GREEK_TO_LATIN)
-
-
-def skeleton(word: str) -> str:
-    """'grafeioy', 'γραφείο' -> 'grf'. Numbers are kept as they are."""
-    word = latin(word)
-    if any(c.isdigit() for c in word):
-        return word
-    for spelling, sound in _SPELLINGS:
-        word = word.replace(spelling, sound)
-    word = _VOWELS.sub("", word)
-    return re.sub(r"(.)\1+", r"\1", word)  # double letters once
-
-
-def _words(text: str) -> list[str]:
-    return [w for w in re.split(r"[^\w]+", latin(text)) if w]
-
-
-_VOWEL_SOUNDS = (
-    ("ou", "u"),
-    ("oy", "u"),
-    ("ei", "i"),
-    ("oi", "i"),
-    ("ai", "e"),
-    ("y", "i"),
-)
-
-
-def loose(word: str) -> str:
-    """Like skeleton() but keeps vowel sounds: 'χαλί' -> 'xali', 'XL' -> 'xl'."""
-    word = latin(word)
-    for spelling, sound in _SPELLINGS + _VOWEL_SOUNDS:
-        word = word.replace(spelling, sound)
-    return re.sub(r"(.)\1+", r"\1", word)
-
-
-class _Word(NamedTuple):
-    skeleton: str
-    loose: str
-
-
-def _word(text: str) -> _Word:
-    return _Word(skeleton(text), loose(text))
-
-
-@lru_cache(maxsize=200_000)
-def _slug_index(slug: str) -> tuple[_Word, ...]:
-    """Computed once per slug: a search scans ~41,000 of them."""
-    return tuple(_word(w) for w in _words(slug))
-
-
-def _word_matches(query: _Word, slug_words: tuple[_Word, ...]) -> bool:
+def _word_matches(query: Word, slug_words: Sequence[Word]) -> bool:
     # Short words (χαλί: 'xl') could be anything with those consonants ('XL'), so they
     # must match with their vowels. Longer ones may be a prefix of the consonants,
     # which covers Greek endings and spellings (γραφείο / grafeioy / grafeiou).
@@ -131,26 +60,25 @@ def _word_matches(query: _Word, slug_words: tuple[_Word, ...]) -> bool:
     return any(w.skeleton.startswith(query.skeleton) for w in slug_words)
 
 
-def _query_words(texts: list[str]) -> list[_Word]:
-    words = [_word(w) for text in texts for w in _words(text)]
+def _querysplit_words(texts: list[str]) -> list[Word]:
+    words = [word_keys(w) for text in texts for w in split_words(text)]
     return [w for w in words if len(w.skeleton) >= 2 or w.skeleton.isdigit()]  # drops 'με', 'και'
 
 
 class _Query(NamedTuple):
     """The spec's words, prepared once per search instead of once per catalogue entry."""
 
-    options: list[list[_Word]]  # item: any option, all of its words
-    extra: list[_Word]  # keywords
-    exclude: list[_Word]
+    options: list[list[Word]]  # item: any option, all of its words
+    extra: list[Word]  # keywords
+    exclude: list[Word]
 
 
 def _prepare(item: list[str], keywords: list[str], exclude: list[str] | None) -> _Query:
-    options = [opt for opt in (_query_words([o]) for o in item) if opt]
-    return _Query(options, _query_words(keywords), _query_words(exclude or []))
+    options = [opt for opt in (_querysplit_words([o]) for o in item) if opt]
+    return _Query(options, _querysplit_words(keywords), _querysplit_words(exclude or []))
 
 
-def _score(query: _Query, slug: str) -> float:
-    slug_words = _slug_index(slug)
+def _score(query: _Query, slug_words: Sequence[Word]) -> float:
     if any(_word_matches(w, slug_words) for w in query.exclude):
         return 0.0
     if not any(all(_word_matches(w, slug_words) for w in opt) for opt in query.options):
@@ -211,7 +139,7 @@ def _scan(query: _Query, shops: list[Shop]) -> tuple[list[SearchHit], list[str]]
             notes.append(catalogue)
             continue
         for entry in catalogue.entries:
-            score = _score(query, entry.words)
+            score = _score(query, entry.keys)
             if score:
                 hits.append(
                     SearchHit(url=entry.url, retailer=shop.domain, shop_name=shop.name,
@@ -225,7 +153,7 @@ async def _web_hits(spec: ProductSpec, query: _Query, shops: list[Shop]) -> list
     hits = []
     for web_hit in await web_search(text, shops):
         # The page title stands in for the slug, so the same rules apply as in catalogues.
-        score = _score(query, web_hit.title)
+        score = _score(query, index_words(web_hit.title))
         if score:
             hits.append(
                 SearchHit(url=web_hit.url, retailer=web_hit.shop.domain,

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.tools.read_product_page import PageRead, ProductListing, read_product_page, saved_page
 from app.tools.search_products import ProductSpec, SearchHit, search_products
+from app.tools.web_fetch import warm_robots
 
 MAX_PAGES = 20
 PARALLEL_READS = 4
@@ -82,6 +83,7 @@ async def find_products(spec: ProductSpec, want: int = 8) -> FindResult:
         return FindResult(candidates=[], rejected=[], searched=0,
                           note=search.note or "Nothing in the shops matched that description")  # fmt: skip
 
+    await warm_robots([h.url for h in search.hits])
     limiter = asyncio.Semaphore(PARALLEL_READS)
     tasks = [asyncio.create_task(_read_with_timeout(h.url, limiter)) for h in search.hits]
     _, late = await asyncio.wait(tasks, timeout=FIND_DEADLINE_S)

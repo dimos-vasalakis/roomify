@@ -66,8 +66,12 @@ def shop(monkeypatch: pytest.MonkeyPatch) -> dict[str, PageRead]:
     async def fake_read(url: str) -> PageRead:
         return pages[url]
 
+    async def no_robots(urls: list[str]) -> None:
+        return None
+
     monkeypatch.setattr(finder, "search_products", fake_search)
     monkeypatch.setattr(finder, "read_product_page", fake_read)
+    monkeypatch.setattr(finder, "warm_robots", no_robots)
     return pages
 
 

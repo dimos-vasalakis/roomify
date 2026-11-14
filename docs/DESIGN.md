@@ -17,7 +17,7 @@ Owner: front end. Decided 2026-11-14 before the build window. Every screen follo
 
 ## The face
 - **Ground** `#f4f3f1`, a shop stone, instead of stock `#f8f8f8`. Panels white.
-- **The one hue** `#1d5fbf` on the agent's choices only: price dots on the room, the chosen marker on receipt lines, the budget track's fill. Under 1% of the screen.
+- **The one hue** `#2d5a45` (pine) on the agent's choices only: price dots on the room, the chosen marker on receipt lines, the budget track's fill. Under 1% of the screen.
 - **Signature element:** the receipt. The agent's feed prints like a till receipt while it shops. Every decision is a line; rejected candidates stay, struck through in grey, with the reason in ink under them.
 - **Dimension line:** the one measurement the user gave ("140 cm") drawn under the room like an architect's ruler.
 - **Words of the trade:** "Looked at", "Rejected", "In the basket", "One trip", "Walk in". Never "Items", "Status", "Records".
@@ -33,12 +33,12 @@ Source of truth: `frontend/src/styles/tokens.css`.
 | Border | `#e6e5e3` |
 | Row rule | `#f0efed` |
 | Control border | `#d4d3d1` |
-| Text | `#0a0a0a` |
+| Text | `#171717` (the logo ink) |
 | Muted (4.5:1 on white and ground) | `#636260` |
-| Primary fill | `#141414` with white label |
+| Primary fill | `#171717` with white label |
 | Secondary fill | `#e5e5e5` with ink label |
-| Chosen (the one hue) | `#1d5fbf` |
-| Positive | `#2e7d32` |
+| Chosen (the one hue) | `#2d5a45` (pine) |
+| Positive | `#2d5a45` (same as chosen: one green, not two) |
 | Negative (real failures only) | `#c4242a` |
 | Warning pill | `#fffbeb` / `#92400e` |
 

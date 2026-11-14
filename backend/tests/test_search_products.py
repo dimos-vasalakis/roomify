@@ -2,13 +2,14 @@ import pytest
 
 from app.tools import search_products as search_module
 from app.tools.catalogue import CatalogueEntry, ShopCatalogue
-from app.tools.search_products import ProductSpec, _prepare, _score, search_products, skeleton
+from app.tools.greeklish import index_words, skeleton
+from app.tools.search_products import ProductSpec, _prepare, _score, search_products
 from app.tools.shops import SHOPS
 from app.tools.web_search import WebHit, WebSearchError
 
 
 def score_entry(item: list[str], keywords: list[str], slug: str, exclude: list[str]) -> float:
-    return _score(_prepare(item, keywords, exclude), slug)
+    return _score(_prepare(item, keywords, exclude), index_words(slug))
 
 
 @pytest.mark.parametrize(
@@ -53,7 +54,10 @@ def test_score_entry(item: list[str], keywords: list[str], slug: str, exclude: l
 def _catalogues() -> list[ShopCatalogue]:
     def cat(domain: str, *words: str) -> ShopCatalogue:
         entries = [
-            CatalogueEntry(url=f"https://{domain}/p/{w.replace(' ', '-')}", words=w) for w in words
+            CatalogueEntry(
+                url=f"https://{domain}/p/{w.replace(' ', '-')}", words=w, keys=index_words(w)
+            )
+            for w in words
         ]
         return ShopCatalogue(domain=domain, entries=entries, sitemap_errors=[])
 

@@ -173,20 +173,21 @@ def test_changing_a_shop_rule_makes_a_new_catalogue() -> None:
     assert cache_path("catalogue", _inputs(IKEA)) != cache_path("catalogue", _inputs(stricter))
 
 
-async def test_saved_catalogue_never_downloads_and_parses_once(
+async def test_saved_catalogue_never_downloads_and_stores_search_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.tools.catalogue import saved_catalogue
-
-    assert saved_catalogue(IKEA) is None
+    assert saved_catalogue(IKEA) is None  # nothing saved: and nothing fetched either
 
     async def one(url: str) -> str:
-        return "<urlset><url><loc>https://www.ikea.gr/proioda/a/1/</loc></url></urlset>"
+        return (
+            "<urlset><url><loc>https://www.ikea.gr/proioda/mittzon-grafeio/1/</loc></url></urlset>"
+        )
 
     monkeypatch.setattr(catalogue, "fetch_text", one)
     await shop_catalogue(IKEA)
-    first = saved_catalogue(IKEA)
-    assert first is not None and saved_catalogue(IKEA) is first  # same object: parsed once
+    saved = saved_catalogue(IKEA)
+    assert saved is not None
+    assert [k.skeleton for k in saved.entries[0].keys] == ["mtzn", "grf"]
 
 
 async def test_one_shop_crashing_does_not_cancel_the_others(

@@ -29,10 +29,10 @@ export function Viewpoint({ at, aimDeg, ghost = false, small = false }: Props) {
     >
       <g transform={`rotate(${aimDeg} 60 60)`}>
         <path d={WEDGE} fill="#fff" fillOpacity={small ? 0.22 : 0.32} stroke="#fff" strokeWidth="3" />
-        <path d={WEDGE} fill="none" stroke="#0a0a0a" strokeWidth="1.25" />
+        <path d={WEDGE} fill="none" stroke="#171717" strokeWidth="1.25" />
       </g>
       <circle cx="60" cy="60" r={small ? 6 : 8} fill="#fff" />
-      <circle cx="60" cy="60" r={small ? 3.5 : 5} fill="#0a0a0a" />
+      <circle cx="60" cy="60" r={small ? 3.5 : 5} fill="#171717" />
     </svg>
   )
 }

@@ -37,7 +37,7 @@ export function PhotoDrop({ onFile }: { onFile: (file: File) => Promise<unknown>
         <input type="file" accept="image/*" disabled={busy} className="sr-only" onChange={(e) => void take(e.target.files?.[0])} />
       </label>
       <div className="hidden flex-col items-center justify-center gap-3 rounded-card bg-surface p-4 text-center sm:flex">
-        <QRCodeSVG value={`${location.origin}/snap`} size={112} bgColor="#ffffff" fgColor="#0a0a0a" />
+        <QRCodeSVG value={`${location.origin}/snap`} size={112} bgColor="#ffffff" fgColor="#171717" />
         <p className="text-chrome text-muted">Or scan to take it with your phone</p>
       </div>
     </div>

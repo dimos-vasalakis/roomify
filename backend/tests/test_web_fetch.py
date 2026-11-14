@@ -215,3 +215,16 @@ async def test_only_passing_trouble_is_transient(
     with pytest.raises(FetchError) as error:
         await fetch_text(PAGE)
     assert error.value.transient is transient
+
+
+async def test_parallel_reads_fetch_robots_once_per_site(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    from app.tools.web_fetch import warm_robots
+
+    requests = mock_http(monkeypatch, site())
+    pages = [f"https://www.ikea.gr/proioda/x/{i}/" for i in range(4)] + ["https://jysk.gr/a/b/c"]
+    await warm_robots(pages)
+    await asyncio.gather(*(fetch_text(p) for p in pages))
+    robots = [str(r.url) for r in requests if r.url.path == "/robots.txt"]
+    assert sorted(robots) == ["https://jysk.gr/robots.txt", "https://www.ikea.gr/robots.txt"]

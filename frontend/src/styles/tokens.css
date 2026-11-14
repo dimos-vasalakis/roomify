@@ -9,16 +9,16 @@
   --color-border: #e6e5e3;
   --color-rule: #f0efed;
   --color-control: #d4d3d1;
-  --color-ink: #0a0a0a;
+  --color-ink: #171717;
   --color-muted: #636260;
-  --color-primary: #141414;
+  --color-primary: #171717;
   --color-secondary: #e5e5e5;
-  --color-chosen: #1d5fbf;
-  --color-positive: #2e7d32;
+  --color-chosen: #2d5a45;
+  --color-positive: #2d5a45;
   --color-negative: #c4242a;
   --color-warning-bg: #fffbeb;
   --color-warning-ink: #92400e;
-  --color-scrim: #0a0a0a;
+  --color-scrim: #171717;
 
   --font-sans: "Manrope Variable", system-ui, sans-serif;
 

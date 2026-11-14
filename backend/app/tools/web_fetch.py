@@ -150,6 +150,20 @@ async def _robots(url: str) -> Robots:
     return robots
 
 
+async def warm_robots(urls: list[str]) -> None:
+    """Check each site's robots.txt once before reading its pages in parallel, so parallel
+    reads find it saved instead of all downloading it at the same moment."""
+    sites = {f"{urlsplit(u).scheme}://{urlsplit(u).netloc}/": u for u in urls if host_of(u)}
+
+    async def one(url: str) -> None:
+        try:
+            await _robots(url)
+        except FetchError:
+            pass  # each page read reports this in its own words
+
+    await asyncio.gather(*(one(u) for u in sites.values()))
+
+
 def _check_address(url: str) -> None:
     try:
         parts = urlsplit(url)

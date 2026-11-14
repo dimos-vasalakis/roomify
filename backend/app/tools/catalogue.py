@@ -6,14 +6,13 @@ Run `python -m app.tools.catalogue` once to download all of them ahead of a demo
 import asyncio
 import logging
 import re
-from functools import lru_cache
-from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel
 
 from app.cache import WEEK, cache_path, cached, load_saved
+from app.tools.greeklish import Word, index_words
 from app.tools.shops import Shop, enabled_shops, is_product_url
 from app.tools.web_fetch import FetchError, fetch_text
 
@@ -32,6 +31,7 @@ class CatalogueError(Exception):
 class CatalogueEntry(BaseModel):
     url: str
     words: str  # slug words, e.g. "mittzon grafeio 140x80 cm"
+    keys: list[Word]  # the same words as search keys, computed once when the catalogue is built
 
 
 class ShopCatalogue(BaseModel):
@@ -64,6 +64,11 @@ def _entries(text: str) -> list[tuple[str, bool]]:
     return entries
 
 
+def _entry(url: str) -> CatalogueEntry:
+    words = slug_words(url)
+    return CatalogueEntry(url=url, words=words, keys=index_words(words))
+
+
 def _is_sitemap(url: str) -> bool:
     return bool(re.search(r"\.xml($|\?)|sitemap", url, re.IGNORECASE))
 
@@ -83,7 +88,7 @@ async def _build(shop: Shop) -> ShopCatalogue:
             continue
         for loc, has_image in _entries(text):
             if is_product_url(shop, loc) and (has_image or not shop.sitemap_image_required):
-                products.setdefault(loc, CatalogueEntry(url=loc, words=slug_words(loc)))
+                products.setdefault(loc, _entry(loc))
             elif (
                 _is_sitemap(loc)
                 and loc not in seen
@@ -121,18 +126,7 @@ async def shop_catalogue(shop: Shop, max_age_s: float | None = None) -> ShopCata
 
 def saved_catalogue(shop: Shop) -> ShopCatalogue | None:
     """The saved catalogue, never downloading: searches must not wait for sitemaps."""
-    path = cache_path("catalogue", _inputs(shop))
-    try:
-        modified = path.stat().st_mtime
-    except OSError:
-        return None
-    return _parsed(path, modified)
-
-
-@lru_cache(maxsize=8)  # one per shop, plus a rebuilt version or two
-def _parsed(path: Path, modified: float) -> ShopCatalogue | None:
-    """Parsed once per saved version (the file's time changes when it is rebuilt)."""
-    return load_saved(path, ShopCatalogue)
+    return load_saved(cache_path("catalogue", _inputs(shop)), ShopCatalogue)
 
 
 async def refresh_catalogues(max_age_s: float = WEEK) -> list[ShopCatalogue | str]:
