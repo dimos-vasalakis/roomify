@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import { enter, useGSAP } from '../../lib/motion'
+import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
+import { BlockError } from '../common/BlockError'
 import type { Point, WalkMove } from '../../types'
 import { Segmented } from './Segmented'
 
@@ -13,6 +15,8 @@ const MOVES: { value: WalkMove; label: string; hint: string }[] = [
 /** The small card that turns a viewpoint into a walk-in. Opens beside the viewpoint. */
 export function WalkInComposer({ at }: { at: Point }) {
   const { dispatch } = useStore()
+  const actions = useActions()
+  const [busy, setBusy] = useState(false)
   const [move, setMove] = useState<WalkMove>('push')
   const [seconds, setSeconds] = useState<5 | 8>(5)
   const card = useRef<HTMLDivElement>(null)
@@ -55,6 +59,7 @@ export function WalkInComposer({ at }: { at: Point }) {
           onChange={setSeconds}
         />
       </div>
+      <BlockError block="walkin" className="mt-4" />
       <div className="mt-5 flex items-center justify-end gap-2">
         <button
           type="button"
@@ -65,10 +70,14 @@ export function WalkInComposer({ at }: { at: Point }) {
         </button>
         <button
           type="button"
-          onClick={() => dispatch({ type: 'createWalkIn', move, seconds })}
+          disabled={busy}
+          onClick={() => {
+            setBusy(true)
+            void actions.makeWalkIn(move, seconds).finally(() => setBusy(false))
+          }}
           className="press h-control rounded-control bg-primary px-4 text-chrome font-medium text-surface hover:bg-ink/85"
         >
-          Make walk-in
+          {busy ? 'Sending…' : 'Make walk-in'}
         </button>
       </div>
     </div>

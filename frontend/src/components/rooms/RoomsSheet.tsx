@@ -1,14 +1,18 @@
 import { Plus, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
 import { Mark } from '../shell/Mark'
+import { LIVE } from '../../api/config'
 import { HAS_SAMPLES } from '../../data/loadSamples'
+import { AccountRow } from './AccountRow'
 import { Credits } from './Credits'
 import { SessionList } from './SessionList'
 
 /** Phone: the rooms list as a full-screen sheet. */
 export function RoomsSheet() {
   const { state, dispatch } = useStore()
+  const actions = useActions()
   const dialog = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -36,7 +40,7 @@ export function RoomsSheet() {
         </div>
         <button
           type="button"
-          onClick={() => dispatch({ type: 'newRoom' })}
+          onClick={() => void actions.newRoom()}
           className="press mb-5 flex h-11 shrink-0 items-center justify-center gap-2 rounded-control bg-primary text-body font-medium text-surface"
         >
           <Plus size={16} strokeWidth={2} /> New room
@@ -44,7 +48,8 @@ export function RoomsSheet() {
         <div className="min-h-0 flex-1 overflow-y-auto pb-4">
           <SessionList />
         </div>
-        {HAS_SAMPLES && (
+        <AccountRow />
+        {!LIVE && HAS_SAMPLES && (
           <div className="flex shrink-0 gap-2 py-4 text-small text-muted">
             Sample rooms and prices. <Credits />
           </div>

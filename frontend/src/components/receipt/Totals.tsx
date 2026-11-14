@@ -13,6 +13,8 @@ export function Totals() {
   const ratio = Math.min(1, total / s.budgetEur)
   const shops = shopsOf(s)
   const [shown, setShown] = useState(total)
+  // The count-up only shows while it is really running; otherwise the true total is on screen.
+  const [tweening, setTweening] = useState(false)
   const counter = useRef({ v: total })
   const [delta, setDelta] = useState<{ eur: number } | null>(null)
 
@@ -27,13 +29,21 @@ export function Totals() {
 
   useGSAP(
     () => {
-      if (reducedMotion()) {
+      // A hidden tab gets no animation frames, so a tween would never finish there.
+      if (reducedMotion() || document.hidden) {
         gsap.set(counter.current, { v: total })
-        setShown(total)
         gsap.set('[data-fill]', { scaleX: ratio })
         return
       }
-      gsap.to(counter.current, { v: total, duration: 0.6, ease: EASE_OUT, onUpdate: () => setShown(Math.round(counter.current.v * 100) / 100) })
+      gsap.to(counter.current, {
+        v: total,
+        duration: 0.6,
+        ease: EASE_OUT,
+        onStart: () => setTweening(true),
+        onUpdate: () => setShown(Math.round(counter.current.v * 100) / 100),
+        onComplete: () => setTweening(false),
+        onInterrupt: () => setTweening(false),
+      })
       gsap.to('[data-fill]', { scaleX: ratio, duration: 0.6, ease: EASE_OUT })
     },
     { scope: root, dependencies: [total, ratio, s.id] },
@@ -48,7 +58,7 @@ export function Totals() {
         {delta && <p className="num text-chrome font-medium text-ink">{signedMoney(delta.eur)} after your swap</p>}
       </div>
       <p className="mt-0.5 flex items-baseline gap-2">
-        <span className="num text-total font-bold tracking-[-0.02em] text-ink">{money(shown)}</span>
+        <span className="num text-total font-bold tracking-[-0.02em] text-ink">{money(tweening ? shown : total)}</span>
         <span className="num text-body text-muted">of {money(s.budgetEur)}</span>
       </p>
       <span className="mt-3 block h-1.5 overflow-hidden rounded-full bg-raised" role="img" aria-label={`${Math.round(ratio * 100)}% of the budget used`}>

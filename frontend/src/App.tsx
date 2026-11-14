@@ -1,4 +1,6 @@
 import { useEffect } from 'react'
+import { LIVE } from './api/config'
+import { AuthGate, useAuth } from './auth/AuthGate'
 import { Receipt } from './components/receipt/Receipt'
 import { RoomsSheet } from './components/rooms/RoomsSheet'
 import { Sidebar } from './components/rooms/Sidebar'
@@ -6,6 +8,7 @@ import { MobileBar } from './components/shell/MobileBar'
 import { TitleRow } from './components/shell/TitleRow'
 import { Stage } from './components/stage/Stage'
 import { StoreProvider, useStore } from './state/store'
+import { useLiveSync } from './state/useLiveSync'
 
 if (new URLSearchParams(location.search).has('stage')) {
   document.documentElement.dataset.stage = ''
@@ -19,13 +22,14 @@ function useSampleRun() {
 
   // The recorded live run prints a new step every 1.6 s.
   useEffect(() => {
+    if (LIVE) return
     const t = setInterval(() => dispatch({ type: 'liveTick' }), 1600)
     return () => clearInterval(t)
   }, [dispatch])
 
   // A swap takes about two seconds.
   useEffect(() => {
-    if (!state.swapping) return
+    if (LIVE || !state.swapping) return
     const t = setTimeout(() => dispatch({ type: 'finishSwap' }), 2200)
     return () => clearTimeout(t)
   }, [state.swapping, dispatch])
@@ -33,7 +37,7 @@ function useSampleRun() {
   // A walk-in takes about five seconds in the sample (about a minute for real).
   const making = state.sessions.flatMap((s) => s.walkIns.filter((w) => w.status === 'making').map((w) => w.id)).join()
   useEffect(() => {
-    if (!making) return
+    if (LIVE || !making) return
     const ids = making.split(',')
     const t = setTimeout(() => ids.forEach((id) => dispatch({ type: 'walkInReady', id })), 5000)
     return () => clearTimeout(t)
@@ -65,7 +69,9 @@ function useShortcuts() {
 }
 
 function Workspace() {
+  const { signedIn } = useAuth()
   useSampleRun()
+  useLiveSync(signedIn)
   useShortcuts()
 
   return (
@@ -88,8 +94,10 @@ function Workspace() {
 
 export default function App() {
   return (
-    <StoreProvider>
-      <Workspace />
-    </StoreProvider>
+    <AuthGate>
+      <StoreProvider>
+        <Workspace />
+      </StoreProvider>
+    </AuthGate>
   )
 }

@@ -1,10 +1,12 @@
 import { Menu, Plus } from 'lucide-react'
+import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
 import { Mark } from './Mark'
 
 /** Phone and tablet: the mark, a button for the rooms list, and New room. */
 export function MobileBar() {
   const { state, dispatch } = useStore()
+  const actions = useActions()
   const waiting = state.sessions.filter((s) => s.status === 'asking').length
 
   return (
@@ -22,7 +24,7 @@ export function MobileBar() {
       <button
         type="button"
         aria-label="New room"
-        onClick={() => dispatch({ type: 'newRoom' })}
+        onClick={() => void actions.newRoom()}
         className="press -mr-2 grid size-11 place-items-center rounded-control hover:bg-active"
       >
         <Plus size={18} strokeWidth={1.75} />

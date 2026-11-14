@@ -1,6 +1,13 @@
 import { createContext, useContext, useReducer, type Dispatch, type ReactNode } from 'react'
+import { LIVE } from '../api/config'
+import { applyEvent, blank } from '../api/map'
+import type { RunEvent } from '../api/wire'
 import { SAMPLES } from '../data/loadSamples'
+import { roomName } from '../lib/format'
 import type { Point, Product, Session, WalkIn, WalkMove } from '../types'
+
+/** Where an error belongs on screen, so it shows inside the block that failed. */
+export type Block = 'rooms' | 'photo' | 'start' | 'ask' | 'swap' | 'walkin' | 'feed' | 'room'
 
 export type State = {
   sessions: Session[]
@@ -18,6 +25,12 @@ export type State = {
   draft: { from: Point; aimDeg: number } | null
   playingWalkInId: string | null
   compare: boolean
+  /** Live mode: the rooms list is loading. */
+  roomsLoading: boolean
+  /** One error per block, per room. */
+  errors: Partial<Record<Block, { sessionId: string; message: string }>>
+  /** Bumped to listen to a room's run again (after a swap or walk-in on a finished run). */
+  refollow: number
 }
 
 export type Action =
@@ -38,6 +51,17 @@ export type Action =
   | { type: 'walkInReady'; id: string }
   | { type: 'play'; id: string | null }
   | { type: 'toggleCompare' }
+  | { type: 'setRooms'; sessions: Session[] }
+  | { type: 'upsertRoom'; session: Session; select?: boolean }
+  | { type: 'patchRoom'; id: string; patch: Partial<Session> }
+  | { type: 'removeRoom'; id: string }
+  | { type: 'renameRoom'; id: string; name: string }
+  | { type: 'resetRun'; id: string }
+  | { type: 'runEvent'; id: string; event: RunEvent }
+  | { type: 'addWalkIn'; id: string; walk: WalkIn }
+  | { type: 'setError'; block: Block; sessionId: string; message: string | null }
+  | { type: 'cancelSwap' }
+  | { type: 'refollow' }
 
 const updateActive = (state: State, fn: (s: Session) => Session): State => ({
   ...state,
@@ -140,10 +164,9 @@ function reducer(state: State, action: Action): State {
       return updateActive(state, (s) => ({ ...s, beforeSrc: action.url }))
 
     case 'startRun': {
-      const name = action.prompt.split(/[.,]/)[0].split(' ').slice(0, 4).join(' ')
       return updateActive(state, (s) => ({
         ...s,
-        name: name.charAt(0).toUpperCase() + name.slice(1),
+        name: roomName(action.prompt),
         prompt: action.prompt,
         budgetEur: action.budgetEur,
         city: action.city,
@@ -208,10 +231,94 @@ function reducer(state: State, action: Action): State {
 
     case 'toggleCompare':
       return { ...state, compare: !state.compare, walkMode: false, draft: null, selectedProductId: null }
+
+    case 'setRooms': {
+      const byId = new Map(state.sessions.map((s) => [s.id, s]))
+      const sessions = action.sessions.map((s) => ({ ...(byId.get(s.id) ?? {}), ...s }))
+      const keep = sessions.some((s) => s.id === state.activeId)
+      const list = sessions.length ? sessions : [draftRoom()]
+      return { ...state, sessions: list, activeId: keep ? state.activeId : list[0].id, roomsLoading: false }
+    }
+
+    case 'upsertRoom': {
+      const exists = state.sessions.some((s) => s.id === action.session.id)
+      const sessions = exists
+        ? state.sessions.map((s) => (s.id === action.session.id ? action.session : s))
+        : [action.session, ...state.sessions.filter((s) => s.id !== DRAFT_ID)]
+      return { ...state, ...(action.select ? clearTransient : {}), sessions, activeId: action.select ? action.session.id : state.activeId, sheetOpen: action.select ? false : state.sheetOpen }
+    }
+
+    case 'patchRoom':
+      return { ...state, sessions: state.sessions.map((s) => (s.id === action.id ? { ...s, ...action.patch } : s)) }
+
+    case 'renameRoom':
+      return { ...state, sessions: state.sessions.map((s) => (s.id === action.id ? { ...s, name: action.name } : s)) }
+
+    case 'removeRoom': {
+      const rest = state.sessions.filter((s) => s.id !== action.id)
+      const sessions = rest.length ? rest : [LIVE ? draftRoom() : blankRoom()]
+      const activeId = state.activeId === action.id ? sessions[0].id : state.activeId
+      return { ...state, ...(state.activeId === action.id ? clearTransient : {}), sessions, activeId }
+    }
+
+    case 'resetRun':
+      return {
+        ...state,
+        sessions: state.sessions.map((s) =>
+          s.id === action.id ? { ...s, products: [], rejections: [], walkIns: [], afterSrc: null, ask: null, now: null, error: undefined, lastSeq: 0 } : s,
+        ),
+      }
+
+    case 'runEvent': {
+      const before = state.sessions.find((s) => s.id === action.id)
+      const next = {
+        ...state,
+        sessions: state.sessions.map((s) => (s.id === action.id ? { ...applyEvent(s, action.event), lastSeq: action.event.seq } : s)),
+      }
+      // A swap finished: stop the spinner and show the change next to the total.
+      const e = action.event
+      if (e.type === 'product.swapped' && state.swapping?.productId === e.data.old_product_id) {
+        const old = before?.products.find((p) => p.id === e.data.old_product_id)
+        return {
+          ...next,
+          swapping: null,
+          selectedProductId: e.data.product.id,
+          lastDelta: old ? { sessionId: action.id, eur: e.data.product.price_eur - old.priceEur, at: Date.now() } : state.lastDelta,
+        }
+      }
+      return next
+    }
+
+    case 'addWalkIn':
+      return {
+        ...state,
+        sessions: state.sessions.map((s) =>
+          s.id === action.id && !s.walkIns.some((w) => w.id === action.walk.id) ? { ...s, walkIns: [action.walk, ...s.walkIns] } : s,
+        ),
+        draft: null,
+        walkMode: false,
+      }
+
+    case 'setError': {
+      const errors = { ...state.errors }
+      if (action.message) errors[action.block] = { sessionId: action.sessionId, message: action.message }
+      else delete errors[action.block]
+      return { ...state, errors }
+    }
+
+    case 'refollow':
+      return { ...state, refollow: state.refollow + 1 }
+
+    case 'cancelSwap':
+      return { ...updateActive(state, (s) => ({ ...s, now: null })), swapping: null }
   }
 }
 
-const firstSessions = SAMPLES.length ? SAMPLES : [blankRoom()]
+/** Live mode before the first room exists on the server: a local room that is created on first use. */
+export const DRAFT_ID = 'draft'
+const draftRoom = (): Session => ({ ...blank(DRAFT_ID), loaded: true })
+
+const firstSessions = LIVE ? [draftRoom()] : SAMPLES.length ? SAMPLES : [blankRoom()]
 
 const initial: State = {
   sessions: firstSessions,
@@ -225,6 +332,9 @@ const initial: State = {
   draft: null,
   playingWalkInId: null,
   compare: false,
+  roomsLoading: LIVE,
+  errors: {},
+  refollow: 0,
 }
 
 const Ctx = createContext<{ state: State; dispatch: Dispatch<Action> } | null>(null)

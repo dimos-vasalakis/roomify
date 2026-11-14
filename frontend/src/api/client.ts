@@ -1,0 +1,75 @@
+import { API_URL } from './config'
+import { accessToken, supabase } from './supabase'
+import type {
+  ConversationDetail,
+  ConversationSummary,
+  ProfileOut,
+  RunSummary,
+  WalkinOut,
+} from './wire'
+
+/** An error a person can read: the back end's `detail`, or what went wrong on the way. */
+export class ApiError extends Error {
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+const TIMEOUT_MS = 20_000
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = await accessToken()
+  const headers = new Headers(init.headers)
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
+
+  let response: Response
+  try {
+    response = await fetch(API_URL + path, { ...init, headers, signal: init.signal ?? AbortSignal.timeout(TIMEOUT_MS) })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'TimeoutError') throw new ApiError(0, 'The server took too long to answer. Try again.')
+    console.warn(`Request to ${API_URL}${path} failed. Is the back end running, and is ${location.origin} listed in its FRONTEND_ORIGINS?`)
+    throw new ApiError(0, "Can't reach the server. Check that the back end is running.")
+  }
+
+  if (response.status === 204) return undefined as T
+  // The back end no longer accepts this login (expired or revoked): back to the login screen.
+  if (response.status === 401) void supabase?.auth.signOut({ scope: 'local' })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) {
+    const detail = typeof body?.detail === 'string' ? body.detail : null
+    if (response.status === 404 && !detail) throw new ApiError(404, 'This part of the back end is not built yet.')
+    if (response.status === 405) throw new ApiError(405, 'This part of the back end is not built yet.')
+    throw new ApiError(response.status, detail ?? `The server answered ${response.status}.`)
+  }
+  return body as T
+}
+
+const json = (body: unknown) => JSON.stringify(body)
+
+export const api = {
+  me: () => request<ProfileOut>('/me'),
+
+  rooms: () => request<ConversationSummary[]>('/conversations'),
+  room: (id: string) => request<ConversationDetail>(`/conversations/${id}`),
+  createRoom: (title: string) => request<ConversationSummary>('/conversations', { method: 'POST', body: json({ title }) }),
+  renameRoom: (id: string, title: string) =>
+    request<ConversationSummary>(`/conversations/${id}`, { method: 'PATCH', body: json({ title }) }),
+  deleteRoom: (id: string) => request<void>(`/conversations/${id}`, { method: 'DELETE' }),
+
+  uploadPhoto: (id: string, photo: Blob) => {
+    const form = new FormData()
+    form.append('file', photo, 'room.jpg')
+    return request<ConversationDetail>(`/conversations/${id}/photo`, { method: 'POST', body: form, signal: AbortSignal.timeout(60_000) })
+  },
+  startRun: (id: string, body: { prompt: string; budget_eur: number; city: string; wall_width_cm: number | null }) =>
+    request<RunSummary>(`/conversations/${id}/runs`, { method: 'POST', body: json(body) }),
+  answer: (runId: string, value: number, unit: string) =>
+    request<void>(`/runs/${runId}/answer`, { method: 'POST', body: json({ value, unit }) }),
+  swap: (runId: string, productId: string, instruction: string) =>
+    request<void>(`/runs/${runId}/swap`, { method: 'POST', body: json({ product_id: productId, instruction }) }),
+  walkIn: (runId: string, body: { from: { x: number; y: number }; aim_deg: number; move: string; seconds: number }) =>
+    request<WalkinOut>(`/runs/${runId}/walkins`, { method: 'POST', body: json(body) }),
+}

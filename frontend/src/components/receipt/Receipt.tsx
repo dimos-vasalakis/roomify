@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { clock } from '../../lib/format'
 import { useStore } from '../../state/store'
+import { BlockError } from '../common/BlockError'
 import { LiveDot } from '../common/LiveDot'
 import { AskCard } from './AskCard'
 import { ReceiptLines } from './ReceiptLines'
@@ -44,6 +45,7 @@ export function Receipt() {
           {s.status !== 'new' && s.prompt && <p className="text-chrome text-muted">“{s.prompt}”</p>}
           {s.status === 'asking' && <AskCard />}
           {s.now && (s.status === 'shopping' || s.status === 'drawing') && <NowLine text={s.now.text} since={s.now.startedAt} />}
+          <BlockError block="feed" />
           <ReceiptLines />
         </div>
 

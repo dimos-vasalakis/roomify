@@ -22,6 +22,10 @@ export function WalkInPlayer({ walk, src }: { walk: WalkIn; src: string }) {
       const img = '[data-frame]'
       const bar = '[data-progress]'
       const el = root.current!
+      if (walk.videoUrl) {
+        enter(el)
+        return
+      }
       if (reducedMotion()) {
         enter(el)
         gsap.set(bar, { scaleX: 1 })
@@ -43,7 +47,24 @@ export function WalkInPlayer({ walk, src }: { walk: WalkIn; src: string }) {
 
   return (
     <div ref={root} className="absolute inset-0 z-30 overflow-hidden bg-scrim" role="region" aria-label="Walk-in preview">
-      <img data-frame src={src} alt="Walk-in preview of the furnished room" className="absolute inset-0 size-full object-cover will-change-transform" draggable={false} />
+      {walk.videoUrl ? (
+        <video
+          key={run}
+          src={walk.videoUrl}
+          poster={walk.posterUrl ?? undefined}
+          autoPlay
+          muted
+          playsInline
+          className="absolute inset-0 size-full object-cover"
+          onTimeUpdate={(e) => {
+            const v = e.currentTarget
+            const bar = root.current?.querySelector<HTMLElement>('[data-progress]')
+            if (bar && v.duration) bar.style.transform = `scaleX(${v.currentTime / v.duration})`
+          }}
+        />
+      ) : (
+        <img data-frame src={src} alt="Walk-in preview of the furnished room" className="absolute inset-0 size-full object-cover will-change-transform" draggable={false} />
+      )}
       <div className="absolute top-3 right-3 flex gap-1.5">
         <button
           type="button"
@@ -66,7 +87,7 @@ export function WalkInPlayer({ walk, src }: { walk: WalkIn; src: string }) {
         <p className="text-chrome font-medium">
           Walk-in preview · {MOVE_NAME[walk.move]} · {walk.seconds} s
         </p>
-        <p className="text-small text-muted">Sample: the camera move is simulated on the photo</p>
+        {!walk.videoUrl && <p className="text-small text-muted">Sample: the camera move is simulated on the photo</p>}
       </div>
       <span data-progress className="absolute inset-x-0 bottom-0 h-1 origin-left bg-surface" />
     </div>

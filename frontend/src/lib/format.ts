@@ -26,3 +26,18 @@ export const clock = (ms: number) => {
 /** Shop name from a retailer domain: ikea.gr -> IKEA. */
 export const shopName = (retailer: string) =>
   ({ 'ikea.gr': 'IKEA', 'jysk.gr': 'JYSK', 'leroymerlin.gr': 'Leroy Merlin' })[retailer] ?? retailer
+
+const CUT = new Set(['for', 'with', 'under', 'by', 'near', 'that', 'so', 'to', 'in', 'on'])
+const TAIL = new Set(['and', 'a', 'an', 'the', 'with', 'for', 'of', 'to', 'in', 'or', 'some', 'maybe'])
+
+/** A room name from the brief, like a chat named after its first message: "Reading chair and a desk". */
+export function roomName(prompt: string) {
+  let words = prompt.split(/[.,;:!?\n]/)[0].trim().split(/\s+/)
+  if (words.length > 1 && /^(a|an|the)$/i.test(words[0])) words = words.slice(1)
+  // Stop before a phrase like "for long days" or "under the window".
+  const cut = words.findIndex((w, i) => i >= 2 && CUT.has(w.toLowerCase()))
+  words = words.slice(0, cut === -1 ? 5 : Math.min(cut, 5))
+  while (words.length > 1 && TAIL.has(words[words.length - 1].toLowerCase())) words.pop()
+  const name = words.join(' ')
+  return name ? name.charAt(0).toUpperCase() + name.slice(1) : 'New room'
+}

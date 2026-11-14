@@ -1,13 +1,17 @@
 import { PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react'
+import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
 import { Mark } from '../shell/Mark'
+import { LIVE } from '../../api/config'
 import { HAS_SAMPLES } from '../../data/loadSamples'
+import { AccountRow } from './AccountRow'
 import { Credits } from './Credits'
 import { SessionList } from './SessionList'
 
 /** Desktop rooms list. Open: names and status. Closed: a rail of room thumbnails. */
 export function Sidebar() {
   const { state, dispatch } = useStore()
+  const actions = useActions()
   const open = state.sidebarOpen
   const toggleLabel = open ? 'Hide rooms (Ctrl B)' : 'Show rooms (Ctrl B)'
 
@@ -31,7 +35,7 @@ export function Sidebar() {
 
       <button
         type="button"
-        onClick={() => dispatch({ type: 'newRoom' })}
+        onClick={() => void actions.newRoom()}
         aria-label="New room"
         title="New room"
         className={`press mb-5 flex h-control shrink-0 items-center gap-2 rounded-control bg-secondary font-medium text-ink hover:bg-control ${open ? 'w-full px-3' : 'w-9 justify-center'}`}
@@ -44,7 +48,8 @@ export function Sidebar() {
         <SessionList compact={!open} />
       </div>
 
-      {open && HAS_SAMPLES && (
+      {open && <AccountRow />}
+      {open && !LIVE && HAS_SAMPLES && (
         <div className="flex shrink-0 flex-wrap items-baseline gap-x-2 px-2 py-4 text-small text-muted">
           Sample rooms and prices. <Credits />
         </div>

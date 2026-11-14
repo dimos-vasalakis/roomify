@@ -2,7 +2,9 @@ import { RotateCcw } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { DUR, STAGGER, enter, useGSAP } from '../../lib/motion'
 import { pictureOf } from '../../lib/session'
+import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
+import { BlockError } from '../common/BlockError'
 import { LiveDot } from '../common/LiveDot'
 import { Shelf } from '../shelf/Shelf'
 import { WalkInLayer } from '../walkin/WalkInLayer'
@@ -16,6 +18,7 @@ import { ProductCard } from './ProductCard'
 /** The room: the user's photo or the render, with everything the agent chose on it. */
 export function Stage() {
   const { state, active: s, dispatch } = useStore()
+  const actions = useActions()
   const room = useRef<HTMLDivElement>(null)
   const [split, setSplit] = useState(0.5)
   const picture = pictureOf(s)
@@ -39,7 +42,19 @@ export function Stage() {
         className="relative aspect-[3/2] overflow-hidden bg-raised select-none"
         onClick={() => state.selectedProductId && dispatch({ type: 'selectProduct', id: null })}
       >
-        {s.status === 'new' && !picture && <PhotoDrop onPhoto={(url) => dispatch({ type: 'setPhoto', url })} />}
+        {s.status === 'new' && !picture && s.loaded !== false && <PhotoDrop onFile={actions.setPhoto} />}
+
+        {s.loaded === false && (
+          <div className="absolute inset-0 grid place-items-center">
+            {state.errors.room?.sessionId === s.id ? (
+              <div className="rounded-card bg-surface px-4 py-3">
+                <BlockError block="room" />
+              </div>
+            ) : (
+              <span className="sr-only">Loading the room</span>
+            )}
+          </div>
+        )}
 
         {picture && (
           <img
@@ -108,7 +123,7 @@ export function Stage() {
               </p>
               <p className="text-small text-muted">Your basket is safe. Last good: {s.error.lastGood}</p>
             </div>
-            <button type="button" className="press inline-flex h-control items-center gap-1.5 rounded-control bg-primary px-3 text-chrome font-medium text-surface">
+            <button type="button" onClick={() => void actions.reloadRoom(s.id)} className="press inline-flex h-control items-center gap-1.5 rounded-control bg-primary px-3 text-chrome font-medium text-surface">
               <RotateCcw size={14} strokeWidth={2} /> Try again
             </button>
           </div>

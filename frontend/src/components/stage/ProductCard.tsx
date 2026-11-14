@@ -2,7 +2,9 @@ import { ArrowUp, ArrowUpRight, X } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { money, shopName, size } from '../../lib/format'
 import { enter, useGSAP } from '../../lib/motion'
+import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
+import { BlockError } from '../common/BlockError'
 import type { Product } from '../../types'
 import { Crop } from '../common/Crop'
 
@@ -11,6 +13,7 @@ const IDEAS = ['Warmer', 'Cheaper', 'Smaller', 'In wood']
 /** Opens beside a price dot: the product as the shop lists it, and a way to swap it. */
 export function ProductCard({ product, picture }: { product: Product; picture: string }) {
   const { state, dispatch } = useStore()
+  const actions = useActions()
   const [text, setText] = useState('')
   const card = useRef<HTMLDivElement>(null)
   const cx = product.box.x + product.box.w / 2
@@ -28,7 +31,7 @@ export function ProductCard({ product, picture }: { product: Product; picture: s
   const send = (instruction: string) => {
     const v = instruction.trim()
     if (!v || swapping) return
-    dispatch({ type: 'startSwap', productId: product.id, instruction: v })
+    void actions.swap(product.id, v)
     setText('')
   }
 
@@ -48,7 +51,7 @@ export function ProductCard({ product, picture }: { product: Product; picture: s
       }}
     >
       <div className="flex gap-3 p-3">
-        <Crop src={product.thumb?.src ?? picture} box={product.thumb?.box ?? product.box} alt="" className="w-24 shrink-0 rounded-[5px]" />
+        <Crop src={product.thumb?.src ?? picture} box={product.thumb ? product.thumb.box : product.box} alt="" className="w-24 shrink-0 rounded-[5px]" />
         <div className="min-w-0 flex-1">
           <p className="text-small text-muted">{product.slot}</p>
           <h3 className="mt-0.5 text-chrome leading-5 font-medium text-ink">{product.title}</h3>
@@ -119,6 +122,7 @@ export function ProductCard({ product, picture }: { product: Product; picture: s
                 <ArrowUp size={16} strokeWidth={2} />
               </button>
             </div>
+            <BlockError block="swap" className="mt-2" />
             <div className="mt-2 flex flex-wrap gap-1.5">
               {IDEAS.map((idea) => (
                 <button

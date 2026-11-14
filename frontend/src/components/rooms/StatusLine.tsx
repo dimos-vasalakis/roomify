@@ -5,6 +5,7 @@ import { LiveDot } from '../common/LiveDot'
 
 /** The second line of a room in the list: where it stands, in plain words. */
 export function StatusLine({ session: s }: { session: Session }) {
+  if (s.loaded === false && s.status === 'new' && s.updatedLabel !== 'Now') return <span className="text-muted">Changed {s.updatedLabel}</span>
   switch (s.status) {
     case 'done':
       return (

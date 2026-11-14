@@ -1,9 +1,13 @@
 import { useState } from 'react'
+import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
+import { BlockError } from '../common/BlockError'
 
 /** First run: what the room needs, the budget and the city. */
 export function StartForm() {
-  const { active: s, dispatch } = useStore()
+  const { active: s } = useStore()
+  const actions = useActions()
+  const [busy, setBusy] = useState(false)
   const [prompt, setPrompt] = useState('')
   const [budget, setBudget] = useState('500')
   const [city, setCity] = useState('Athens')
@@ -17,7 +21,9 @@ export function StartForm() {
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault()
-        if (ready) dispatch({ type: 'startRun', prompt: prompt.trim(), budgetEur: b, city })
+        if (!ready || busy) return
+        setBusy(true)
+        void actions.startRun(prompt.trim(), b, city).finally(() => setBusy(false))
       }}
     >
       <div>
@@ -58,11 +64,12 @@ export function StartForm() {
       </div>
       <button
         type="submit"
-        disabled={!ready}
+        disabled={!ready || busy}
         className="press h-11 rounded-control bg-primary text-body font-medium text-surface disabled:bg-secondary disabled:text-muted"
       >
-        Furnish this room
+        {busy ? 'Starting the agent…' : 'Furnish this room'}
       </button>
+      <BlockError block="start" />
       {!s.beforeSrc && <p className="-mt-2 text-chrome text-muted">Add a photo of the room first.</p>}
       <p className="text-chrome text-muted">
         The agent shops IKEA, JYSK and Leroy Merlin, reads each product page, and shows you every choice it makes.

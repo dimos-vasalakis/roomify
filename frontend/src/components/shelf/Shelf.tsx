@@ -86,7 +86,7 @@ export function Shelf() {
                   onClick={() => done && dispatch({ type: 'selectProduct', id: on ? null : p.id })}
                   className={`group w-32 shrink-0 rounded-card p-1 text-left outline-offset-0 transition-colors duration-150 ${on ? 'outline-2 outline-ink' : 'hover:bg-raised'}`}
                 >
-                  <Crop src={p.thumb?.src ?? s.afterSrc ?? picture} box={p.thumb?.box ?? p.box} alt="" className="rounded-[5px]" />
+                  <Crop src={p.thumb?.src ?? s.afterSrc ?? picture} box={p.thumb ? p.thumb.box : p.box} alt="" className="rounded-[5px]" />
                   <span className="mt-2 block px-0.5 text-small text-muted">{p.slot}</span>
                   <span className="line-clamp-2 block px-0.5 text-chrome leading-5 text-ink">{p.title}</span>
                   <span className="num mt-0.5 block px-0.5 text-chrome font-bold">{money(p.priceEur)}</span>
@@ -136,7 +136,7 @@ export function Shelf() {
                 <span className="mt-2 block px-0.5 text-chrome font-medium text-ink">
                   {MOVE_NAME[w.move]} · {w.seconds} s
                 </span>
-                <span className="block px-0.5 text-small text-muted">{w.status === 'making' ? 'Making it, about a minute' : `Made ${w.createdAt}`}</span>
+                <span className="block px-0.5 text-small text-muted">{w.status === 'making' ? 'Making it, about a minute' : w.status === 'failed' ? (w.error ?? "Couldn't make this one") : `Made ${w.createdAt}`}</span>
               </button>
             ))}
           </>

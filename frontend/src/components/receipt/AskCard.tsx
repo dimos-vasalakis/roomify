@@ -1,10 +1,13 @@
 import { ArrowUp } from 'lucide-react'
 import { useState } from 'react'
+import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
+import { BlockError } from '../common/BlockError'
 
 /** The one question the agent cannot answer from the photo. */
 export function AskCard() {
-  const { active: s, dispatch } = useStore()
+  const { active: s } = useStore()
+  const actions = useActions()
   const [value, setValue] = useState('')
   if (!s.ask) return null
   const n = Number(value)
@@ -15,7 +18,7 @@ export function AskCard() {
       className="rounded-card bg-raised p-4"
       onSubmit={(e) => {
         e.preventDefault()
-        if (ok) dispatch({ type: 'answer', value: Math.round(n) })
+        if (ok) void actions.answer(Math.round(n))
       }}
     >
       <p className="text-small text-muted">The agent needs one thing</p>
@@ -45,6 +48,7 @@ export function AskCard() {
           <ArrowUp size={16} strokeWidth={2} />
         </button>
       </div>
+      <BlockError block="ask" className="mt-3" />
     </form>
   )
 }

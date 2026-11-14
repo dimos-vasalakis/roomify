@@ -18,8 +18,8 @@ export type Product = {
   deliveryText: string | null
   /** Where the product sits in the rendered room. */
   box: Box
-  /** The product's own picture. From the back end this is the listing photo (box covers all of it). */
-  thumb?: { src: string; box: Box }
+  /** The product's own picture: the shop's listing photo (whole, no box) or a region of a sample photo. */
+  thumb?: { src: string; box?: Box }
 }
 
 export type RejectRule = 'size' | 'budget' | 'page-check' | 'style' | 'trip'
@@ -45,6 +45,10 @@ export type WalkIn = {
   seconds: 5 | 8
   status: 'making' | 'ready' | 'failed'
   createdAt: string
+  /** The real clip, once the back end has made it. Samples have none and simulate the move. */
+  videoUrl?: string | null
+  posterUrl?: string | null
+  error?: string
 }
 
 export type SessionStatus = 'new' | 'asking' | 'shopping' | 'drawing' | 'done' | 'failed'
@@ -63,7 +67,7 @@ export type Session = {
   /** The one measurement the user gave, in cm. */
   wallCm: number | null
   prompt: string
-  group: 'Today' | 'Yesterday' | 'Last week'
+  group: 'Today' | 'Yesterday' | 'Last week' | 'Earlier'
   updatedLabel: string
   status: SessionStatus
   beforeSrc: string
@@ -82,4 +86,9 @@ export type Session = {
   /** How far through the recorded run the sample has played. */
   cursor?: number
   error?: { what: string; lastGood: string }
+  /** Live mode: the run this room shows, and how much of the room has loaded. */
+  runId?: string
+  loaded?: boolean
+  /** The last run event this room has seen, to pick the stream up again from there. */
+  lastSeq?: number
 }
