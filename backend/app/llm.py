@@ -1,6 +1,6 @@
 """The one function every LLM call goes through (CLAUDE.md). Swap the provider here only.
 
-Gemini directly when configured, otherwise vision through the existing fal key.
+Vision through the existing fal key, or direct Gemini when only that is configured.
 All requests are cached, including the model and image hashes.
 """
 
@@ -42,14 +42,15 @@ async def llm(
 ) -> Any:
     """Text (or parsed JSON when `json_out`) from the model. `images`: (bytes, mime type) pairs."""
     key = os.getenv("GEMINI_API_KEY")
+    use_fal = bool(os.getenv("FAL_KEY"))
     model = (
-        os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
-        if key
-        else os.getenv("FAL_LLM_MODEL") or "google/gemini-2.5-flash"
+        os.getenv("FAL_LLM_MODEL") or "google/gemini-2.5-flash"
+        if use_fal
+        else os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
     )
 
     async def call() -> LLMText:
-        if not key:
+        if use_fal or not key:
             if not os.getenv("FAL_KEY"):
                 raise LLMError(
                     "Room planning is unavailable. Configure the design service on the backend."
