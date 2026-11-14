@@ -2,13 +2,16 @@ import { ArrowUp } from 'lucide-react'
 import { useState } from 'react'
 import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
+import { useSpeech } from '../../lib/speech'
 import { BlockError } from '../common/BlockError'
+import { MicButton } from '../common/MicButton'
 
 /** The one question the agent cannot answer from the photo. */
 export function AskCard() {
   const { active: s } = useStore()
   const actions = useActions()
   const [value, setValue] = useState('')
+  const speech = useSpeech({ onFinal: (said) => setValue(said.replace(/[^\d]/g, '').slice(0, 4)) })
   if (!s.ask) return null
   const n = Number(value)
   const ok = Number.isFinite(n) && n >= 40 && n <= 2000
@@ -39,6 +42,7 @@ export function AskCard() {
           />
           <span className="text-chrome text-muted">{s.ask.unit}</span>
         </div>
+        <MicButton listening={speech.listening} supported={speech.supported} onStart={speech.start} onStop={speech.stop} label="Say the width" className="size-10!" />
         <button
           type="submit"
           disabled={!ok}

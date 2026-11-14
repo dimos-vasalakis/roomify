@@ -7,6 +7,7 @@ import { useStore } from '../../state/store'
 import { BlockError } from '../common/BlockError'
 import { LiveDot } from '../common/LiveDot'
 import { Shelf } from '../shelf/Shelf'
+import { VoiceCaption } from '../talk/VoiceCaption'
 import { WalkInLayer } from '../walkin/WalkInLayer'
 import { WalkInPlayer } from '../walkin/WalkInPlayer'
 import { CompareHandle } from './CompareHandle'
@@ -92,6 +93,8 @@ export function Stage() {
           ))}
 
         {showDots && selected && <ProductCard product={selected} picture={picture} />}
+
+        {showDots && <VoiceCaption />}
 
         {state.walkMode && done && <WalkInLayer />}
 
