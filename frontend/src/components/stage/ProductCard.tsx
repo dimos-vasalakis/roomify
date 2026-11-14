@@ -15,7 +15,7 @@ const IDEAS = ['Warmer', 'Cheaper', 'Smaller', 'In wood']
 
 /** Opens beside a price dot: the product as the shop lists it, and a way to swap it. */
 export function ProductCard({ product, picture }: { product: Product; picture: string }) {
-  const { state, dispatch } = useStore()
+  const { state, active: s, dispatch } = useStore()
   const actions = useActions()
   const [text, setText] = useState('')
   const card = useRef<HTMLDivElement>(null)
@@ -89,7 +89,7 @@ export function ProductCard({ product, picture }: { product: Product; picture: s
         <dd className="text-right">{product.deliveryText ?? '—'}</dd>
       </dl>
 
-      <form
+      {!s.offer && <form
         className="border-t border-rule p-3"
         onSubmit={(e) => {
           e.preventDefault()
@@ -143,7 +143,7 @@ export function ProductCard({ product, picture }: { product: Product; picture: s
             </div>
           </>
         )}
-      </form>
+      </form>}
     </div>
   )
 }

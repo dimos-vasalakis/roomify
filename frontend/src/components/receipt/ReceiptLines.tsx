@@ -1,105 +1,46 @@
+import { ArrowUpRight } from 'lucide-react'
 import { useRef } from 'react'
-import { money, shopName } from '../../lib/format'
-import { EASE_OUT, enter, gsap, reducedMotion, useGSAP } from '../../lib/motion'
-import { slotsOf } from '../../lib/session'
+import { money, shopName, size } from '../../lib/format'
+import { enter, useGSAP } from '../../lib/motion'
 import { useStore } from '../../state/store'
 import { Crop } from '../common/Crop'
 
-/** What went in the basket, one row each, and what was turned down, one short line each. */
+/** Listing photos and shop links lead; the search history stays available below. */
 export function ReceiptLines() {
   const { state, active: s, dispatch } = useStore()
   const list = useRef<HTMLDivElement>(null)
-  const count = s.products.length + s.rejections.length
-  const live = s.status === 'shopping'
-  const replaying = state.reveal?.id === s.id
-
-  // While shopping, a new line prints: it rises in, and a turned-down line's strike draws across.
-  useGSAP(
-    () => {
-      if (!live) return
-      const last = list.current?.querySelector('[data-line][data-new="true"]')
-      if (!last) return
-      enter(last, { y: 10 })
-      if (reducedMotion()) return
-      const strike = last.querySelector('[data-strike]')
-      if (strike) gsap.fromTo(strike, { scaleX: 0 }, { scaleX: 1, duration: 0.42, delay: 0.12, ease: EASE_OUT })
-    },
-    { scope: list, dependencies: [count] },
-  )
-
-  // During the reveal the receipt prints line by line, after the room has landed.
-  useGSAP(
-    () => {
-      const sections = list.current?.querySelectorAll('section')
-      if (!replaying || !sections?.length) return
-      enter(sections, { y: 8, stagger: 0.09, delay: 2.2 })
-      // Safety net: if animation frames stall, show the receipt anyway.
-      const t = setTimeout(() => gsap.set(sections, { clearProps: 'opacity,transform' }), 6500)
-      return () => clearTimeout(t)
-    },
-    { scope: list, dependencies: [state.reveal?.key] },
-  )
-
-  const newest = live ? s.script?.[(s.cursor ?? 0) - 1] : undefined
-  const newestId = newest?.kind === 'chosen' ? newest.product.id : newest?.kind === 'rejected' ? newest.rejection.id : null
-  const picture = s.afterSrc ?? s.beforeSrc
+  useGSAP(() => {
+    if (state.reveal?.id === s.id) enter('[data-line]', { y: 8, stagger: 0.07 })
+  }, { scope: list, dependencies: [state.reveal?.key] })
 
   return (
-    <div ref={list} className="flex flex-col gap-4">
-      {slotsOf(s).map((slot) => {
-        const chosen = s.products.filter((p) => p.slot === slot)
-        const turned = s.rejections.filter((r) => r.slot === slot)
-        return (
-          <section key={slot} aria-label={slot}>
-            <h3 className="mb-1 text-small text-muted">{slot}</h3>
-            <ul className="flex flex-col gap-1">
-              {chosen.map((p) => {
-                const on = p.id === state.selectedProductId
-                return (
-                  <li key={p.id} data-line data-new={p.id === newestId}>
-                    <button
-                      type="button"
-                      disabled={s.status !== 'done'}
-                      onClick={() => dispatch({ type: 'selectProduct', id: on ? null : p.id })}
-                      className={`-mx-2 grid w-[calc(100%+1rem)] grid-cols-[2.75rem_1fr_auto] items-center gap-x-3 rounded-card p-2 text-left transition-colors duration-150 enabled:hover:bg-raised ${on ? 'bg-raised' : ''}`}
-                    >
-                      <span className="relative block overflow-hidden rounded-[6px]">
-                        {picture || p.thumb ? (
-                          <Crop src={p.thumb?.src ?? picture} box={p.thumb ? p.thumb.box : p.box} alt="" className="w-11" />
-                        ) : (
-                          <span className="block aspect-[4/3] w-11 bg-raised" />
-                        )}
-                        <span aria-hidden="true" className="absolute top-1 left-1 size-2 rounded-full bg-chosen ring-2 ring-surface" />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-chrome leading-5 font-medium text-ink">{p.title}</span>
-                        <span className="block truncate text-small text-muted">
-                          {[shopName(p.retailer), p.deliveryText].filter(Boolean).join(' · ')}
-                        </span>
-                      </span>
-                      <span className="num text-chrome font-bold text-ink">{money(p.priceEur)}</span>
-                    </button>
-                  </li>
-                )
-              })}
-              {turned.map((r) => (
-                <li key={r.id} data-line data-new={r.id === newestId} className="flex gap-2 py-0.5 pl-0.5 text-small leading-5 text-muted">
-                  <span aria-hidden="true" className="mt-[0.45rem] h-px w-2.5 shrink-0 bg-control" />
-                  <span className="min-w-0">
-                    <span className="sr-only">Turned down: </span>
-                    <span className="relative">
-                      {r.title}
-                      <span data-strike aria-hidden="true" className="absolute top-1/2 left-0 h-px w-full origin-left bg-muted" />
-                    </span>
-                    {' · '}
-                    <span className="text-ink/75">{r.reason}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )
-      })}
+    <div ref={list} className="flex flex-col gap-5">
+      {s.products.map((p) => (
+        <section key={p.id} data-line className="border-b border-rule pb-4 last:border-b-0" aria-label={p.slot}>
+          <div className="flex items-start gap-3">
+            <a href={p.url} target="_blank" rel="noreferrer" aria-label={`View ${p.title} at ${shopName(p.retailer)}`} className="block w-product shrink-0 overflow-hidden rounded-control bg-surface">
+              <Crop src={p.thumb?.src ?? s.afterSrc ?? s.beforeSrc} box={p.thumb ? p.thumb.box : p.box} alt={p.title} className="w-full" />
+            </a>
+            <div className="min-w-0 flex-1">
+              <p className="text-small text-muted">{p.slot}</p>
+              <a href={p.url} target="_blank" rel="noreferrer" className="mt-1 block text-chrome leading-5 font-medium text-ink underline-offset-4 hover:underline">{p.title}</a>
+              <p className="num mt-1 text-body font-bold text-ink">{money(p.priceEur)}</p>
+            </div>
+          </div>
+          {p.reason && <p className="mt-2 text-chrome leading-5 text-muted">{p.reason}</p>}
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-small">
+            <a href={p.url} target="_blank" rel="noreferrer" className="inline-flex min-h-control items-center gap-1 font-medium text-ink underline underline-offset-4">View at {shopName(p.retailer)} <ArrowUpRight size={14} strokeWidth={1.75} /></a>
+            {p.placed !== false && s.afterSrc && <button type="button" onClick={() => dispatch({ type: 'selectProduct', id: state.selectedProductId === p.id ? null : p.id })} className="press min-h-control text-muted underline-offset-4 hover:text-ink hover:underline max-sm:hidden">See in room</button>}
+          </div>
+          {(size(p.widthCm, p.depthCm) || p.deliveryText) && <p className="text-small leading-5 text-muted">{[size(p.widthCm, p.depthCm), p.deliveryText].filter(Boolean).join(' · ')}</p>}
+        </section>
+      ))}
+      {s.rejections.length > 0 && <details className="text-small text-muted">
+        <summary className="cursor-pointer py-2 hover:text-ink">{s.rejections.length} options passed over</summary>
+        <ul className="mt-2 flex flex-col gap-3">
+          {s.rejections.map((r) => <li key={r.id}><span className="line-through">{r.title}</span><p className="mt-0.5 text-ink">{r.reason}</p></li>)}
+        </ul>
+      </details>}
     </div>
   )
 }

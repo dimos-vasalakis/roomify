@@ -1,5 +1,4 @@
 import { ImagePlus } from 'lucide-react'
-import { QRCodeSVG } from 'qrcode.react'
 import { useState } from 'react'
 import { BlockError } from '../common/BlockError'
 
@@ -15,7 +14,7 @@ export function PhotoDrop({ onFile }: { onFile: (file: File) => Promise<unknown>
   }
 
   return (
-    <div className="absolute inset-0 grid grid-cols-1 gap-3 p-4 sm:grid-cols-[1fr_12rem]">
+    <div className="absolute inset-0 grid grid-cols-1 gap-3 p-4">
       <label
         onDragOver={(e) => {
           e.preventDefault()
@@ -36,10 +35,6 @@ export function PhotoDrop({ onFile }: { onFile: (file: File) => Promise<unknown>
         <BlockError block="photo" className="max-w-72 text-left" />
         <input type="file" accept="image/*" disabled={busy} className="sr-only" onChange={(e) => void take(e.target.files?.[0])} />
       </label>
-      <div className="hidden flex-col items-center justify-center gap-3 rounded-card bg-surface p-4 text-center sm:flex">
-        <QRCodeSVG value={`${location.origin}/snap`} size={112} bgColor="#ffffff" fgColor="#171717" />
-        <p className="text-chrome text-muted">Or scan to take it with your phone</p>
-      </div>
     </div>
   )
 }

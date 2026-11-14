@@ -1,5 +1,6 @@
-import { createContext, useContext, useReducer, type Dispatch, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useReducer, type Dispatch, type ReactNode } from 'react'
 import { LIVE } from '../api/config'
+import { useAuth } from '../auth/AuthGate'
 import { applyEvent, blank } from '../api/map'
 import type { RunEvent } from '../api/wire'
 import { SAMPLES } from '../data/loadSamples'
@@ -41,6 +42,7 @@ export type State = {
 export type Action =
   | { type: 'select'; id: string }
   | { type: 'newRoom' }
+  | { type: 'editBrief' }
   | { type: 'toggleSidebar' }
   | { type: 'setSheet'; open: boolean }
   | { type: 'selectProduct'; id: string | null }
@@ -120,6 +122,8 @@ const blankRoom = (): Session => ({
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
+    case 'editBrief':
+      return { ...updateActive(state, (s) => ({ ...s, status: 'new', now: null, error: undefined })), ...clearTransient, reveal: null }
     case 'select':
       return withReveal({ ...state, ...clearTransient, activeId: action.id, sheetOpen: false, voice: { ...state.voice, pending: null, caption: '' } })
 
@@ -253,7 +257,12 @@ function reducer(state: State, action: Action): State {
 
     case 'setRooms': {
       const byId = new Map(state.sessions.map((s) => [s.id, s]))
-      const sessions = action.sessions.map((s) => ({ ...(byId.get(s.id) ?? {}), ...s }))
+      const sessions = action.sessions.map((s) => {
+        const previous = byId.get(s.id)
+        return previous?.offer && previous.afterSrc
+          ? { ...previous, name: s.name, group: s.group, updatedLabel: s.updatedLabel, loaded: false }
+          : { ...(previous ?? {}), ...s }
+      })
       const keep = sessions.some((s) => s.id === state.activeId)
       const list = sessions.length ? sessions : [draftRoom()]
       return { ...state, sessions: list, activeId: keep ? state.activeId : list[0].id, roomsLoading: false }
@@ -284,7 +293,7 @@ function reducer(state: State, action: Action): State {
       return {
         ...state,
         sessions: state.sessions.map((s) =>
-          s.id === action.id ? { ...s, products: [], rejections: [], walkIns: [], afterSrc: null, ask: null, now: null, error: undefined, lastSeq: 0 } : s,
+          s.id === action.id ? { ...s, products: [], rejections: [], walkIns: [], afterSrc: null, direction: undefined, phase: 'planning', ask: null, now: null, error: undefined, lastSeq: 0 } : s,
         ),
       }
 
@@ -351,7 +360,7 @@ const firstSessions = LIVE ? [draftRoom()] : SAMPLES.length ? SAMPLES : [blankRo
 const initial: State = {
   sessions: firstSessions,
   activeId: firstSessions[0].id,
-  sidebarOpen: true,
+  sidebarOpen: false,
   sheetOpen: false,
   selectedProductId: null,
   swapping: null,
@@ -371,7 +380,22 @@ const initial: State = {
 const Ctx = createContext<{ state: State; dispatch: Dispatch<Action> } | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initial, withReveal)
+  const { email } = useAuth()
+  const savedKey = `roomify.designs.v1:${email ?? 'demo'}`
+  const [state, dispatch] = useReducer(reducer, initial, (base) => {
+    try {
+      const saved: Session[] = JSON.parse(sessionStorage.getItem(savedKey) ?? '[]')
+      const rooms = saved.filter((s) => s.offer && s.afterSrc && s.beforeSrc && !s.beforeSrc.startsWith('blob:') && Array.isArray(s.products))
+        .map((s) => ({ ...s, loaded: !LIVE }))
+      if (rooms.length) return withReveal({ ...base, sessions: rooms, activeId: rooms[0].id })
+    } catch { /* Storage may be unavailable; the workspace still works. */ }
+    return withReveal(base)
+  })
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(savedKey, JSON.stringify(state.sessions.filter((s) => s.offer && s.afterSrc).slice(0, 3)))
+    } catch { /* A full or private storage area must not interrupt a design. */ }
+  }, [savedKey, state.sessions])
   return <Ctx.Provider value={{ state, dispatch }}>{children}</Ctx.Provider>
 }
 

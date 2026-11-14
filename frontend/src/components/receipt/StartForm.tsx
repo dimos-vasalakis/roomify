@@ -11,10 +11,10 @@ export function StartForm() {
   const { active: s } = useStore()
   const actions = useActions()
   const [busy, setBusy] = useState(false)
-  const [prompt, setPrompt] = useState('')
-  const [budget, setBudget] = useState('500')
-  const [city, setCity] = useState('Athens')
-  const [wall, setWall] = useState('')
+  const [prompt, setPrompt] = useState(s.prompt)
+  const [budget, setBudget] = useState(String(s.budgetEur))
+  const [city, setCity] = useState(s.city)
+  const [wall, setWall] = useState(s.wallCm ? String(s.wallCm) : '')
   const speech = useSpeech({ onFinal: (said) => setPrompt((p) => (p.trim() ? `${p.trim()} ${said}` : instructionOf(said))) })
   const b = Number(budget)
   const ready = !!s.beforeSrc && prompt.trim().length > 3 && b >= 20
@@ -31,6 +31,7 @@ export function StartForm() {
         void actions.startRun(prompt.trim(), b, city, Number(wall) >= 40 ? Number(wall) : null).finally(() => setBusy(false))
       }}
     >
+      <p className="text-chrome leading-6 text-muted">Your photo, a few words, a room that feels like you.</p>
       <div>
         <label htmlFor="need" className="mb-1.5 block text-chrome font-medium">
           What does the room need?
@@ -38,24 +39,31 @@ export function StartForm() {
         <div className="relative">
           <textarea
             id="need"
+            maxLength={1500}
             rows={4}
             value={speech.listening ? `${prompt}${prompt && speech.interim ? ' ' : ''}${speech.interim}` : prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder={speech.listening ? 'Listening…' : 'A desk and a chair for long days, a lamp, maybe a rug. Calm colours.'}
+            placeholder={speech.listening ? 'Listening…' : 'A calm work corner. A wood desk and a comfortable chair. Warm, minimal, no gaming furniture.'}
             className={`${field} resize-none py-2.5 pr-12 leading-6`}
           />
-          <MicButton
+          <div className="absolute right-2 bottom-2"><MicButton
             listening={speech.listening}
             supported={speech.supported}
             onStart={speech.start}
             onStop={speech.stop}
             label="Say what the room needs"
-            className="absolute right-2 bottom-2"
-          />
+          /></div>
         </div>
         {speech.error && <p className="mt-1.5 text-chrome text-ink">{speech.error}</p>}
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      {!prompt && <div className="flex flex-wrap gap-2">
+        {[
+          ['Work corner', 'A calm work corner with a wood desk and a comfortable office chair. Warm neutral colours, no gaming furniture.'],
+          ['Reading nook', 'A cosy reading nook with an armchair and a floor lamp. Warm light, natural materials.'],
+          ['Living room', 'A relaxed living room with a sofa, coffee table and rug. Natural colours and simple shapes.'],
+        ].map(([label, brief]) => <button key={label} type="button" onClick={() => setPrompt(brief)} className="press min-h-control rounded-control bg-raised px-3 text-small text-ink hover:bg-active">{label}</button>)}
+      </div>}
+      <div>
         <div>
           <label htmlFor="budget" className="mb-1.5 block text-chrome font-medium">
             Budget
@@ -71,9 +79,13 @@ export function StartForm() {
             />
           </div>
         </div>
+      </div>
+      <details className="text-chrome">
+        <summary className="cursor-pointer py-1 font-medium text-muted hover:text-ink">Room details <span className="font-normal">· optional</span></summary>
+        <div className="mt-3 grid grid-cols-2 gap-3">
         <div>
           <label htmlFor="wall" className="mb-1.5 block text-chrome font-medium">
-            Wall <span className="font-normal text-muted">(optional)</span>
+            Wall width
           </label>
           <div className="flex h-10 items-center rounded-control border border-control bg-surface pr-3 focus-within:border-ink">
             <input
@@ -89,22 +101,23 @@ export function StartForm() {
         </div>
         <div>
           <label htmlFor="city" className="mb-1.5 block text-chrome font-medium">
-            Near
+            City
           </label>
           <input id="city" value={city} onChange={(e) => setCity(e.target.value)} className={`${field} h-10`} />
         </div>
-      </div>
+        </div>
+      </details>
       <button
         type="submit"
         disabled={!ready || busy}
         className="press h-11 rounded-control bg-primary text-body font-medium text-surface disabled:bg-secondary disabled:text-muted"
       >
-        {busy ? 'Starting the agent…' : 'Furnish this room'}
+        {busy ? 'Starting your design…' : s.afterSrc ? 'Create updated room' : 'Create my room'}
       </button>
       <BlockError block="start" />
       {!s.beforeSrc && <p className="-mt-2 text-chrome text-muted">Add a photo of the room first.</p>}
       <p className="text-chrome text-muted">
-        The agent shops IKEA, JYSK and Leroy Merlin, reads each product page, and shows you every choice it makes.
+        Real products from Greek shops. One room preview and a shopping list within your budget.
       </p>
     </form>
   )

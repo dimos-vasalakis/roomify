@@ -81,6 +81,14 @@ Reduced motion: a fade. If animation frames stall, everything snaps to the finis
 - The receipt: one row per chosen item with its listing photo; each turned-down product is one short grey line, struck through, with its reason.
 - No basket shelf: the receipt already lists the basket.
 
+## Hackathon result flow
+- Keep one path: photo + brief + budget → reading the room → finding pieces → creating the preview → room and shopping list.
+- The end result leads. Selected products show a readable listing photo, why they suit the brief, price and a direct shop link. Rejection history is a disclosure, not the main result.
+- “Adjust the brief” reopens the original inputs. Generating again updates the picture and basket together. Do not offer receipt-only swaps or walk-ins on the live offer path.
+- Only show price dots when their positions were found in the render. Missing positions mean no dots, never guessed positions.
+- A render failure leaves the basket visible and offers a real retry. Never label the original photo as the finished design.
+- Keep the photo visible during work with three named stages, no invented percentage or countdown. Hide optional location and measurement under “Room details”.
+
 ## Rooms (sessions)
 Each room is one session, like a chat in a chatbot.
 - **Desktop:** a sidebar on the ground (256px, no border), grouped Today / Yesterday / Last week. Each row is a 3:2 thumbnail of the room, its name, and one status line in plain words ("€832.88 of €1,000.00", "Shopping, 2 in the basket", "Waiting for your answer", "Couldn't finish"). The active room is a grey pill. "New room" sits at the top.

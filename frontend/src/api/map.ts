@@ -40,6 +40,9 @@ export function fromSummary(c: ConversationSummary, previous?: Session): Session
 export function fromDetail(c: ConversationDetail, previous?: Session): Session {
   const base = fromSummary(c, previous)
   const run = c.runs.at(-1)
+  if (!run && previous?.offer && previous.afterSrc) {
+    return { ...base, beforeSrc: c.room_photo_url ?? previous.beforeSrc, loaded: true }
+  }
   return {
     ...base,
     beforeSrc: c.room_photo_url ?? '',
@@ -90,6 +93,7 @@ function product(p: ProductOut, slot: string): Product {
     deliveryText: p.delivery_text,
     box: { x: 0.45, y: 0.45, w: 0.1, h: 0.1 },
     thumb: { src: p.image_url },
+    placed: false,
   }
 }
 
@@ -117,12 +121,14 @@ export function applyEvent(s: Session, e: RunEvent): Session {
       return { ...s, status, now: status === 'done' || status === 'failed' ? null : s.now, ask: status === 'asking' ? s.ask : null }
     }
     case 'step.started':
-      return { ...s, now: now(e.data.text), status: s.status === 'asking' || s.status === 'new' ? 'shopping' : s.status }
+      return { ...s, now: now(e.data.text), phase: e.data.phase ?? s.phase, status: e.data.phase === 'rendering' || e.data.phase === 'checking' ? 'drawing' : s.status === 'asking' || s.status === 'new' ? 'shopping' : s.status }
+    case 'plan.ready':
+      return { ...s, direction: e.data.text }
     case 'ask':
       return { ...s, status: 'asking', ask: { question: e.data.question, unit: e.data.unit }, now: null }
     case 'product.chosen':
       if (s.products.some((p) => p.id === e.data.product.id)) return s
-      return { ...s, products: [...s.products, product(e.data.product, e.data.slot)] }
+      return { ...s, products: [...s.products, { ...product(e.data.product, e.data.slot), reason: e.data.reason }] }
     case 'candidate.rejected':
       return {
         ...s,
@@ -156,7 +162,7 @@ export function applyEvent(s: Session, e: RunEvent): Session {
       return {
         ...s,
         afterSrc: e.data.image_url,
-        products: s.products.map((p) => (boxes.has(p.id) ? { ...p, box: boxes.get(p.id)! } : p)),
+        products: s.products.map((p) => ({ ...p, placed: boxes.has(p.id), ...(boxes.has(p.id) ? { box: boxes.get(p.id)! } : {}) })),
       }
     }
     case 'walkin.queued':

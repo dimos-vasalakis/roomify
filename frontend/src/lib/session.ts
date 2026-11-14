@@ -16,4 +16,4 @@ export const slotsOf = (s: Session) => {
 export const isWorking = (s: Session) => s.status === 'shopping' || s.status === 'drawing'
 
 /** The room picture to show: the render once it exists, otherwise the user's photo. */
-export const pictureOf = (s: Session) => (s.status === 'done' && s.afterSrc ? s.afterSrc : s.beforeSrc)
+export const pictureOf = (s: Session) => s.afterSrc ?? s.beforeSrc

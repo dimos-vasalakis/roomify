@@ -13,7 +13,7 @@ export function PriceDot({ product, selected, dimmed, onSelect }: Props) {
   const labelLeft = cx > 0.78
 
   return (
-    <div className="absolute size-0" style={{ left: `${cx * 100}%`, top: `${cy * 100}%` }}>
+    <div className="absolute size-0 max-sm:hidden" style={{ left: `${cx * 100}%`, top: `${cy * 100}%` }}>
       <button
         type="button"
         data-dot

@@ -1,4 +1,4 @@
-import { Columns2, Footprints, RotateCcw, X } from 'lucide-react'
+import { Columns2, Footprints, Pencil, RotateCcw, X } from 'lucide-react'
 import { money } from '../../lib/format'
 import { shopsOf, totalOf } from '../../lib/session'
 import { useStore } from '../../state/store'
@@ -13,15 +13,15 @@ export function TitleRow() {
   const finding = (() => {
     switch (s.status) {
       case 'done':
-        return `${money(total)} of ${money(s.budgetEur)} · ${s.products.length} items from ${shops} ${shops === 1 ? 'shop' : 'shops'} · ${s.city}`
+        return s.direction ?? `${money(total)} of ${money(s.budgetEur)} · ${s.products.length} items from ${shops} ${shops === 1 ? 'shop' : 'shops'} · ${s.city}`
       case 'shopping':
-        return `Shopping in ${s.city} · ${money(s.budgetEur)} budget · ${s.products.length} in the basket so far`
+        return 'Reading your space and finding pieces that belong together'
       case 'drawing':
-        return `Drawing your room with the ${s.products.length} products it chose`
+        return s.phase === 'checking' ? 'Checking your preview against the chosen pieces' : 'Bringing your room together'
       case 'asking':
         return `${money(s.budgetEur)} budget · ${s.city} · the agent is waiting for one answer`
       case 'failed':
-        return `Stopped while drawing · ${s.products.length} products are still in the basket`
+        return 'Your brief and photo are here. Adjust them or try creating the room again.'
       case 'new':
         return 'Add a photo, say what the room needs, set a budget'
     }
@@ -33,9 +33,9 @@ export function TitleRow() {
         <h1 className="truncate text-title font-semibold tracking-[-0.01em] text-ink">{s.name}</h1>
         <p className="num mt-0.5 text-chrome text-muted">{finding}</p>
       </div>
-      {done && (
+      {(done || s.status === 'failed') && (
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          {done && s.afterSrc && <><button
             type="button"
             onClick={() => dispatch({ type: 'replayReveal' })}
             aria-label="Replay the reveal"
@@ -53,7 +53,8 @@ export function TitleRow() {
             <Columns2 size={16} strokeWidth={1.75} />
             Compare
           </button>
-          <button
+          </>}
+          {s.offer ? <button type="button" onClick={() => dispatch({ type: 'editBrief' })} className="press inline-flex h-row items-center gap-2 rounded-control bg-primary px-4 text-chrome font-medium text-surface hover:bg-ink/85"><Pencil size={16} strokeWidth={1.75} /> Adjust the brief</button> : done && <button
             type="button"
             aria-pressed={state.walkMode}
             onClick={() => dispatch({ type: 'setWalkMode', on: !state.walkMode })}
@@ -63,6 +64,7 @@ export function TitleRow() {
             {state.walkMode ? 'Cancel walk-in' : 'Walk in'}
             {!state.walkMode && <kbd className="ml-0.5 hidden rounded-[4px] bg-surface/15 px-1.5 text-small font-sans lg:inline">W</kbd>}
           </button>
+          }
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { LIVE } from './api/config'
 import { AuthGate, useAuth } from './auth/AuthGate'
 import { Receipt } from './components/receipt/Receipt'
+import { MobileTotal } from './components/receipt/MobileTotal'
 import { RoomsSheet } from './components/rooms/RoomsSheet'
 import { Sidebar } from './components/rooms/Sidebar'
 import { MobileBar } from './components/shell/MobileBar'
@@ -62,25 +63,29 @@ function useShortcuts() {
         else if (state.selectedProductId) dispatch({ type: 'selectProduct', id: null })
         else if (state.compare) dispatch({ type: 'toggleCompare' })
       }
-      if (e.key.toLowerCase() === 'w' && active.status === 'done') dispatch({ type: 'setWalkMode', on: !state.walkMode })
+      if (e.key.toLowerCase() === 'w' && active.status === 'done' && !active.offer) dispatch({ type: 'setWalkMode', on: !state.walkMode })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [state.playingWalkInId, state.draft, state.walkMode, state.selectedProductId, state.compare, active.status, dispatch])
+  }, [state.playingWalkInId, state.draft, state.walkMode, state.selectedProductId, state.compare, active.status, active.offer, dispatch])
 }
 
 function Workspace() {
   const { signedIn } = useAuth()
+  const { active } = useStore()
   useSampleRun()
   useLiveSync(signedIn)
   useShortcuts()
+  useEffect(() => {
+    if (active.status === 'new' || active.status === 'shopping' || active.status === 'done') window.scrollTo(0, 0)
+  }, [active.id, active.status])
 
   return (
     <div className="flex min-h-dvh">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <MobileBar />
-        <main className="flex flex-1 flex-col px-4 pb-4 lg:pr-6 lg:pb-6 lg:pl-2">
+        <main className={`flex flex-1 flex-col px-4 pb-4 lg:pr-6 lg:pb-6 lg:pl-2 ${active.status === 'done' ? 'max-xl:pb-resultbar' : ''}`}>
           <TitleRow />
           <div className="grid flex-1 items-start gap-gap xl:grid-cols-[minmax(0,1fr)_var(--spacing-receipt)] xl:items-stretch">
             <Stage />
@@ -89,6 +94,7 @@ function Workspace() {
         </main>
       </div>
       <RoomsSheet />
+      <MobileTotal />
     </div>
   )
 }

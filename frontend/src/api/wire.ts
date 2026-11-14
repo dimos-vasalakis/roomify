@@ -75,9 +75,10 @@ export type WalkinOut = {
 /** One server-sent event of a run. Unknown types are ignored. */
 export type RunEvent =
   | { type: 'run.status'; seq: number; data: { status: RunStatus } }
-  | { type: 'step.started'; seq: number; data: { text: string } }
+  | { type: 'step.started'; seq: number; data: { text: string; phase?: 'planning' | 'shopping' | 'rendering' | 'checking' } }
+  | { type: 'plan.ready'; seq: number; data: { text: string; slots: string[] } }
   | { type: 'ask'; seq: number; data: { question: string; unit: string } }
-  | { type: 'product.chosen'; seq: number; data: { slot: string; product: ProductOut } }
+  | { type: 'product.chosen'; seq: number; data: { slot: string; product: ProductOut; reason?: string } }
   | {
       type: 'candidate.rejected'
       seq: number

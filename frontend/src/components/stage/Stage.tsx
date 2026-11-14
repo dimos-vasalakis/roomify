@@ -17,6 +17,8 @@ import { DimensionLine } from './DimensionLine'
 import { PhotoDrop } from './PhotoDrop'
 import { PriceDot } from './PriceDot'
 import { ProductCard } from './ProductCard'
+import { DesignProgress } from './DesignProgress'
+import { RefineRoom } from './RefineRoom'
 
 /** The room: the user's photo or the render, with everything the agent chose on it. */
 export function Stage() {
@@ -50,6 +52,7 @@ export function Stage() {
         onClick={() => state.selectedProductId && dispatch({ type: 'selectProduct', id: null })}
       >
         {s.status === 'new' && !picture && s.loaded !== false && <PhotoDrop onFile={actions.setPhoto} />}
+        {s.status === 'new' && picture && <label className="press absolute top-3 right-3 z-10 inline-flex h-row cursor-pointer items-center rounded-control bg-surface px-3 text-chrome font-medium text-ink hover:bg-raised">Change photo<input type="file" accept="image/*" className="sr-only" onChange={(e) => { const file = e.target.files?.[0]; if (file) void actions.setPhoto(file) }} /></label>}
 
         {s.loaded === false && (
           <div className="absolute inset-0 grid place-items-center">
@@ -68,7 +71,7 @@ export function Stage() {
             data-picture
             key={picture}
             src={state.compare && s.afterSrc ? s.beforeSrc : picture}
-            alt={done ? `Your ${s.name.toLowerCase()} with the products Roomify chose` : `Your photo of the ${s.name.toLowerCase()}`}
+            alt={s.afterSrc ? `A furnished preview of your ${s.name.toLowerCase()}` : `Your photo of the ${s.name.toLowerCase()}`}
             className="absolute inset-0 size-full object-cover"
             draggable={false}
           />
@@ -90,7 +93,7 @@ export function Stage() {
         )}
 
         {showDots &&
-          s.products.map((p) => (
+          s.products.filter((p) => p.placed !== false).map((p) => (
             <PriceDot
               key={p.id}
               product={p}
@@ -132,19 +135,21 @@ export function Stage() {
                 <span aria-hidden="true" className="size-1.5 rounded-full bg-negative" />
                 {s.error.what}
               </p>
-              <p className="text-small text-muted">Your basket is safe. Last good: {s.error.lastGood}</p>
+              <p className="text-small text-muted">Your photo and brief are saved for another try.</p>
             </div>
-            <button type="button" onClick={() => void actions.reloadRoom(s.id)} className="press inline-flex h-control items-center gap-1.5 rounded-control bg-primary px-3 text-chrome font-medium text-surface">
+            <button type="button" onClick={() => s.offer ? void actions.startRun(s.prompt, s.budgetEur, s.city, s.wallCm) : void actions.reloadRoom(s.id)} className="press inline-flex h-row items-center gap-1.5 rounded-control bg-primary px-3 text-chrome font-medium text-surface">
               <RotateCcw size={14} strokeWidth={2} /> Try again
             </button>
           </div>
         )}
       </div>
 
+      {s.offer && (s.status === 'shopping' || s.status === 'drawing') && <DesignProgress />}
+      {done && s.afterSrc && <p className="border-t border-rule px-4 py-3 text-small text-muted">Room preview · Find the exact products and listing photos in your shopping list.</p>}
       {s.status !== 'new' && <DimensionLine cm={s.wallCm} />}
       <WalkInStrip />
     </div>
-    {done && <Composer />}
+    {done && (s.offer ? <RefineRoom /> : <Composer />)}
     </div>
   )
 }

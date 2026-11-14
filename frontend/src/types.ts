@@ -20,6 +20,8 @@ export type Product = {
   box: Box
   /** The product's own picture: the shop's listing photo (whole, no box) or a region of a sample photo. */
   thumb?: { src: string; box?: Box }
+  reason?: string
+  placed?: boolean
 }
 
 export type RejectRule = 'size' | 'budget' | 'page-check' | 'style' | 'trip'
@@ -93,4 +95,6 @@ export type Session = {
   lastSeq?: number
   /** This room's basket came from a real POST /offer (not a sample, not a saved run). */
   offer?: boolean
+  direction?: string
+  phase?: 'planning' | 'shopping' | 'rendering' | 'checking'
 }
