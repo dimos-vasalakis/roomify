@@ -12,6 +12,7 @@ Event names and payloads follow docs/API.md, so the front end draws them as a no
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 from collections.abc import AsyncIterator
@@ -24,11 +25,13 @@ from pydantic import BaseModel
 
 from app.cache import cached
 from app.llm import LLMError, llm, llm_available
-from app.tools.find_products import FindResult, find_products
+from app.tools.find_products import FindResult, Rejection, find_products
+from app.tools.greeklish import latin
 from app.tools.read_product_page import ProductListing
 from app.tools.search_products import ProductSpec
 
 router = APIRouter(tags=["offer"])
+log = logging.getLogger("roomify.offer")
 
 PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
 PHOTO_MAX_BYTES = 8 * 1024 * 1024
@@ -69,6 +72,91 @@ WORDS: dict[str, tuple[str, list[str]]] = {
     "χαλί": ("Rug", ["χαλί"]),
     "κρεβάτι": ("Bed", ["κρεβάτι"]),
 }
+
+# Colours and materials a brief may name, with how shop titles write them.
+COLOURS: dict[str, list[str]] = {
+    "black": ["μαύρο", "black"], "white": ["λευκό", "άσπρο", "white"], "grey": ["γκρι", "grey"],
+    "gray": ["γκρι", "gray"], "beige": ["μπεζ", "beige"], "brown": ["καφέ", "brown"],
+    "green": ["πράσινο", "green"], "blue": ["μπλε", "blue"], "red": ["κόκκινο", "red"],
+    "yellow": ["κίτρινο", "yellow"], "pink": ["ροζ", "pink"], "gold": ["χρυσό", "gold"],
+    "oak": ["δρυς", "oak"], "walnut": ["καρυδιά", "walnut"], "wood": ["ξύλο", "ξύλινο", "wood"],
+    "wooden": ["ξύλο", "ξύλινο", "wood"], "natural": ["φυσικό", "natural"],
+    "μαύρ": ["μαύρο"], "λευκ": ["λευκό"], "άσπρ": ["άσπρο", "λευκό"], "γκρι": ["γκρι"],
+}  # fmt: skip
+
+
+def _stem(word: str) -> str:
+    plain = latin(word)
+    return plain[: max(3, min(len(plain) - 2, 5))]
+
+
+def _title_has(title: str, words: list[str]) -> bool:
+    """True if a word of the title starts like one of `words` (Greek or Latin, any ending)."""
+    title_words = re.split(r"[^0-9a-z]+", latin(title))
+    stems = {_stem(w) for w in words if len(latin(w)) >= 2}
+    return any(t.startswith(stem) for t in title_words for stem in stems)
+
+
+# Other kinds of things a title can lead with: "Καρέκλα Γραφείου" is a chair, not a desk.
+OTHER_KINDS = sorted({w for _, item in WORDS.values() for phrase in item for w in phrase.split()[:1]} | {"σετ", "set"})
+
+
+def _kind_problem(title: str, item_words: list[str], slot: str) -> str | None:
+    """None when the title is this kind of thing; else why not, in plain words."""
+    words = re.split(r"[^0-9a-z]+", latin(title))
+    wanted = {_stem(w) for w in item_words}
+    at = next((i for i, t in enumerate(words) if any(t.startswith(st) for st in wanted)), None)
+    if at is None:
+        return f"Not a {slot.lower()}"
+    for other in OTHER_KINDS:
+        st = _stem(other)
+        if st in wanted:
+            continue
+        if any(t.startswith(st) for t in words[:at]):
+            return f"A set, not a single {slot.lower()}" if st in {_stem("σετ"), "set"} else f"Not a {slot.lower()}"
+    return None
+
+
+def _english(colour: str) -> str:
+    """'μαύρο' -> 'black', for the live feed."""
+    st = _stem(colour)
+    return next((k for k, forms in COLOURS.items() if k.isascii() and any(_stem(f) == st for f in forms)), colour)
+
+
+def _colour_words(keywords: list[str]) -> list[str]:
+    """The colour and material words among a spec's keywords (style words are not enforced)."""
+    known = {_stem(g) for forms in COLOURS.values() for g in forms}
+    return [k for k in keywords if _stem(k) in known]
+
+
+def _check(spec: "Spec", result: FindResult) -> tuple[FindResult, list[Rejection], str | None]:
+    """Keep only real matches: the item word in the title, and the colour asked for when the
+    shops have it. The scraper matches loosely (Greeklish); this is the strict second look."""
+    turned: list[Rejection] = []
+    item_first = [w.split()[0] for w in spec.spec.item if w.strip()]
+    right_kind = []
+    for c in result.candidates:
+        problem = _kind_problem(c.title, item_first, spec.slot)
+        if problem is None:
+            right_kind.append(c)
+        else:
+            turned.append(Rejection(url=c.url, shop_name=c.shop_name, title=c.title, reason=problem))
+    # The scraper's own rejections only matter for things of the right kind.
+    scraper = [r for r in result.rejected if _kind_problem(r.title, item_first, spec.slot) is None]
+    result = result.model_copy(update={"rejected": scraper})
+    note = None
+    colours = _colour_words(spec.spec.keywords)
+    if colours and right_kind:
+        in_colour = [c for c in right_kind if _title_has(c.title, colours)]
+        if in_colour:
+            for c in right_kind:
+                if c not in in_colour:
+                    turned.append(Rejection(url=c.url, shop_name=c.shop_name, title=c.title, reason=f"Not {_english(colours[0])}, the colour you asked for"))
+            right_kind = in_colour
+        else:
+            note = f"No {_english(colours[0])} {spec.slot.lower()} in stock; showing the closest"
+    return result.model_copy(update={"candidates": right_kind}), turned, note
+
 
 SPEC_PROMPT = """You furnish a real room from Greek shops (IKEA, JYSK, Leroy Merlin and similar).
 The person's brief: "{brief}". Budget: €{budget:g} in total. City: {city}.{wall}
@@ -127,10 +215,13 @@ def _specs_from_words(brief: str, budget: float, wall_cm: float | None) -> list[
     found: list[Spec] = []
     used: set[str] = set()
     for word, (slot, item) in WORDS.items():  # longer phrases come first in the table
-        if word in text and slot not in used:
+        at = text.find(word)
+        if at >= 0 and slot not in used:
             used.add(slot)
+            before = re.findall(r"\w+", text[max(0, at - 30) : at])[-2:]  # "a black desk": the words just before
+            colours = [g for w in before for key, forms in COLOURS.items() if w.startswith(key) for g in forms[:1]]
             text = text.replace(word, " ")
-            found.append(Spec(slot=slot, spec=ProductSpec(item=item, max_width_cm=wall_cm if slot in {"Desk", "Sofa", "Bed", "Bookcase", "Wardrobe"} else None)))
+            found.append(Spec(slot=slot, spec=ProductSpec(item=item, keywords=colours, max_width_cm=wall_cm if slot in {"Desk", "Sofa", "Bed", "Bookcase", "Wardrobe"} else None)))
     if not found:
         found = [Spec(slot="Armchair", spec=ProductSpec(item=["πολυθρόνα"])), Spec(slot="Lamp", spec=ProductSpec(item=["φωτιστικό"]))]
     found = found[:MAX_ITEMS]
@@ -140,9 +231,10 @@ def _specs_from_words(brief: str, budget: float, wall_cm: float | None) -> list[
     return found
 
 
-async def _specs(photo: bytes, mime: str, brief: str, budget: float, city: str, wall_cm: float | None) -> list[Spec]:
+async def _specs(photo: bytes, mime: str, brief: str, budget: float, city: str, wall_cm: float | None) -> tuple[list[Spec], str | None]:
+    """The searches, and a note when the AI could not be used (shown in the live feed)."""
     if not llm_available():
-        return _specs_from_words(brief, budget, wall_cm)
+        return _specs_from_words(brief, budget, wall_cm), "The AI is not set up on the server, so searching by the words in your brief"
     wall = f" The main wall is {wall_cm:g} cm wide." if wall_cm else ""
     prompt = SPEC_PROMPT.format(brief=brief, budget=budget, city=city, wall=wall, max_items=MAX_ITEMS)
 
@@ -161,9 +253,10 @@ async def _specs(photo: bytes, mime: str, brief: str, budget: float, city: str, 
 
     inputs = {"photo": hashlib.sha256(photo).hexdigest(), "brief": brief, "budget": budget, "wall": wall_cm}
     try:
-        return await cached("offer-specs", inputs, ask, list[Spec])
-    except LLMError:
-        return _specs_from_words(brief, budget, wall_cm)
+        return await cached("offer-specs", inputs, ask, list[Spec]), None
+    except LLMError as exc:
+        log.warning("Offer specs fell back to the word list: %s", exc)
+        return _specs_from_words(brief, budget, wall_cm), f"{exc} Searching by the words in your brief"
 
 
 def _pick(results: list[tuple[Spec, FindResult]], budget: float) -> tuple[dict[str, ProductListing], list[tuple[str, ProductListing, str]]]:
@@ -194,6 +287,30 @@ def _pick(results: list[tuple[Spec, FindResult]], budget: float) -> tuple[dict[s
     return chosen, turned
 
 
+async def _as_room_shape(url: str) -> str:
+    """Models sometimes answer square: trim the render to the photo's 3:2, centred."""
+    import io
+
+    import httpx
+    from PIL import Image
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        data = (await client.get(url)).content
+    image = Image.open(io.BytesIO(data)).convert("RGB")
+    w, h = image.size
+    if abs(w / h - 1.5) < 0.03:
+        return url
+    if w / h > 1.5:
+        nw = round(h * 1.5)
+        image = image.crop(((w - nw) // 2, 0, (w - nw) // 2 + nw, h))
+    else:
+        nh = round(w / 1.5)
+        image = image.crop((0, (h - nh) // 2, w, (h - nh) // 2 + nh))
+    out = io.BytesIO()
+    image.save(out, "JPEG", quality=88)
+    return await fal_client.upload_async(out.getvalue(), "image/jpeg")
+
+
 async def _render(photo: bytes, mime: str, chosen: dict[str, ProductListing]) -> str | None:
     if not os.getenv("FAL_KEY") or not chosen:
         return None
@@ -203,7 +320,8 @@ async def _render(photo: bytes, mime: str, chosen: dict[str, ProductListing]) ->
         "Image 1 is a photo of a room. Place the products shown in the other images into this room, "
         "each where it naturally belongs, at a believable real-world size.\n"
         f"{lines}\nKeep the walls, windows, doors, floor, camera angle and light exactly as in image 1. "
-        "Keep each product's shape, colour and material exactly as in its image. Photorealistic."
+        "Keep each product's shape, colour and material exactly as in its image. Keep the same framing "
+        "and the same 3:2 landscape shape as image 1. Photorealistic."
     )
 
     async def call() -> RenderOut:
@@ -215,7 +333,7 @@ async def _render(photo: bytes, mime: str, chosen: dict[str, ProductListing]) ->
             ),
             120,
         )
-        return RenderOut(image_url=result["images"][0]["url"])
+        return RenderOut(image_url=await _as_room_shape(result["images"][0]["url"]))
 
     inputs = {"photo": hashlib.sha256(photo).hexdigest(), "products": [p.id for _, p in items], "model": RENDER_MODEL}
     return (await cached("offer-render", inputs, call, RenderOut)).image_url
@@ -255,17 +373,23 @@ async def _run(photo: bytes, mime: str, brief: str, budget: float, city: str, wa
     try:
         send(("run.status", {"status": "running"}))
         send(("step.started", {"text": "Reading your photo and your brief"}))
-        specs = await _specs(photo, mime, brief, budget, city, wall_cm)
+        specs, why = await _specs(photo, mime, brief, budget, city, wall_cm)
+        if why:
+            send(("step.started", {"text": why}))
         send(("step.started", {"text": f"Searching Greek shops for {', '.join(s.slot.lower() for s in specs)}"}))
 
         async def one(s: Spec) -> tuple[Spec, FindResult]:
-            return s, await find_products(s.spec, want=6)
+            return s, await find_products(s.spec, want=12)
 
         results: list[tuple[Spec, FindResult]] = []
         for task in asyncio.as_completed([one(s) for s in specs]):
-            spec, result = await task
+            spec, raw = await task
+            result, wrong, note = _check(spec, raw)
             results.append((spec, result))
-            shown = [r for r in result.rejected if not r.reason.startswith("Same product")][:3]
+            noise = ("Same product", "refusing", "took too long", "Could not read", "Not read", "ran out of time")
+            shown = (wrong + [r for r in result.rejected if not any(n in r.reason for n in noise)])[:4]
+            if note:
+                send(("step.started", {"text": note}))
             for r in shown:
                 reason = re.sub(r"over the €[\d.,]+ budget", f"more than this item's share of your €{budget:g} budget", r.reason)
                 send(("candidate.rejected", {"slot": spec.slot, "product": {"title": r.title, "retailer": r.shop_name, "url": r.url, "price_eur": None}, "rule": _rule(r.reason), "reason": reason}))
@@ -366,15 +490,17 @@ async def swap(body: SwapIn) -> dict[str, Any]:
     if "cheap" in body.instruction.lower() or "φθην" in body.instruction.lower():
         cap = min(cap, round(body.price_eur * 0.95, 2))
     words = next((item for slot, item in WORDS.values() if slot.lower() == body.slot.lower()), None)
-    spec = ProductSpec(item=words or [body.slot.lower()], max_price_eur=cap, max_width_cm=body.wall_cm if body.slot in {"Desk", "Sofa", "Bed"} else None)
+    said = re.findall(r"\w+", body.instruction.lower())
+    colours = [forms[0] for w in said for key, forms in COLOURS.items() if w.startswith(key)]
+    spec = ProductSpec(item=words or [body.slot.lower()], keywords=colours, max_price_eur=cap, max_width_cm=body.wall_cm if body.slot in {"Desk", "Sofa", "Bed"} else None)
     if llm_available():
         try:
             raw = await llm(SWAP_PROMPT.format(slot=body.slot, title=body.title, price=body.price_eur, instruction=body.instruction), json_out=True)
-            spec = ProductSpec(item=raw.get("item") or spec.item, keywords=raw.get("keywords") or [], exclude=raw.get("exclude") or [],
+            spec = ProductSpec(item=raw.get("item") or spec.item, keywords=raw.get("keywords") or colours, exclude=raw.get("exclude") or [],
                                max_price_eur=cap, max_width_cm=spec.max_width_cm)  # fmt: skip
         except (LLMError, ValueError):
             pass
-    result = await find_products(spec, want=6)
+    result, _, _ = _check(Spec(slot=body.slot, spec=spec), await find_products(spec, want=12))
     options = [c for c in result.candidates if c.id != body.product_id and c.title.casefold() != body.title.casefold()]
     if not options:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Nothing in the shops matched “{body.instruction}” within €{cap:g}. Try other words.")

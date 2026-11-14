@@ -36,7 +36,7 @@ export function roomName(prompt: string) {
   if (words.length > 1 && /^(a|an|the)$/i.test(words[0])) words = words.slice(1)
   // Stop before a phrase like "for long days" or "under the window".
   const cut = words.findIndex((w, i) => i >= 2 && CUT.has(w.toLowerCase().replace(/,+$/, '')))
-  words = words.slice(0, cut === -1 ? 5 : Math.min(cut, 5))
+  words = words.slice(0, cut === -1 ? 6 : Math.min(cut, 6))
   const bare = (w: string) => w.toLowerCase().replace(/[,]+$/, '')
   while (words.length > 1 && TAIL.has(bare(words[words.length - 1]))) words.pop()
   words[words.length - 1] = words[words.length - 1].replace(/,+$/, '')

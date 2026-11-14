@@ -5,6 +5,7 @@ Gemini through google-genai. Needs GEMINI_API_KEY; GEMINI_MODEL picks the model.
 
 import asyncio
 import json
+import logging
 import os
 from typing import Any
 
@@ -14,6 +15,7 @@ from google.genai import types
 import app.config  # noqa: F401  loads backend/.env
 
 DEFAULT_MODEL = "gemini-flash-latest"
+log = logging.getLogger("roomify.llm")
 TIMEOUT_S = 45.0
 
 
@@ -46,7 +48,8 @@ async def llm(prompt: str, images: list[tuple[bytes, str]] | None = None, json_o
         )
     except TimeoutError as exc:
         raise LLMError("The AI took too long to answer.") from exc
-    except Exception as exc:  # provider errors: rate limits, bad key, outages
+    except Exception as exc:  # provider errors: rate limits, bad key, outages, unknown model
+        log.warning("LLM call failed: %s: %s", exc.__class__.__name__, str(exc)[:300])
         raise LLMError(f"The AI could not answer ({exc.__class__.__name__}).") from exc
     text = response.text or ""
     if not json_out:
