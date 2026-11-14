@@ -1,11 +1,18 @@
 import pytest
 
+from app.tools import relevance
 from app.tools import search_products as search_module
 from app.tools.catalogue import CatalogueEntry, ShopCatalogue
 from app.tools.greeklish import index_words, skeleton
 from app.tools.search_products import ProductSpec, _prepare, _score, search_products
 from app.tools.shops import SHOPS
 from app.tools.web_search import WebHit, WebSearchError
+
+
+@pytest.fixture(autouse=True)
+def no_relevance_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Word matching alone unless a test brings its own relevance answer."""
+    monkeypatch.setattr(relevance, "llm_available", lambda: False)
 
 
 def score_entry(item: list[str], keywords: list[str], slug: str, exclude: list[str]) -> float:
@@ -200,3 +207,84 @@ async def test_unknown_shop_names_search_everywhere_and_say_so() -> None:
     result = await search_products(ProductSpec(item=["γραφείο"], shops=["Leroy Merlin"]), limit=10)
     assert len({h.retailer for h in result.hits}) > 1
     assert result.note and "Leroy Merlin are not ones we use" in result.note
+
+
+@pytest.mark.parametrize(
+    ("item", "slug", "expected"),
+    [
+        (["πίνακας"], "pjatteryd pinakas faros 140x56 cm", 1.0),  # IKEA wall art
+        (["πίνακας"], "pinakas anakoinoseon moseby 50x70", 0.0),  # bulletin board
+        (["πίνακας"], "pinakas leukos toixou alouminiou 45 x 60 cm", 0.0),  # whiteboard
+        (["πίνακας"], "skadis diatritos pinakas 36x56 cm", 0.0),  # pegboard
+        (["πίνακας"], "pinakas epitoixios legrand 12 theseon", 0.0),  # fuse box
+        (["πίνακας"], "magnitikos pinakas zografikis", 0.0),  # children's drawing board
+        (["πίνακας ανακοινώσεων"], "pinakas anakoinoseon moseby 50x70", 1.0),  # asked for
+        (["κουρτίνα"], "dignitet syrma koyrtinas", 0.0),
+        (["κουρτίνα"], "vikarn raga koyrtinas ntoys", 0.0),
+        (["κουρτίνα"], "koyrtina hitra 1x140x300 mpez", 1.0),
+        (["τραπέζι"], "trapezi sideromatos", 0.0),
+    ],
+)  # fmt: skip
+def test_other_senses_of_an_item_are_left_out(item: list[str], slug: str, expected: float) -> None:
+    assert score_entry(item, [], slug, []) == expected
+
+
+def test_exclude_phrases_need_every_word() -> None:
+    assert score_entry(["καρέκλα"], [], "karekla grafeioy", ["καρέκλα αυτοκινήτου"]) == 1.0
+    assert score_entry(["καρέκλα"], [], "karekla aytokinitoy", ["καρέκλα αυτοκινήτου"]) == 0.0
+
+
+@pytest.fixture
+def art_shop(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    names = ["ntispenser bisk cadril", "kadro atmosphera jungle", "kadro ostaria lemons",
+             "gantzaki kadro", "kadro pot 50x70cm"]  # fmt: skip
+    entries = [
+        CatalogueEntry(url=f"https://praktiker.gr/p/{i}", words=w, keys=index_words(w))
+        for i, w in enumerate(names)
+    ]
+    catalogue = ShopCatalogue(domain="praktiker.gr", entries=entries, sitemap_errors=[])
+    monkeypatch.setattr(search_module, "saved_catalogue", lambda shop: catalogue)
+    return names
+
+
+@pytest.mark.usefixtures("art_shop")
+async def test_names_that_lead_with_the_item_rank_first() -> None:
+    result = await search_products(ProductSpec(item=["κάδρο"], shops=["praktiker.gr"]), limit=10)
+    assert result.hits[-1].words == "ntispenser bisk cadril"  # a dispenser named CADRIL
+
+
+@pytest.mark.usefixtures("art_shop")
+async def test_relevance_check_keeps_only_the_item_best_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompts: list[str] = []
+
+    async def fake_llm(prompt: str, json_out: bool = False) -> object:
+        prompts.append(prompt)
+        names = [line.split(". ", 1)[1] for line in prompt.splitlines() if line[:1].isdigit()]
+        lemons, jungle = names.index("kadro ostaria lemons"), names.index("kadro atmosphera jungle")
+        odd = names.index("ntispenser bisk cadril")
+        return {"keep": [lemons, jungle, 99], "rejected": [{"n": odd, "why": "A dispenser."}]}
+
+    monkeypatch.setattr(relevance, "llm_available", lambda: True)
+    monkeypatch.setattr(relevance, "llm", fake_llm)
+    spec = ProductSpec(item=["κάδρο"], meaning="framed wall art", shops=["praktiker.gr"])
+    result = await search_products(spec, limit=10)
+    assert [h.words for h in result.hits] == ["kadro ostaria lemons", "kadro atmosphera jungle"]
+    assert [(d.hit.words, d.reason) for d in result.dropped] == [
+        ("ntispenser bisk cadril", "A dispenser")
+    ]
+    assert '"framed wall art"' in prompts[0]
+
+
+@pytest.mark.usefixtures("art_shop")
+async def test_relevance_check_failing_keeps_word_matching(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def broken(prompt: str, json_out: bool = False) -> object:
+        raise relevance.LLMError("down")
+
+    monkeypatch.setattr(relevance, "llm_available", lambda: True)
+    monkeypatch.setattr(relevance, "llm", broken)
+    result = await search_products(ProductSpec(item=["κάδρο"], shops=["praktiker.gr"]), limit=10)
+    assert len(result.hits) == 4 and result.dropped == []  # the hook is excluded by its word

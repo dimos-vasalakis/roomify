@@ -79,8 +79,14 @@ async def _read_with_timeout(url: str, limiter: asyncio.Semaphore) -> PageRead:
 
 async def find_products(spec: ProductSpec, want: int = 8) -> FindResult:
     search = await search_products(spec, limit=MAX_PAGES)
+    # Names the relevance check turned away come first: they show the agent telling a
+    # bulletin board from a painting before it reads a single page.
+    turned_away = [
+        Rejection(url=d.hit.url, shop_name=d.hit.shop_name, title=d.hit.words, reason=d.reason)
+        for d in search.dropped
+    ]
     if not search.hits:
-        return FindResult(candidates=[], rejected=[], searched=0,
+        return FindResult(candidates=[], rejected=turned_away, searched=0,
                           note=search.note or "Nothing in the shops matched that description")  # fmt: skip
 
     await warm_robots([h.url for h in search.hits])
@@ -95,7 +101,7 @@ async def find_products(spec: ProductSpec, want: int = 8) -> FindResult:
         notes.append(f"Stopped after {FIND_DEADLINE_S:g} s; {len(late)} pages were not read")
 
     candidates: list[ProductListing] = []
-    rejected: list[Rejection] = []
+    rejected = list(turned_away)
     seen: set[tuple[object, ...]] = set()
     saved_copies = 0
     for hit, read in zip(search.hits, reads, strict=True):

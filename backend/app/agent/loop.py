@@ -33,12 +33,30 @@ item searches and short keywords so real products can be found. Never infer meas
 from pixels. Only constrain width if the user gave a wall measurement.
 Use concrete catalogue words for keywords (δρυς, φυσικό, μπεζ, λευκό), not abstract
 adjectives such as minimal, comfortable or neutral. Respect explicit materials and colours.
-For "item" use the plain noun Greek shops print on the product: curtains κουρτίνα (exclude
-μπάνιου, ντους, κρεβατιού), curtain rod κουρτινόξυλο, roller or blackout blinds στόρι or
-ρόλο σκίασης, never invented compounds such as ρολοκουρτίνα.
+"item" lists 1 to 4 alternative Greek nouns exactly as shops print them on the product; any
+one of them may match, so list every name the same thing is sold under. Words that mean several
+things need "exclude" for the other senses (πίνακας is also a whiteboard or electrical panel).
+Use these names:
+- painting, wall art, print, picture: ["πίνακας","κάδρο","καμβάς","αφίσα"], exclude
+  ["ανακοινώσεων","φελλού","μαρκαδόρου","μαγνητικός","ζωγραφικής","παιδικός"]
+- curtains: ["κουρτίνα"], exclude ["μπάνιου","ντους","κρεβατιού","σύρμα","ράγα","κρίκοι"];
+  curtain rod: ["κουρτινόξυλο"]; roller or blackout blind: ["στόρι","ρόλο σκίασης"]
+- table lamp ["επιτραπέζιο φωτιστικό","πορτατίφ"]; floor lamp ["φωτιστικό δαπέδου"];
+  ceiling light ["φωτιστικό οροφής","κρεμαστό φωτιστικό"]
+- cushion ["διακοσμητικό μαξιλάρι","μαξιλάρι"], exclude ["ύπνου","καρέκλας"];
+  throw ["ριχτάρι","κουβέρτα"]; rug ["χαλί"], exclude ["μπάνιου","ποντικιού"]
+- mirror ["καθρέφτης"]; plant ["τεχνητό φυτό","φυτό"]; vase ["βάζο"], exclude ["αποθήκευσης"]
+- sofa ["καναπές"]; armchair ["πολυθρόνα"]; coffee table ["τραπεζάκι σαλονιού"];
+  side table ["βοηθητικό τραπέζι","τραπεζάκι"]; bookcase ["βιβλιοθήκη"]; shelf ["ράφι"];
+  wall shelf ["ράφι τοίχου"]; nightstand ["κομοδίνο"]; dresser ["συρταριέρα"];
+  wardrobe ["ντουλάπα"]; desk ["γραφείο"], exclude ["καρέκλα"]; office chair ["καρέκλα γραφείου"]
+Never invent compounds such as ρολοκουρτίνα. Keywords are optional single words that shops put
+in product names (colour, material); leave out placement words such as τοίχου or σαλονιού.
+"meaning" says in plain English exactly what the person wants, e.g. "framed wall art for above
+the sofa", so a shop's whiteboard is never mistaken for a painting.
 Return JSON: {"direction":"A short English design direction",
-"items":[{"slot":"Desk","item":["γραφείο"],"keywords":[],"exclude":["παιδικό"],
-"max_price_eur":150,"max_width_cm":null}]}.
+"items":[{"slot":"Desk","meaning":"a simple wooden work desk","item":["γραφείο"],
+"keywords":[],"exclude":["παιδικό"],"max_price_eur":150,"max_width_cm":null}]}.
 The budget is a furnishing allowance, not a request for the cheapest possible basket.
 Aim to spend 50–80% of it in total, with about 70% as the design target. Allocate item
 budgets to find better suited, well-made pieces in that range, rather than tiny shares.
