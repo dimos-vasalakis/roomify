@@ -5,6 +5,7 @@
   --color-ground: #f4f3f1;
   --color-surface: #ffffff;
   --color-raised: #eeedeb;
+  --color-active: #e7e6e3;
   --color-border: #e6e5e3;
   --color-rule: #f0efed;
   --color-control: #d4d3d1;
@@ -41,10 +42,31 @@
   --spacing-bar: 2.75rem;
   --spacing-control: 2.25rem;
   --spacing-row: 2.75rem;
-  --spacing-receipt: 27.75rem;
+  --spacing-receipt: 25rem;
+  --spacing-rail: 4rem;
+  --spacing-sidebar: 16rem;
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
 }
 
 :root {

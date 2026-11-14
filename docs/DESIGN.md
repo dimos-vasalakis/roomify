@@ -58,8 +58,21 @@ receipt panel: full height; Now line on top, sections, totals pinned at the bott
 Phone (390): top bar, room full width, shelf scrolls sideways, receipt below, total in a sticky bottom bar. 16px margins, 44px touch targets.
 Stage (`?stage=1`): the root font size goes up 12.5% for the projector; layout uses rem so nothing else changes.
 
+## Rooms (sessions)
+Each room is one session, like a chat in a chatbot.
+- **Desktop:** a sidebar on the ground (256px, no border), grouped Today / Yesterday / Last week. Each row is a 3:2 thumbnail of the room, its name, and one status line in plain words ("€832.88 of €1,000.00", "Shopping, 2 in the basket", "Waiting for your answer", "Couldn't finish"). The active room is a grey pill. "New room" sits at the top.
+- **Collapsed** (Ctrl B or the panel button): a 64px rail of room thumbnails; the active one has an ink outline. The room gets the extra width.
+- **Phone:** a top bar with "Rooms" (with a count of rooms waiting for an answer), the mark, and New room. Rooms open as a full-screen sheet.
+
+## Walk-in from any spot
+- "Walk in" (or W) turns the room into a viewfinder: click where you want to stand, drag to aim. A camera dot with a field-of-view cone shows the spot and the direction.
+- A card docked in the opposite corner (bottom sheet on a phone) picks the move (Push in, Orbit, Rise) and the length (5 or 8 s), then "Make walk-in".
+- Clips appear under the room in the Walk-ins tab, with a progress bar while they are made, then a play button. Earlier spots show as small markers while placing a new one.
+- The clip plays on the stage over a dark scrim, labelled "Walk-in preview". Never called 3D.
+- Contract for the back end: `POST /runs/{id}/walkin {from: {x, y}, aim_deg, move, seconds}`; `x` and `y` are 0 to 1 of the render, `aim_deg` 0 is up the image, 90 is right.
+
 ## Motion
-State changes only; no entrance on chrome. GSAP with `useGSAP` and a scoped ref, inside `gsap.matchMedia()`, with a fade-only branch for `prefers-reduced-motion`. Transform, opacity and `clip-path` only.
+State changes only; no entrance on chrome. GSAP with `useGSAP` and a scoped ref. Every entrance goes through `enter()` in `frontend/src/lib/motion.ts`: it always ends fully visible and clears its inline styles (a plain `gsap.from` left cards stuck invisible when React re-ran effects), and under `prefers-reduced-motion` it fades only. Transform, opacity and `clip-path` only.
 
 | Token | Value |
 |---|---|

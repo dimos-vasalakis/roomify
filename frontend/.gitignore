@@ -26,3 +26,13 @@ dist-ssr
 # Local
 .env
 .taste-skill/
+
+# Sample rooms and photos stay on each machine; the app runs without them
+public/samples/
+src/data/*.local.ts
+
+# The root .gitignore (Python template) ignores every lib/ folder; ours is source code
+!src/lib/
+
+# The root Python .gitignore ignores lib/; our source lives in src/lib
+!src/lib/
