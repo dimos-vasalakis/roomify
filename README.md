@@ -43,6 +43,7 @@ cd backend
 python3.12 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/uvicorn app.main:app --reload --port 8000   # http://localhost:8000/health
+.venv/bin/pytest -q                                   # tests
 ```
 
 Front end steps land here once `frontend/` exists.
