@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Roomify
+node_modules/
+dist/
+runs/
+.cache/
