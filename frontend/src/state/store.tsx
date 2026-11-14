@@ -33,6 +33,9 @@ export type State = {
   refollow: number
   /** Talking to the room: live caption, and a sentence waiting for the person to tap an item. */
   voice: { listening: boolean; caption: string; pending: string | null; error: string | null }
+  /** The before-to-after reveal: which room plays it now, and the rooms already shown this visit. */
+  reveal: { id: string; key: number } | null
+  revealed: string[]
 }
 
 export type Action =
@@ -65,6 +68,8 @@ export type Action =
   | { type: 'cancelSwap' }
   | { type: 'refollow' }
   | { type: 'setVoice'; voice: Partial<State['voice']> }
+  | { type: 'replayReveal' }
+  | { type: 'revealDone' }
 
 const updateActive = (state: State, fn: (s: Session) => Session): State => ({
   ...state,
@@ -81,6 +86,17 @@ const clearTransient = {
 } as const
 
 let roomCount = 0
+
+/** The first time a finished room is opened this visit, it plays the before-to-after reveal. */
+function withReveal(state: State, force = false): State {
+  const s = state.sessions.find((x) => x.id === state.activeId)
+  if (!s || s.status !== 'done' || !s.afterSrc || (!force && state.revealed.includes(s.id))) return state
+  return {
+    ...state,
+    reveal: { id: s.id, key: (state.reveal?.key ?? 0) + 1 },
+    revealed: state.revealed.includes(s.id) ? state.revealed : [...state.revealed, s.id],
+  }
+}
 
 const blankRoom = (): Session => ({
   id: `s-new-${++roomCount}`,
@@ -105,7 +121,7 @@ const blankRoom = (): Session => ({
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'select':
-      return { ...state, ...clearTransient, activeId: action.id, sheetOpen: false, voice: { ...state.voice, pending: null, caption: '' } }
+      return withReveal({ ...state, ...clearTransient, activeId: action.id, sheetOpen: false, voice: { ...state.voice, pending: null, caption: '' } })
 
     case 'newRoom': {
       const room = blankRoom()
@@ -289,7 +305,7 @@ function reducer(state: State, action: Action): State {
           lastDelta: old ? { sessionId: action.id, eur: e.data.product.price_eur - old.priceEur, at: Date.now() } : state.lastDelta,
         }
       }
-      return next
+      return e.type === 'done' && action.id === state.activeId ? withReveal(next, true) : next
     }
 
     case 'addWalkIn':
@@ -308,6 +324,12 @@ function reducer(state: State, action: Action): State {
       else delete errors[action.block]
       return { ...state, errors }
     }
+
+    case 'replayReveal':
+      return { ...state, ...clearTransient, reveal: { id: state.activeId, key: (state.reveal?.key ?? 0) + 1 } }
+
+    case 'revealDone':
+      return { ...state, reveal: null }
 
     case 'setVoice':
       return { ...state, voice: { ...state.voice, ...action.voice } }
@@ -342,12 +364,14 @@ const initial: State = {
   errors: {},
   refollow: 0,
   voice: { listening: false, caption: '', pending: null, error: null },
+  reveal: null,
+  revealed: [],
 }
 
 const Ctx = createContext<{ state: State; dispatch: Dispatch<Action> } | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initial)
+  const [state, dispatch] = useReducer(reducer, initial, withReveal)
   return <Ctx.Provider value={{ state, dispatch }}>{children}</Ctx.Provider>
 }
 

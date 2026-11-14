@@ -35,7 +35,15 @@ export function Totals() {
         gsap.set('[data-fill]', { scaleX: ratio })
         return
       }
+      const replaying = state.reveal?.id === s.id
+      if (replaying) {
+        gsap.set(counter.current, { v: 0 })
+        setShown(0)
+        setTweening(true)
+      }
+      if (replaying) gsap.fromTo('[data-fill]', { scaleX: 0 }, { scaleX: ratio, duration: 1, delay: 2.4, ease: EASE_OUT })
       gsap.to(counter.current, {
+        delay: replaying ? 2.4 : 0,
         v: total,
         duration: 0.6,
         ease: EASE_OUT,
@@ -44,9 +52,18 @@ export function Totals() {
         onComplete: () => setTweening(false),
         onInterrupt: () => setTweening(false),
       })
-      gsap.to('[data-fill]', { scaleX: ratio, duration: 0.6, ease: EASE_OUT })
+      if (!replaying) gsap.to('[data-fill]', { scaleX: ratio, duration: 0.6, ease: EASE_OUT })
+      if (replaying) {
+        // Safety net: if animation frames stall, land on the true total anyway.
+        const fill = root.current?.querySelector('[data-fill]')
+        const t = setTimeout(() => {
+          setTweening(false)
+          if (fill) gsap.set(fill, { scaleX: ratio })
+        }, 6500)
+        return () => clearTimeout(t)
+      }
     },
-    { scope: root, dependencies: [total, ratio, s.id] },
+    { scope: root, dependencies: [total, ratio, s.id, state.reveal?.key] },
   )
 
   if (s.status === 'new') return null

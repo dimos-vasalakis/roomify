@@ -68,6 +68,19 @@ One page that says what Roomify does and leads to login. Same paper and ink as t
 - **Close:** the trust line ("Every price, size and link is read from the shop's own page") and "Log in" again.
 - Without a back end (sample mode) the buttons read "Open the sample rooms" and go straight into the app.
 
+## The reveal (the demo's wow)
+The first time a finished room opens in a visit, and on the Replay button in the title row:
+1. Your photo, with "Reading your room": a white line sweeps down over it (about 1 s).
+2. "Placing what it chose": the furnished render wipes in from left to right behind a white edge (about 1.25 s).
+3. The price dots land one by one on their items; the receipt prints section by section; the total counts up from €0.00.
+Reduced motion: a fade. If animation frames stall, everything snaps to the finished state after about 6 s.
+
+## Layout, simplified
+- Left column: the room, the dimension line, walk-ins (only once there is one), then the composer.
+- The composer, like a chat input: "Tell Roomify what to change". Typing and speaking (mic, or hold Space) do the same thing: the item named in the sentence is swapped; with no item named, the next tap on the room picks it.
+- The receipt: one row per chosen item with its listing photo; each turned-down product is one short grey line, struck through, with its reason.
+- No basket shelf: the receipt already lists the basket.
+
 ## Rooms (sessions)
 Each room is one session, like a chat in a chatbot.
 - **Desktop:** a sidebar on the ground (256px, no border), grouped Today / Yesterday / Last week. Each row is a 3:2 thumbnail of the room, its name, and one status line in plain words ("€832.88 of €1,000.00", "Shopping, 2 in the basket", "Waiting for your answer", "Couldn't finish"). The active room is a grey pill. "New room" sits at the top.

@@ -6,10 +6,12 @@ import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
 import { BlockError } from '../common/BlockError'
 import { LiveDot } from '../common/LiveDot'
-import { Shelf } from '../shelf/Shelf'
 import { VoiceCaption } from '../talk/VoiceCaption'
 import { WalkInLayer } from '../walkin/WalkInLayer'
 import { WalkInPlayer } from '../walkin/WalkInPlayer'
+import { WalkInStrip } from '../walkin/WalkInStrip'
+import { Composer } from '../talk/Composer'
+import { Reveal } from './Reveal'
 import { CompareHandle } from './CompareHandle'
 import { DimensionLine } from './DimensionLine'
 import { PhotoDrop } from './PhotoDrop'
@@ -26,10 +28,12 @@ export function Stage() {
   const done = s.status === 'done'
   const selected = s.products.find((p) => p.id === state.selectedProductId) ?? null
   const playing = s.walkIns.find((w) => w.id === state.playingWalkInId) ?? null
+  const revealing = done && !!s.afterSrc && state.reveal?.id === s.id
   const showDots = done && !state.compare && !state.walkMode && !playing
 
   useGSAP(
     () => {
+      if (revealing) return
       enter('[data-picture]', { duration: DUR.base })
       if (room.current?.querySelector('[data-dot]')) enter('[data-dot]', { scale: 0.6, stagger: STAGGER, delay: 0.08 })
     },
@@ -37,6 +41,7 @@ export function Stage() {
   )
 
   return (
+    <div className="flex flex-col gap-gap">
     <div className="overflow-hidden rounded-panel border border-border bg-surface">
       <div
         ref={room}
@@ -68,6 +73,8 @@ export function Stage() {
           />
         )}
 
+        {revealing && s.afterSrc && <Reveal before={s.beforeSrc} after={s.afterSrc} revealKey={state.reveal!.key} />}
+
         {state.compare && s.afterSrc && (
           <>
             <img
@@ -92,7 +99,7 @@ export function Stage() {
             />
           ))}
 
-        {showDots && selected && <ProductCard product={selected} picture={picture} />}
+        {showDots && selected && !revealing && <ProductCard product={selected} picture={picture} />}
 
         {showDots && <VoiceCaption />}
 
@@ -134,7 +141,9 @@ export function Stage() {
       </div>
 
       {s.status !== 'new' && <DimensionLine cm={s.wallCm} />}
-      <Shelf />
+      <WalkInStrip />
+    </div>
+    {done && <Composer />}
     </div>
   )
 }

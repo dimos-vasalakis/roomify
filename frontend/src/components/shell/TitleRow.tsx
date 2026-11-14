@@ -1,8 +1,7 @@
-import { Columns2, Footprints, X } from 'lucide-react'
+import { Columns2, Footprints, RotateCcw, X } from 'lucide-react'
 import { money } from '../../lib/format'
 import { shopsOf, totalOf } from '../../lib/session'
 import { useStore } from '../../state/store'
-import { VoiceBar } from '../talk/VoiceBar'
 
 /** The room's name, the one finding, and the two things you do with a finished room. */
 export function TitleRow() {
@@ -36,7 +35,15 @@ export function TitleRow() {
       </div>
       {done && (
         <div className="flex flex-wrap items-center gap-2">
-          <VoiceBar />
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'replayReveal' })}
+            aria-label="Replay the reveal"
+            title="Replay the reveal"
+            className="press grid size-control place-items-center rounded-control bg-secondary text-ink hover:bg-control"
+          >
+            <RotateCcw size={16} strokeWidth={1.75} />
+          </button>
           <button
             type="button"
             aria-pressed={state.compare}
