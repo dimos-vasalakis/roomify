@@ -12,6 +12,9 @@ dependencies = [
     "google-genai>=1.0",
     "fal-client>=0.5",
     "pillow>=10.4",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
 ]
 
 [project.optional-dependencies]

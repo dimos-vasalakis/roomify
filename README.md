@@ -46,6 +46,17 @@ python3.12 -m venv .venv
 .venv/bin/pytest -q                                   # tests
 ```
 
+### Database (Supabase Postgres, Alembic)
+Tables live in `backend/app/db/tables.py`, migrations in `backend/migrations/versions/`. Set `DATABASE_URL` in `backend/.env` to the Supabase **session pooler** URL (Connect > Session pooler, port 5432).
+
+```bash
+cd backend
+.venv/bin/alembic upgrade head                                 # apply all migrations
+.venv/bin/alembic revision --autogenerate -m "add x to runs"   # after changing tables.py
+.venv/bin/alembic check                                        # tables.py and migrations agree?
+```
+Autogenerate does not see row level security or storage buckets: add those by hand with `op.execute()` in the migration. `REPLAY=1` never touches the database.
+
 Front end steps land here once `frontend/` exists.
 
 `REPLAY=1` runs the full demo from cached results with no network.
