@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
+import { instructionOf } from '../../lib/match'
+import { useSpeech } from '../../lib/speech'
 import { BlockError } from '../common/BlockError'
+import { MicButton } from '../common/MicButton'
 
 /** First run: what the room needs, the budget and the city. */
 export function StartForm() {
@@ -11,6 +14,7 @@ export function StartForm() {
   const [prompt, setPrompt] = useState('')
   const [budget, setBudget] = useState('500')
   const [city, setCity] = useState('Athens')
+  const speech = useSpeech({ onFinal: (said) => setPrompt((p) => (p.trim() ? `${p.trim()} ${said}` : instructionOf(said))) })
   const b = Number(budget)
   const ready = !!s.beforeSrc && prompt.trim().length > 3 && b >= 20
 
@@ -30,14 +34,25 @@ export function StartForm() {
         <label htmlFor="need" className="mb-1.5 block text-chrome font-medium">
           What does the room need?
         </label>
-        <textarea
-          id="need"
-          rows={4}
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="A desk and a chair for long days, a lamp, maybe a rug. Calm colours."
-          className={`${field} resize-none py-2.5 leading-6`}
-        />
+        <div className="relative">
+          <textarea
+            id="need"
+            rows={4}
+            value={speech.listening ? `${prompt}${prompt && speech.interim ? ' ' : ''}${speech.interim}` : prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder={speech.listening ? 'Listening…' : 'A desk and a chair for long days, a lamp, maybe a rug. Calm colours.'}
+            className={`${field} resize-none py-2.5 pr-12 leading-6`}
+          />
+          <MicButton
+            listening={speech.listening}
+            supported={speech.supported}
+            onStart={speech.start}
+            onStop={speech.stop}
+            label="Say what the room needs"
+            className="absolute right-2 bottom-2"
+          />
+        </div>
+        {speech.error && <p className="mt-1.5 text-chrome text-ink">{speech.error}</p>}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
