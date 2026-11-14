@@ -44,12 +44,44 @@ docs/                        TECH_STACK.md and other decisions
 - Small functions, no premature abstraction, no unused code.
 
 ## Front end
-- Art direction is decided once, up front, and recorded in `docs/DESIGN.md`. Follow it.
-- The live feed is the most important screen: clear running, done, rejected and failed states, with the rejection reason in plain words.
-- Design empty, loading and error states. Large type and high contrast: it must read on a projector.
-- Animate transforms and opacity only. In React use `useGSAP` with a scoped ref. Wrap motion in `gsap.matchMedia()` and give `prefers-reduced-motion: reduce` a fade-only version.
-- No generic SaaS look: no purple gradients, no card-in-card, no icon tile above every heading.
-- Check every demo screen in a real browser at 390px and 1440px wide before calling it done.
+Owner: Fanis. The front end lives in `frontend/`; read `frontend/README.md` to run it and `docs/API.md` for what it expects from the back end.
+
+### Sources of truth
+- `PRODUCT.md`: who it is for, what it does, what may never be faked.
+- `docs/DESIGN.md`: the art direction (paper and ink, one blue for what the agent chose), tokens, layout grid, motion. Change it there first.
+- `frontend/src/styles/tokens.css`: the tokens in code. Use them; no raw colours or sizes in components.
+
+### Design workflow (follow in order)
+1. Art direction: the `design-taste-frontend` skill. Already decided for this project; reuse `docs/DESIGN.md` instead of dealing a new one.
+2. Product truth: `/impeccable init` wrote `PRODUCT.md`. Use `/impeccable shape <screen>` before building a new screen.
+3. Build.
+4. Check in a real browser (Playwright MCP): screenshots at 390px and 1440px wide. Do not call a screen done from code alone.
+5. Interaction polish: the `emil-design-eng` skill for motion, easing and small details.
+6. Final pass: `/impeccable critique`, then `/impeccable polish`.
+
+During the hackathon, compress this: build, one screenshot check at both widths, polish only the screens the demo shows.
+
+### Rules
+- The agent working live is the hero. Show its steps as they stream in, with clear running, done, rejected and failed states, and the rejection reason in plain words.
+- Design empty, loading and error states. Errors appear inside the block that failed, never as a full-screen banner.
+- Large type and high contrast: it must read on a projector.
+- No generic SaaS look: no gradients, no glows, no glass, no card-in-card, no icon tile above every heading, no purple.
+- Respect `prefers-reduced-motion`.
+
+### Motion with GSAP
+- Use the GSAP skills (`gsap-core`, `gsap-timeline`, `gsap-react`, `gsap-plugins`, `gsap-performance`, `gsap-utils`, `gsap-scrolltrigger`, `gsap-frameworks`) for anything beyond a simple CSS transition.
+- Animate transforms, opacity and `clip-path` only. In React use `useGSAP` with a scoped ref.
+- Every entrance goes through `enter()` in `frontend/src/lib/motion.ts`: it always ends visible and fades only under reduced motion.
+- Sequence multi-step reveals with a timeline rather than chained delays.
+
+### Tools in this repo
+| What | Where | Notes |
+|---|---|---|
+| `design-taste-frontend`, `emil-design-eng`, `impeccable` skills | `.claude/skills/` (Claude Code), `.agents/skills/` (Antigravity and others) | Sources in `skills-lock.json` |
+| GSAP skills | Claude Code plugin `gsap-skills` from the marketplace in `.claude/settings.json` (accept the prompt); copies in `.agents/skills/` | MIT licence, GreenSock |
+| impeccable sub-agents | `.claude/agents/` | Used by impeccable's commands |
+| Design check hooks | `.claude/settings.json` | Run impeccable's detector after edits. The engine downloads once on first use (about 16 MB) |
+| Playwright and Figma MCP | `.mcp.json` (Claude Code), `.agents/mcp_config.json` (Antigravity) | Playwright for browser screenshots; Figma when a Figma link is given |
 
 ## Team git
 - Three people, one repo. Small commits with clear messages. Pull before every push. One owner per area (see `README.md`).

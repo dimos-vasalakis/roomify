@@ -224,3 +224,13 @@ node_modules/
 dist/
 runs/
 .cache/
+
+# Design tooling: personal settings, downloaded binaries, local caches
+.claude/settings.local.json
+.claude/launch.json
+**/impeccable/scripts/bin/
+.impeccable/*.local.json
+.taste-skill/
+.DS_Store
+!.claude/skills/**/lib/
+!.agents/skills/**/lib/
