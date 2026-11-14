@@ -5,7 +5,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+REPO_DIR = BACKEND_DIR.parent
+
+load_dotenv(BACKEND_DIR / ".env")
 
 
 class Settings(BaseModel):
@@ -15,6 +18,10 @@ class Settings(BaseModel):
     supabase_secret_key: str | None
     supabase_jwt_secret: str | None
     frontend_origins: list[str]
+    retailers: list[str]
+    serper_api_key: str | None
+    cache_dir: Path
+    refresh_catalogues: bool
 
     @property
     def db_enabled(self) -> bool:
@@ -38,5 +45,9 @@ def get_settings() -> Settings:
         supabase_url=(os.getenv("SUPABASE_URL") or "").rstrip("/") or None,
         supabase_secret_key=os.getenv("SUPABASE_SECRET_KEY") or None,
         supabase_jwt_secret=os.getenv("SUPABASE_JWT_SECRET") or None,
-        frontend_origins=_csv(os.getenv("FRONTEND_ORIGINS", "http://localhost:5173")),
+        frontend_origins=_csv(os.getenv("FRONTEND_ORIGINS") or "http://localhost:5173"),
+        retailers=[d.removeprefix("www.") for d in _csv(os.getenv("RETAILERS", ""))],
+        serper_api_key=os.getenv("SERPER_API_KEY") or None,
+        cache_dir=Path(os.getenv("CACHE_DIR") or REPO_DIR / "demo" / "cache"),
+        refresh_catalogues=(os.getenv("REFRESH_CATALOGUES") or "1") == "1",
     )

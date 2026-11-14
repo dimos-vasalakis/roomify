@@ -26,8 +26,8 @@ React app ◀──server-sent events: every step, decision, rejection, render�
 | Agent brain | Gemini Flash (reported as `gemini-3.8-flash`) through `google-genai`, function calling | Vision and tools in one model; team's LLM access | A larger Gemini model for planning only |
 | LLM access | One function, `llm()`, in `backend/app/llm.py` | Swap provider in a few lines | none needed |
 | Tool access | **treg** (`treg.to`): one token, pay per call, many APIs, MCP endpoint at `treg.to/mcp` | One key instead of five; search, scraping and maps behind one client | Direct calls to the same providers with their own keys |
-| Product search | A web or shopping search API reached through treg, restricted to 2 to 3 retailer sites (`site:` filters) | Returns the merchant's own URL | Cached catalogue in `demo/catalogue.json` |
-| Page reading | Fetch via treg (scrape API) or plain `httpx`; read `schema.org/Product` JSON-LD first; Gemini extracts when JSON-LD is missing | Full-size image, price, size, stock flag | Hand-filled catalogue entries |
+| Product search | Each shop's public sitemaps, downloaded weekly into a local catalogue (~41,000 products); Greek queries matched against Greeklish URL slugs | No key, no rate limit, instant, works in replay | Web search via Serper (`SERPER_API_KEY`) with `site:` filters when the catalogue finds too little |
+| Page reading | Plain `httpx` (robots.txt respected); `schema.org/Product` JSON-LD, then `og:`/`product:` meta tags; sizes from labelled text (Πλάτος/Βάθος/Ύψος) or the title (`Π36 x Υ76 x Β37`, `160x40x80εκ`) | Every field keeps the page snippet it came from (`evidence`) for the oumi judge | Gemini extraction when a page has no structured data (not built yet) |
 | Extraction check | **oumi** judge | Every extracted product is checked against the page text before the agent may use it | Rule-only checks |
 | Decision scoring | **oumi** judge | Scores candidates per slot on fit, budget, style and convenience, with a written reason | Gemini scores directly |
 | Proximity | `demo/stores.json` (chain store coordinates) plus distance maths; Places API via treg if it is in the catalogue | Cannot fail on stage | Static file only |
@@ -105,6 +105,22 @@ class Product(BaseModel):
 
 SSE events, all JSON with `type`, `run_id`, `t`:
 `step.started`, `step.result`, `ask`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `budget.update`, `render.ready`, `verify.result`, `video.ready`, `error`, `done`.
+
+## Shops and the scraper (`backend/app/tools/`)
+Flow: the LLM turns the photo and the user's words into a `ProductSpec` (item, keywords, exclude, max price and size, all in Greek) → `find_products(spec)` searches the catalogues, reads the top 20 pages 4 at a time, and returns verified `candidates` plus `rejected` with a plain reason each ("Width 160 cm, your space allows 140 cm") → oumi ranks the candidates → fal renders the top 3.
+
+| Priority | Shop | Notes |
+|---|---|---|
+| 1 | IKEA (ikea.gr), JYSK (jysk.gr) | Full structured data and labelled dimensions |
+| 2 | Praktiker (praktiker.gr) | Many items marked OutOfStock online in their own data; those are rejected |
+| 2 | Plaisio (plaisio.gr) | Office chairs and desks; sizes are not in the page HTML |
+| 3 | Pepco (pepco.gr) | Cheap decor; price and photo only |
+
+Checked and not usable on 2026-11-14: Leroy Merlin, e-Jumbo, Public, Woodwell (block plain requests), Pakoworld (no public prices), Notos (no product images in page data).
+
+To add a shop: check that a product page has `schema.org/Product` with a price (or `product:price:amount`) and a photo, that robots.txt allows it, and that its sitemap lists product URLs. Add a `Shop` in `shops.py`, add the domain to `RETAILERS`, and run `python -m app.tools.catalogue`.
+
+Tests: `pytest` (offline, includes fixtures saved from real pages); `pytest -m live` reads the real shops end to end (about 3 minutes).
 
 ## Accounts and data
 Every user logs in with email and password through Supabase Auth (supabase-js in the front end). Each sign-up gets a `profiles` row automatically (name from sign-up metadata `display_name`, avatar, home city). A **conversation** is one room project: its photo, the chat with the agent, and every run for that room.
