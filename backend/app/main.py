@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -42,7 +43,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     stop.set()
 
 
-app = FastAPI(title="Roomify", lifespan=lifespan)
+app = FastAPI(title="Roomify", version=os.getenv("RENDER_GIT_COMMIT", "development")[:12], lifespan=lifespan)
 
 
 @app.middleware("http")

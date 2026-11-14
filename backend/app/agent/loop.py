@@ -307,7 +307,11 @@ async def _run(
             )
             send(("done", {"total_eur": float(total)}))
     except (LLMError, FalError) as exc:
-        send(("error", {"message": str(exc), "retryable": True}))
+        cause = exc
+        while cause.__cause__ is not None:
+            cause = cause.__cause__
+        code = f"{type(cause).__name__}:{getattr(cause, 'status_code', '')}"
+        send(("error", {"message": str(exc), "retryable": True, "code": code}))
     except TimeoutError:
         send(
             (

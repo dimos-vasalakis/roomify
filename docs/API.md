@@ -86,6 +86,7 @@ Server-sent events. The front end reads it with `fetch` (not `EventSource`), so 
 ## Event types
 
 Live offer refinement: `step.started` also accepts optional `phase` (`planning`, `shopping`, `rendering`, `checking`).
+An `error` may include `code`, a sanitized exception class and HTTP status for deployment diagnostics; it is not displayed as user copy.
 `product.chosen` may include `reason` (one sentence explaining relevance).
 `plan.ready` carries `{text, slots: string[]}`: a short design direction and the requested pieces.
 Offer completion requires a successful render. Unknown product positions are omitted from `render.ready.items`.

@@ -95,5 +95,5 @@ export type RunEvent =
   | { type: 'walkin.queued'; seq: number; data: { walkin: WalkinOut } }
   | { type: 'video.ready'; seq: number; data: { walkin_id: string; video_url: string; poster_url: string | null } }
   | { type: 'walkin.failed'; seq: number; data: { walkin_id: string; error: string } }
-  | { type: 'error'; seq: number; data: { message: string; retryable?: boolean } }
+  | { type: 'error'; seq: number; data: { message: string; retryable?: boolean; code?: string } }
   | { type: 'done'; seq: number; data: { total_eur: number } }
