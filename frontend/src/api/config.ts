@@ -15,4 +15,4 @@ export const DEMO = new URLSearchParams(location.search).has('demo')
 export const LIVE = !!(API_URL && SUPABASE_URL && SUPABASE_KEY) && !forceSamples && !DEMO
 
 /** Real offers from POST /offer whenever a back end is configured, with or without login. */
-export const OFFERS = !!API_URL
+export const OFFERS = !!API_URL && !forceSamples

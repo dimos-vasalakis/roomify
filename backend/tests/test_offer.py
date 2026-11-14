@@ -202,3 +202,45 @@ def test_bad_photo_fails_before_starting_designer(monkeypatch, data, status):
     monkeypatch.setattr(loop, "_run", run)
     assert finish(data).status_code == status
     run.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("budget_eur", "0"),
+        ("budget_eur", "-1"),
+        ("budget_eur", "nan"),
+        ("budget_eur", "inf"),
+        ("budget_eur", "100001"),
+        ("wall_cm", "0"),
+        ("wall_cm", "5001"),
+        ("wall_cm", "nan"),
+        ("brief", "  "),
+        ("city", "x" * 81),
+    ],
+)
+def test_invalid_constraints_never_start_the_agent(monkeypatch, field, value):
+    run = AsyncMock()
+    monkeypatch.setattr(loop, "_run", run)
+    image = BytesIO()
+    Image.new("RGB", (30, 20)).save(image, "JPEG")
+    data = {"brief": "A desk for work", "budget_eur": "500"}
+    data[field] = value
+    with TestClient(app) as client:
+        response = client.post(
+            "/offer", data=data, files={"photo": ("room.jpg", image.getvalue(), "image/jpeg")}
+        )
+    assert response.status_code == 422
+    run.assert_not_awaited()
+
+
+def test_replay_offer_works_without_provider_keys(pipeline, monkeypatch):
+    monkeypatch.setenv("REPLAY", "1")
+    monkeypatch.delenv("FAL_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    response = finish()
+    assert response.status_code == 200
+    assert events(response)[-1][0] == "done"

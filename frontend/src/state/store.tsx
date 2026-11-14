@@ -87,8 +87,6 @@ const clearTransient = {
   compare: false,
 } as const
 
-let roomCount = 0
-
 /** The first time a finished room is opened this visit, it plays the before-to-after reveal. */
 function withReveal(state: State, force = false): State {
   const s = state.sessions.find((x) => x.id === state.activeId)
@@ -101,7 +99,7 @@ function withReveal(state: State, force = false): State {
 }
 
 const blankRoom = (): Session => ({
-  id: `s-new-${++roomCount}`,
+  id: `s-new-${crypto.randomUUID()}`,
   name: 'New room',
   city: 'Athens',
   budgetEur: 500,

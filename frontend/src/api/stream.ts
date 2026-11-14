@@ -54,10 +54,11 @@ export function followRun(runId: string, handlers: Handlers, after = 0): () => v
         const { value, done } = await reader.read()
         if (done) break
         buffer += value
-        let cut: number
-        while ((cut = buffer.indexOf('\n\n')) !== -1) {
+        let separator: RegExpExecArray | null
+        while ((separator = /\r?\n\r?\n/.exec(buffer))) {
+          const cut = separator.index
           const block = buffer.slice(0, cut)
-          buffer = buffer.slice(cut + 2)
+          buffer = buffer.slice(cut + separator[0].length)
           const event = parse(block)
           if (event) {
             lastSeq = event.seq
@@ -87,7 +88,7 @@ function parse(block: string): RunEvent | null {
   let id = ''
   let type = 'message'
   const data: string[] = []
-  for (const line of block.split('\n')) {
+  for (const line of block.split(/\r?\n/)) {
     if (!line || line.startsWith(':')) continue
     const colon = line.indexOf(':')
     const field = colon === -1 ? line : line.slice(0, colon)
@@ -131,10 +132,11 @@ export function followOffer(form: FormData, handlers: Handlers): () => void {
         const { value, done } = await reader.read()
         if (done) break
         buffer += value
-        let cut: number
-        while ((cut = buffer.indexOf('\n\n')) !== -1) {
+        let separator: RegExpExecArray | null
+        while ((separator = /\r?\n\r?\n/.exec(buffer))) {
+          const cut = separator.index
           const event = parse(buffer.slice(0, cut))
-          buffer = buffer.slice(cut + 2)
+          buffer = buffer.slice(cut + separator[0].length)
           if (event) handlers.onEvent(event)
         }
       }

@@ -78,7 +78,7 @@ export function useActions() {
             reader.onerror = () => reject(new Error("This photo couldn't be read. Choose another one."))
             reader.readAsDataURL(photo)
           })
-          return dispatch({ type: 'setPhoto', url })
+          return dispatch({ type: 'patchRoom', id: active.id, patch: { beforeSrc: url } })
         }
         const id = await ensureRoom()
         photos.set(id, photo)

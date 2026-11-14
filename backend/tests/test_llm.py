@@ -20,3 +20,10 @@ async def test_fal_planning_is_used_even_with_a_stale_gemini_key(monkeypatch):
     assert call.await_args.args[0] == "openrouter/router/vision"
     assert call.await_args.args[1]["model"] == "google/gemini-2.5-flash"
     direct.assert_not_called()
+
+
+def test_replay_planning_does_not_require_provider_credentials(monkeypatch):
+    monkeypatch.setenv("REPLAY", "1")
+    monkeypatch.delenv("FAL_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert module.llm_available()

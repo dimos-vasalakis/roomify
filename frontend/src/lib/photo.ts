@@ -3,7 +3,9 @@
  * The stage, the price dots and the render all share this geometry (docs/API.md).
  */
 export async function toRoomPhoto(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => {
+    throw new Error("This photo couldn't be opened. Choose another JPEG, PNG or WebP.")
+  })
   const target = 3 / 2
   let sw = bitmap.width
   let sh = bitmap.height

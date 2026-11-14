@@ -234,3 +234,8 @@ runs/
 .DS_Store
 !.claude/skills/**/lib/
 !.agents/skills/**/lib/
+
+# Browser test artifacts
+.playwright-mcp/
+frontend/test-results/
+frontend/playwright-report/

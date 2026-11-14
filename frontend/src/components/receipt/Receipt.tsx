@@ -40,7 +40,7 @@ export function Receipt() {
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pb-5">
-          {s.status === 'new' && <StartForm />}
+          {s.status === 'new' && <StartForm key={s.id} />}
           {s.status !== 'new' && s.prompt && <details className="text-chrome text-muted"><summary className="cursor-pointer hover:text-ink">Design brief</summary><p className="mt-2 leading-6">{s.prompt}</p></details>}
           {s.status === 'asking' && <AskCard />}
           {s.direction && s.status !== 'new' && s.status !== 'done' && <p className="text-body leading-6 text-ink">{s.direction}</p>}

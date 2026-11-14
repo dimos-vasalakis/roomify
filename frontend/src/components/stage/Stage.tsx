@@ -54,6 +54,8 @@ export function Stage() {
         {s.status === 'new' && !picture && s.loaded !== false && <PhotoDrop onFile={actions.setPhoto} />}
         {s.status === 'new' && picture && <label className="press absolute top-3 right-3 z-10 inline-flex h-row cursor-pointer items-center rounded-control bg-surface px-3 text-chrome font-medium text-ink hover:bg-raised">Change photo<input type="file" accept="image/*" className="sr-only" onChange={(e) => { const file = e.target.files?.[0]; if (file) void actions.setPhoto(file) }} /></label>}
 
+        {s.status === 'new' && picture && <div className="absolute inset-x-4 bottom-4 z-10"><BlockError block="photo" /></div>}
+
         {s.loaded === false && (
           <div className="absolute inset-0 grid place-items-center">
             {state.errors.room?.sessionId === s.id ? (

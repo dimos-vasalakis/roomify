@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 import app.config  # noqa: F401  loads backend/.env
 from app.cache import cached
+from app.config import get_settings
 from app.tools.fal_client import FalError, fal
 
 DEFAULT_MODEL = "gemini-flash-latest"
@@ -30,7 +31,7 @@ class LLMError(Exception):
 
 
 def llm_available() -> bool:
-    return bool(os.getenv("GEMINI_API_KEY") or os.getenv("FAL_KEY"))
+    return get_settings().replay or bool(os.getenv("GEMINI_API_KEY") or os.getenv("FAL_KEY"))
 
 
 class LLMText(BaseModel):
