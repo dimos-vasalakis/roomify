@@ -52,6 +52,11 @@ export function Totals() {
         onComplete: () => setTweening(false),
         onInterrupt: () => setTweening(false),
       })
+      if (!replaying) {
+        // Safety net: never leave a half-counted total on screen.
+        const t = setTimeout(() => setTweening(false), 1200)
+        return () => clearTimeout(t)
+      }
       if (!replaying) gsap.to('[data-fill]', { scaleX: ratio, duration: 0.6, ease: EASE_OUT })
       if (replaying) {
         // Safety net: if animation frames stall, land on the true total anyway.

@@ -103,3 +103,46 @@ function parse(block: string): RunEvent | null {
     return null
   }
 }
+
+/**
+ * POST /offer (docs/API.md): send the photo and brief, read the run's events as they stream back.
+ * Returns a function that stops listening.
+ */
+export function followOffer(form: FormData, handlers: Handlers): () => void {
+  const controller = new AbortController()
+  void (async () => {
+    let response: Response
+    try {
+      response = await fetch(`${API_URL}/offer`, { method: 'POST', body: form, signal: controller.signal })
+    } catch {
+      if (!controller.signal.aborted) handlers.onTrouble?.("Can't reach the server. Check that the back end is running.")
+      return
+    }
+    if (!response.ok || !response.body) {
+      const body = await response.json().catch(() => null)
+      const detail = typeof body?.detail === 'string' ? body.detail : `The server answered ${response.status}.`
+      handlers.onTrouble?.(response.status === 404 ? 'The offer route is not on this back end yet.' : detail)
+      return
+    }
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+    let buffer = ''
+    try {
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += value
+        let cut: number
+        while ((cut = buffer.indexOf('\n\n')) !== -1) {
+          const event = parse(buffer.slice(0, cut))
+          buffer = buffer.slice(cut + 2)
+          if (event) handlers.onEvent(event)
+        }
+      }
+      handlers.onEnd?.()
+    } catch {
+      if (!controller.signal.aborted) handlers.onTrouble?.('Lost the connection while shopping. Try again.')
+    }
+  })()
+  return () => controller.abort()
+}
+

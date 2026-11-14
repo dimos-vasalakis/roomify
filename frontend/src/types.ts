@@ -91,4 +91,6 @@ export type Session = {
   loaded?: boolean
   /** The last run event this room has seen, to pick the stream up again from there. */
   lastSeq?: number
+  /** This room's basket came from a real POST /offer (not a sample, not a saved run). */
+  offer?: boolean
 }

@@ -141,3 +141,18 @@ WalkinOut = {
 
 - `RunSummary`: add `city` and `wall_width_cm` (both already columns on `runs`). The front end reads them when present.
 - `ConversationSummary`: add `thumb_url` (signed link to the latest render, or the room photo) and `latest_run: {status, budget_eur, total_eur} | null`. The rooms sidebar can then show each room's picture and state without opening every room. Until then it shows the room's name and when it was last changed.
+
+## Demo routes (no login, no database)
+
+Built 2026-11-14 for the stage and Vercel (`?demo=1` on the front end). Code: `backend/app/routes/offer.py`.
+
+### `POST /offer`
+Multipart: `photo` (JPEG, PNG or WebP, under 8 MB), `brief`, `budget_eur`, optional `city`, optional `wall_cm`.
+Answers with the run's events as a stream (same names as above): `run.status`, `step.started`, `candidate.rejected`, `product.chosen`, `render.ready`, `done`, or `error`.
+- Searches come from Gemini reading the photo and brief (`GEMINI_API_KEY`); without it, a word list maps the brief to Greek shop words.
+- Products come from the scraper (`app/tools/find_products.py`); one per item is picked to fit the budget.
+- The render runs on fal (`FAL_KEY`, model `FAL_RENDER_MODEL`, default `fal-ai/nano-banana/edit`); without it the offer arrives without a picture.
+- At most two runs at once (429 otherwise). Every AI and render call is cached, so a rehearsed demo replays.
+
+### `POST /offer/swap`
+JSON `{slot, title, price_eur, instruction, budget_left_eur, wall_cm, product_id}` → a `product.swapped` payload, or 404 with the reason in `detail`.

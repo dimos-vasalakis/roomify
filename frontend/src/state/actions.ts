@@ -1,10 +1,14 @@
 import { ApiError, api } from '../api/client'
-import { LIVE } from '../api/config'
+import { LIVE, OFFERS } from '../api/config'
+import { followOffer } from '../api/stream'
 import { fromDetail, fromSummary, walkIn } from '../api/map'
 import { roomName } from '../lib/format'
 import { toRoomPhoto } from '../lib/photo'
 import type { WalkMove } from '../types'
 import { DRAFT_ID, useStore, type Block } from './store'
+
+/** The prepared photo of each room, kept for sending with the offer. */
+const photos = new Map<string, Blob>()
 
 const message = (err: unknown) =>
   err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Something went wrong. Try again.'
@@ -65,14 +69,55 @@ export function useActions() {
     async setPhoto(file: File) {
       return guard('photo', active.id, async () => {
         const photo = await toRoomPhoto(file)
+        photos.set(active.id, photo)
         if (!LIVE) return dispatch({ type: 'setPhoto', url: URL.createObjectURL(photo) })
         const id = await ensureRoom()
+        photos.set(id, photo)
         const detail = await api.uploadPhoto(id, photo)
         dispatch({ type: 'patchRoom', id, patch: { beforeSrc: detail.room_photo_url ?? URL.createObjectURL(photo) } })
       })
     },
 
-    async startRun(prompt: string, budgetEur: number, city: string) {
+    async startRun(prompt: string, budgetEur: number, city: string, wallCm: number | null = null) {
+      if (OFFERS) {
+        // A real offer from POST /offer, streamed into this room like a run.
+        await guard('start', active.id, async () => {
+          const photo = photos.get(active.id) ?? (active.beforeSrc ? await (await fetch(active.beforeSrc)).blob() : null)
+          if (!photo) throw new Error('Add a photo of the room first.')
+          const id = LIVE ? await ensureRoom() : active.id
+          const name = active.name === 'New room' ? roomName(prompt) : active.name
+          dispatch({ type: 'resetRun', id })
+          dispatch({
+            type: 'patchRoom',
+            id,
+            patch: { name, prompt, budgetEur, city, wallCm, offer: true, status: 'shopping', error: undefined, now: { text: 'Reading your photo and your brief', startedAt: Date.now() } },
+          })
+          if (LIVE && name !== active.name) void api.renameRoom(id, name).catch(() => undefined)
+          const form = new FormData()
+          form.append('photo', photo, 'room.jpg')
+          form.append('brief', prompt)
+          form.append('budget_eur', String(budgetEur))
+          form.append('city', city)
+          if (wallCm) form.append('wall_cm', String(wallCm))
+          let got = 0
+          followOffer(form, {
+            onEvent: (event) => {
+              got += 1
+              dispatch({ type: 'runEvent', id, event })
+            },
+            onTrouble: (text) => {
+              // Nothing arrived: back to the brief, with the reason. Mid-way: keep what was found.
+              if (!got) {
+                dispatch({ type: 'patchRoom', id, patch: { status: 'new', now: null } })
+                dispatch({ type: 'setError', block: 'start', sessionId: id, message: text })
+              } else {
+                dispatch({ type: 'patchRoom', id, patch: { status: 'failed', now: null, error: { what: text, lastGood: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) } } })
+              }
+            },
+          })
+        })
+        return
+      }
       if (!LIVE) return void dispatch({ type: 'startRun', prompt, budgetEur, city })
       await guard('start', active.id, async () => {
         const id = await ensureRoom()
@@ -100,6 +145,21 @@ export function useActions() {
 
     async swap(productId: string, instruction: string) {
       dispatch({ type: 'startSwap', productId, instruction })
+      if (active.offer) {
+        // A real swap: the same shops, searched again for what the person asked.
+        const p = active.products.find((x) => x.id === productId)
+        if (!p) return void dispatch({ type: 'cancelSwap' })
+        const total = active.products.reduce((sum, x) => sum + x.priceEur, 0)
+        const ok = await guard('swap', active.id, async () => {
+          const swapped = await api.offerSwap({
+            slot: p.slot, title: p.title, price_eur: p.priceEur, instruction,
+            budget_left_eur: Math.max(0, active.budgetEur - total), wall_cm: active.wallCm, product_id: p.id,
+          }) // fmt
+          dispatch({ type: 'runEvent', id: active.id, event: { type: 'product.swapped', seq: (active.lastSeq ?? 0) + 1, data: swapped } })
+        })
+        if (!ok) dispatch({ type: 'cancelSwap' })
+        return
+      }
       if (!LIVE) return
       const runId = active.runId
       const ok = !!runId && (await guard('swap', active.id, async () => api.swap(runId, productId, instruction)))

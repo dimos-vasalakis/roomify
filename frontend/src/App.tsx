@@ -28,11 +28,12 @@ function useSampleRun() {
   }, [dispatch])
 
   // A swap takes about two seconds.
+  const realSwap = !!state.sessions.find((s) => s.id === state.activeId)?.offer
   useEffect(() => {
-    if (LIVE || !state.swapping) return
+    if (LIVE || realSwap || !state.swapping) return
     const t = setTimeout(() => dispatch({ type: 'finishSwap' }), 2200)
     return () => clearTimeout(t)
-  }, [state.swapping, dispatch])
+  }, [state.swapping, realSwap, dispatch])
 
   // A walk-in takes about five seconds in the sample (about a minute for real).
   const making = state.sessions.flatMap((s) => s.walkIns.filter((w) => w.status === 'making').map((w) => w.id)).join()

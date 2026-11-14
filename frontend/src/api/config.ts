@@ -9,4 +9,10 @@ export const SUPABASE_KEY = (env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undef
 /** `?replay=1` forces the local samples even when the back end is configured (demo fallback). */
 const forceSamples = new URLSearchParams(location.search).has('replay')
 
-export const LIVE = !!(API_URL && SUPABASE_URL && SUPABASE_KEY) && !forceSamples
+/** `?demo=1` opens the app without login, for the stage: rooms stay in the browser, offers are real. */
+export const DEMO = new URLSearchParams(location.search).has('demo')
+
+export const LIVE = !!(API_URL && SUPABASE_URL && SUPABASE_KEY) && !forceSamples && !DEMO
+
+/** Real offers from POST /offer whenever a back end is configured, with or without login. */
+export const OFFERS = !!API_URL

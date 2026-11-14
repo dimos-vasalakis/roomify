@@ -1,6 +1,6 @@
 import type { Session as AuthSession } from '@supabase/supabase-js'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { LIVE } from '../api/config'
+import { DEMO, LIVE } from '../api/config'
 import { supabase } from '../api/supabase'
 import { Landing } from '../components/landing/Landing'
 import { LoginScreen, type Mode } from './LoginScreen'
@@ -26,7 +26,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null)
   const [checked, setChecked] = useState(!LIVE)
   const [login, setLogin] = useState<Mode | null>(null)
-  const [entered, setEntered] = useState(sampleEntered)
+  const [entered, setEntered] = useState(() => DEMO || sampleEntered())
 
   useEffect(() => {
     if (!supabase) return

@@ -14,6 +14,7 @@ export function StartForm() {
   const [prompt, setPrompt] = useState('')
   const [budget, setBudget] = useState('500')
   const [city, setCity] = useState('Athens')
+  const [wall, setWall] = useState('')
   const speech = useSpeech({ onFinal: (said) => setPrompt((p) => (p.trim() ? `${p.trim()} ${said}` : instructionOf(said))) })
   const b = Number(budget)
   const ready = !!s.beforeSrc && prompt.trim().length > 3 && b >= 20
@@ -27,7 +28,7 @@ export function StartForm() {
         e.preventDefault()
         if (!ready || busy) return
         setBusy(true)
-        void actions.startRun(prompt.trim(), b, city).finally(() => setBusy(false))
+        void actions.startRun(prompt.trim(), b, city, Number(wall) >= 40 ? Number(wall) : null).finally(() => setBusy(false))
       }}
     >
       <div>
@@ -54,7 +55,7 @@ export function StartForm() {
         </div>
         {speech.error && <p className="mt-1.5 text-chrome text-ink">{speech.error}</p>}
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <div>
           <label htmlFor="budget" className="mb-1.5 block text-chrome font-medium">
             Budget
@@ -68,6 +69,22 @@ export function StartForm() {
               onChange={(e) => setBudget(e.target.value.replace(/[^\d]/g, ''))}
               className="num h-full min-w-0 flex-1 bg-transparent px-1.5 text-body focus:outline-none"
             />
+          </div>
+        </div>
+        <div>
+          <label htmlFor="wall" className="mb-1.5 block text-chrome font-medium">
+            Wall <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <div className="flex h-10 items-center rounded-control border border-control bg-surface pr-3 focus-within:border-ink">
+            <input
+              id="wall"
+              inputMode="numeric"
+              value={wall}
+              onChange={(e) => setWall(e.target.value.replace(/[^\d]/g, '').slice(0, 4))}
+              placeholder="140"
+              className="num h-full min-w-0 flex-1 bg-transparent px-3 text-body placeholder:text-muted focus:outline-none"
+            />
+            <span className="text-chrome text-muted">cm</span>
           </div>
         </div>
         <div>

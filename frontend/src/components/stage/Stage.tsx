@@ -29,7 +29,8 @@ export function Stage() {
   const selected = s.products.find((p) => p.id === state.selectedProductId) ?? null
   const playing = s.walkIns.find((w) => w.id === state.playingWalkInId) ?? null
   const revealing = done && !!s.afterSrc && state.reveal?.id === s.id
-  const showDots = done && !state.compare && !state.walkMode && !playing
+  // Dots need a render to sit on; an offer without one shows the receipt only.
+  const showDots = done && !!s.afterSrc && !state.compare && !state.walkMode && !playing
 
   useGSAP(
     () => {

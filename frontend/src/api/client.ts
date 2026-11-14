@@ -70,6 +70,12 @@ export const api = {
     request<void>(`/runs/${runId}/answer`, { method: 'POST', body: json({ value, unit }) }),
   swap: (runId: string, productId: string, instruction: string) =>
     request<void>(`/runs/${runId}/swap`, { method: 'POST', body: json({ product_id: productId, instruction }) }),
+  offerSwap: (body: { slot: string; title: string; price_eur: number; instruction: string; budget_left_eur: number; wall_cm: number | null; product_id: string }) =>
+    request<{ slot: string; old_product_id: string; product: import('./wire').ProductOut; reason: string }>('/offer/swap', {
+      method: 'POST',
+      body: json(body),
+      signal: AbortSignal.timeout(60_000),
+    }),
   walkIn: (runId: string, body: { from: { x: number; y: number }; aim_deg: number; move: string; seconds: number }) =>
     request<WalkinOut>(`/runs/${runId}/walkins`, { method: 'POST', body: json(body) }),
 }

@@ -11,7 +11,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from app.config import get_settings
-from app.routes import conversations, me
+from app.routes import conversations, me, offer
 from app.tools.catalogue import refresh_catalogues
 
 log = logging.getLogger("roomify")
@@ -78,3 +78,4 @@ async def health() -> dict[str, str]:
 
 app.include_router(me.router)
 app.include_router(conversations.router)
+app.include_router(offer.router)
