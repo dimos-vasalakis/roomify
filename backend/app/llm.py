@@ -8,6 +8,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import logging
 import os
 from typing import Any
 
@@ -20,6 +21,7 @@ from app.cache import cached
 from app.tools.fal_client import FalError, fal
 
 DEFAULT_MODEL = "gemini-flash-latest"
+log = logging.getLogger("roomify.llm")
 TIMEOUT_S = 45.0
 
 
@@ -97,6 +99,7 @@ async def llm(
         except TimeoutError as exc:
             raise LLMError("The room designer took too long. Please try again.") from exc
         except Exception as exc:
+            log.warning("Room planner request failed (%s)", type(exc).__name__)
             raise LLMError("The room designer could not answer. Please try again.") from exc
 
     result = await cached(
