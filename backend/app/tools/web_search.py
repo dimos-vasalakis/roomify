@@ -54,7 +54,7 @@ async def web_search(query: str, shops: list[Shop]) -> list[WebHit]:
     settings = get_settings()
     key = settings.serper_api_key or ""
     if not key and not settings.replay:  # replay uses the recording, with or without a key
-        raise WebSearchError("Web search is off (no SERPER_API_KEY); used shop catalogues only")
+        raise WebSearchError("Web search is off (no SERPER_API_KEY), so only shop catalogues were used")
     sites = " OR ".join(f"site:{s.domain}" for s in shops)
     full_query = f"{query} ({sites})"
     results = await cached(

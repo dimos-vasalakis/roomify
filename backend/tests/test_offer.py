@@ -309,7 +309,7 @@ def test_no_retry_when_the_run_is_out_of_time(pipeline, monkeypatch):
 def test_an_untrue_picture_is_never_shown_and_the_chat_says_why(pipeline, monkeypatch, check, said):
     monkeypatch.setattr(loop, "_check", AsyncMock(return_value=check(pipeline.id)))
     stream = events(finish())
-    assert loop._render.await_count == 2  # one corrective try first
+    assert loop._render.await_count == 3  # two corrective tries first
     assert not any(kind == "render.ready" for kind, _ in stream)
     assert any(said in text and "shopping list is exact" in text for text in chat(stream))
     assert any(kind == "product.chosen" for kind, _ in stream)  # the basket stands
@@ -328,7 +328,7 @@ def test_doubted_piece_on_last_try_loses_its_dot_not_the_room(pipeline, monkeypa
         loop, "_check", AsyncMock(return_value=_check_result(pipeline.id, match=False))
     )
     stream = events(finish())
-    assert loop._render.await_count == 2
+    assert loop._render.await_count == 3
     assert loop._render.await_args.args[-1] == ["the desk must look exactly like its shop photo"]
     assert next(data for kind, data in stream if kind == "render.ready")["items"] == []
     assert any("differs from the shop photo" in d.get("text", "") for _, d in stream)

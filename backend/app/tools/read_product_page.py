@@ -12,8 +12,9 @@ from pydantic import BaseModel
 
 from app.cache import DAY, HOUR, ReplayMiss, cache_path, cached, load_saved
 from app.llm import LLMError, llm, llm_available
+from app.tools.firecrawl import firecrawl_enabled
 from app.tools.shops import host_of, shop_for_url
-from app.tools.web_fetch import FetchError, fetch_text
+from app.tools.web_fetch import FetchError, fetch_text, fetch_through_service
 
 PAGE_TEXT_CHARS = 6000
 log = logging.getLogger("roomify")
@@ -481,10 +482,29 @@ async def _read(url: str) -> PageRead:
     try:
         listing = extract_listing(url, html)
     except NotAProduct as exc:
-        return PageRead(url=url, listing=None, error=str(exc))
+        if not (_bot_wall(html) and firecrawl_enabled()):
+            return PageRead(url=url, listing=None, error=str(exc))
+        html = await fetch_through_service(url)  # a bot check instead of the product
+        try:
+            listing = extract_listing(url, html)
+        except NotAProduct as again:
+            return PageRead(url=url, listing=None, error=str(again))
     if not (listing.width_cm or listing.depth_cm or listing.height_cm) and llm_available():
         listing = await _sizes_by_reading(listing, visible_text(html))
     return PageRead(url=url, listing=listing, error=None)
+
+
+_BOT_WALL = re.compile(
+    r"captcha|access denied|are you a robot|verify you are human|cf-chl|akamai|incapsula",
+    re.IGNORECASE,
+)
+
+
+def _bot_wall(html: str) -> bool:
+    """A challenge page served in place of the product: small, or says so."""
+    return "application/ld+json" not in html and (
+        len(html) < 30_000 or bool(_BOT_WALL.search(html))
+    )
 
 
 def _keep_for(read: PageRead) -> float:

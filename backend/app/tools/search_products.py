@@ -265,10 +265,10 @@ async def _only_the_item(
     return kept, dropped
 
 
-async def _anywhere(spec: ProductSpec, limit: int) -> SearchResult:
-    """Outside Greece: Google Shopping leads, then the same relevance check."""
-    query = _prepare(spec.item, spec.keywords, spec.exclude)
+async def _shopping_hits(spec: ProductSpec, query: _Query) -> tuple[list[SearchHit], str | None]:
+    """Google Shopping leads for the item, minus the other senses. Never raises."""
     hits: dict[str, SearchHit] = {}
+    note = None
     try:
         for option in spec.item[:2]:  # the main name, and one alternative
             text = " ".join([option, *spec.keywords])
@@ -281,13 +281,18 @@ async def _anywhere(spec: ProductSpec, limit: int) -> SearchResult:
                     words=lead.title, score=1.0, source="web",
                 )  # fmt: skip
     except WebSearchError as exc:
-        if not hits:
-            return SearchResult(hits=[], note=str(exc))
+        note = str(exc)
     except ReplayMiss:
-        if not hits:
-            return SearchResult(hits=[], note="Shopping search was not recorded for replay")
-    pool = list(hits.values())[: limit * POOL_FACTOR]
-    kept, dropped = await _only_the_item(spec, pool, [], limit)
+        note = "Shopping search was not recorded for replay"
+    return list(hits.values()), note
+
+
+async def _anywhere(spec: ProductSpec, limit: int) -> SearchResult:
+    """Outside Greece: Google Shopping leads, then the same relevance check."""
+    hits, note = await _shopping_hits(spec, _prepare(spec.item, spec.keywords, spec.exclude))
+    if not hits:
+        return SearchResult(hits=[], note=note)
+    kept, dropped = await _only_the_item(spec, hits[: limit * POOL_FACTOR], [], limit)
     return SearchResult(hits=kept, note=None, dropped=dropped)
 
 
@@ -303,6 +308,14 @@ async def search_products(spec: ProductSpec, limit: int = 12) -> SearchResult:
         notes.insert(0, shop_note)
     # Word matching casts the net; the relevance check picks from a wider pool than we read.
     pool = _spread(hits, shops, limit * POOL_FACTOR)
+    if get_settings().serper_api_key or get_settings().replay:
+        # Google Shopping adds the rest of the web: shops beyond our catalogues, and items
+        # whose shop names them differently. The same relevance check ranks them all.
+        web, _ = await _shopping_hits(spec, query)
+        wanted = {s.domain for s in shops} if spec.shops else None
+        known = {h.url for h in pool}
+        web = [h for h in web if h.url not in known and (wanted is None or h.retailer in wanted)]
+        pool += web[: limit // 2]
     hits, dropped = await _only_the_item(spec, pool, shops, limit)
 
     if len(hits) < limit // 2:

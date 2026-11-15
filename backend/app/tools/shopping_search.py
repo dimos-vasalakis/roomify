@@ -21,6 +21,7 @@ TIMEOUT = httpx.Timeout(15.0, connect=5.0)
 UNREADABLE = (
     "amazon.", "ebay.", "walmart.", "wayfair.", "etsy.", "temu.", "aliexpress.", "shein.",
     "google.", "youtube.", "pinterest.", "facebook.", "instagram.", "reddit.", "tiktok.",
+    "skroutz.", "bestprice.",  # price comparison: many shops' prices on one page, no one price
 )  # fmt: skip
 
 

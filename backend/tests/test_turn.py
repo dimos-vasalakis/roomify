@@ -160,3 +160,52 @@ def test_a_missing_piece_names_why_its_pages_failed_not_a_turned_away_name() -> 
                         rejected=[r("Storage board, not wall art", "name"), r(refused), r(refused),
                                   r("€90, over the €60 budget")])  # fmt: skip
     assert loop._why_missing(result) == f"{refused} (2 of 3 pages)"
+
+
+def _swap_setup(monkeypatch: pytest.MonkeyPatch, check: "loop.RenderCheck | Exception"):  # type: ignore[no-untyped-def]
+    from tests.test_offer import extract_listing, fixture
+
+    desk = extract_listing(*fixture("ikea_mittzon_desk"))
+    new = desk.model_copy(update={"id": "new-desk", "title": "LINTRUP desk"})
+    edit, picture = (
+        AsyncMock(return_value="https://v3.fal.media/new.jpg"),
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(loop, "_fal_edit", edit)
+    monkeypatch.setattr(loop, "_picture", picture)
+    monkeypatch.setattr(loop, "image_data", AsyncMock(return_value=b"before"))
+    effect = {"side_effect": check} if isinstance(check, Exception) else {"return_value": check}
+    monkeypatch.setattr(loop, "_check", AsyncMock(**effect))
+    state = turn(basket=[DESK], render_url="https://v3.fal.media/old.jpg")
+    return desk, new, edit, picture, state
+
+
+async def test_a_swap_edits_only_that_piece_in_the_latest_picture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.test_offer import _check_result
+
+    desk, new, edit, _, state = _swap_setup(monkeypatch, None)  # type: ignore[arg-type]
+    monkeypatch.setattr(loop, "_check", AsyncMock(return_value=_check_result(new.id)))
+    sent: list[tuple[str, dict[str, object]]] = []
+    assert await loop._swap_in_place(state, "Desk", desk, {"Desk": new}, sent.append)
+    prompt, refs = edit.await_args.args
+    assert refs == ["https://v3.fal.media/old.jpg", new.image_url, desk.image_url]
+    assert "Replace only the desk" in prompt and "Change nothing else" in prompt
+    ready = next(d for k, d in sent if k == "render.ready")
+    assert ready["image_url"] == "https://v3.fal.media/new.jpg" and ready["items"]
+
+
+async def test_an_unfaithful_swap_edit_falls_back_to_redrawing_the_room(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.test_offer import _check_result
+
+    desk, new, _, _, state = _swap_setup(monkeypatch, None)  # type: ignore[arg-type]
+    extra = _check_result(new.id).model_copy(update={"no_extra_products": False})
+    monkeypatch.setattr(loop, "_check", AsyncMock(return_value=extra))
+    sent: list[tuple[str, dict[str, object]]] = []
+    assert not await loop._swap_in_place(state, "Desk", desk, {"Desk": new}, sent.append)
+    assert not any(k == "render.ready" for k, _ in sent)
+    no_picture = turn(basket=[DESK])  # nothing to edit yet
+    assert not await loop._swap_in_place(no_picture, "Desk", desk, {"Desk": new}, sent.append)

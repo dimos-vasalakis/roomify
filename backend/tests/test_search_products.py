@@ -298,3 +298,27 @@ async def test_a_fresh_server_searches_the_shipped_seed(monkeypatch: pytest.Monk
     monkeypatch.setattr(search_module, "saved_catalogue", lambda shop: None)
     result = await search_products(ProductSpec(item=["συρταριέρα"], shops=["jysk.gr"]), limit=5)
     assert len(result.hits) == 5 and result.note is None
+
+
+@pytest.mark.usefixtures("fake_catalogues")
+async def test_google_shopping_widens_greek_searches_beyond_our_shops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.tools.shopping_search import ShoppingLead
+
+    monkeypatch.setenv("SERPER_API_KEY", "test-only")
+    search_module.get_settings.cache_clear()
+
+    async def fake_shopping(text: str, country: str, language: str) -> list[ShoppingLead]:
+        assert country == "GR" and "γραφείο" in text
+        return [ShoppingLead(url="https://www.e-shop.gr/grafeio-oak", title="Γραφείο δρυς 120",
+                             shop_name="e-shop", retailer="e-shop.gr"),
+                ShoppingLead(url="https://www.e-shop.gr/karekla", title="Καρέκλα γραφείου",
+                             shop_name="e-shop", retailer="e-shop.gr")]  # fmt: skip
+
+    monkeypatch.setattr(search_module, "shopping_search", fake_shopping)
+    result = await search_products(ProductSpec(item=["γραφείο"], exclude=["καρέκλα"]), limit=20)
+    web = [h for h in result.hits if h.source == "web"]
+    assert [h.url for h in web] == ["https://www.e-shop.gr/grafeio-oak"]  # other sense dropped
+    shop_only = await search_products(ProductSpec(item=["γραφείο"], shops=["jysk.gr"]), limit=20)
+    assert all(h.retailer == "jysk.gr" for h in shop_only.hits)  # a named shop stays the only one

@@ -15,6 +15,7 @@ def isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("RETAILERS", ALL_SHOPS)
     monkeypatch.setenv("SERPER_API_KEY", "")
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "")
     monkeypatch.setenv("REPLAY", "0")
     monkeypatch.setenv("REFRESH_CATALOGUES", "0")
 

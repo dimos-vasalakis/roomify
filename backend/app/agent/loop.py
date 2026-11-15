@@ -355,6 +355,12 @@ async def _render(
             else ""
         )
     )
+    room = "data:image/jpeg;base64," + base64.b64encode(photo).decode()
+    return await _fal_edit(prompt, [room, *[p.image_url for p in chosen.values()]])
+
+
+async def _fal_edit(prompt: str, image_urls: list[str]) -> str:
+    """One photo edit at render quality; the result must keep the photo's 3:2 shape."""
     model = os.getenv("FAL_RENDER_MODEL") or "fal-ai/nano-banana-2/edit"
     quality = (
         {
@@ -368,10 +374,7 @@ async def _render(
         model,
         {
             "prompt": prompt,
-            "image_urls": [
-                "data:image/jpeg;base64," + base64.b64encode(photo).decode(),
-                *[p.image_url for p in chosen.values()],
-            ],
+            "image_urls": image_urls,
             "num_images": 1,
             "aspect_ratio": "3:2",
             "output_format": "jpeg",
@@ -414,9 +417,12 @@ async def _check(
         "actually appear and match its reference design, shape and colour? Judge shape and design from the "
         "reference PHOTOS only: a size in a title such as 60x100 is the bounding box, and oval or round "
         "pieces have one too. "
-        "Are there no invented extra products? A plain mattress and bedding on a bed, and anything already "
-        "in the original photo, are not extra. Be practical about lighting, not about missing or wrong "
-        "furniture.\nThen check each product's SCALE against its listed real size, using the room's own "
+        "Invented extras: go through image 2 object by object (furniture, plants, lamps, rugs, artwork, "
+        "cushions, decor) and look for each one in image 1. Anything in image 2 that is neither in image "
+        "1 nor one of the supplied products is an invented extra, and then no_extra_products is false, "
+        "however small or natural it looks. A plain mattress and bedding on a bed are not extra. If the "
+        "camera moved, zoomed or reframed the room, room_preserved is false. Be practical about "
+        "lighting, not about missing, invented or wrong furniture.\nThen check each product's SCALE against its listed real size, using the room's own "
         "anchors (doors about 200 cm, sockets, windows, existing furniture): scale_ok is false only when "
         "it looks clearly wrong, about 30% or more too big or too small. placement_ok is false when it "
         "floats, clips into a wall, overlaps or intersects existing furniture or another product, "
@@ -596,7 +602,10 @@ async def _shop(spec: Spec, budget: float, send: Send) -> FindResult:
 def _report_rejections(results: list[tuple[Spec, FindResult]], send: Send) -> None:
     notes = {n for _, r in results if r.note for n in r.note.split("; ")}
     for note in sorted(notes):
-        _step(send, note, "shopping")
+        if "API_KEY" in note:  # a setup gap is for the logs, not for the person shopping
+            log.warning("Search note: %s", note)
+        else:
+            _step(send, note, "shopping")
     for spec, result in results:
         for r in result.rejected[:2]:
             product = {"title": r.title, "retailer": r.shop_name, "url": r.url, "price_eur": None}
@@ -649,10 +658,10 @@ async def _picture(
     layout = await _layout(photo, chosen, brief, direction, remove)
     fix: list[str] = []
     why = ""
-    for attempt in (1, 2):
-        _step(send, f"Rendering again to fix: {why}." if attempt == 2 else _placing(chosen, layout),
+    for attempt in (1, 2, 3):  # a stricter check refuses more: one more try when time allows
+        _step(send, f"Rendering again to fix: {why}." if attempt > 1 else _placing(chosen, layout),
               "rendering")  # fmt: skip
-        last = attempt == 2 or deadline - clock.time() < RETRY_NEEDS_S
+        last = attempt == 3 or deadline - clock.time() < RETRY_NEEDS_S
         try:
             url = await _render(photo, chosen, layout, fix, remove=remove)
             _step(send, "Checking the preview against your room, the product photos and their "
@@ -666,8 +675,9 @@ async def _picture(
             continue
         untrue = identity_problems(check, chosen)
         fix = untrue or fit_problems(check, chosen)
-        # On the last try a size doubt still passes; render_items decides the rest.
-        if not fix or last:
+        # On the last try a size doubt still passes; render_items decides the rest. The third
+        # try is only for an untrue picture, never for a size doubt alone.
+        if not fix or last or (attempt >= 2 and not untrue):
             break
         why = "; ".join(fix)
     try:
@@ -942,7 +952,9 @@ async def _swap(photo: bytes, turn: Turn, decision: Decision, send: Send) -> Non
     chosen[decision.slot] = picked[decision.slot]
     along = {decision.slot} if spec.spec.max_width_cm else set()  # the rest keep theirs
     _prove_fit(chosen, turn.wall_cm, along, send)
-    if not await _picture(
+    if await _swap_in_place(turn, decision.slot, old, chosen, send):
+        pass
+    elif not await _picture(
         photo, chosen, _whole_brief(turn), basket.text, deadline, send, decision.remove
     ):
         _say(send, f"The picture still shows your old {decision.slot.lower()}.")
@@ -962,6 +974,52 @@ async def _arrange(photo: bytes, turn: Turn, decision: Decision, send: Send) -> 
                           send, decision.remove):  # fmt: skip
         _say(send, "The picture still shows the earlier arrangement.")
     send(("done", {"total_eur": _total(chosen), "currency": chosen_currency(chosen)}))
+
+
+async def _swap_in_place(
+    turn: Turn,
+    slot: str,
+    old: ProductListing | None,
+    chosen: dict[str, ProductListing],
+    send: Send,
+) -> bool:
+    """Only the swapped piece changes: the latest picture is edited, not redrawn, so the
+    rest of the room stays exactly as the person just saw it (and it takes half the time).
+    False when there is no picture to edit or the edit isn't faithful: then the caller
+    draws the whole room again from the photo."""
+    if not (turn.render_url and _fal_hosted(turn.render_url)):
+        return False
+    new = chosen[slot]
+    _step(send, f"Putting the new {slot.lower()} into your room; everything else stays.",
+          "rendering")  # fmt: skip
+    was = f" (the {old.title}, shown in reference 3)" if old else ""
+    prompt = (
+        f"Reference 1 is a photo of a furnished room. Replace only the {slot.lower()}{was} with "
+        f"the exact product in reference 2: {new.title}, real size {_size(new)}.{_proportion(new)} "
+        "Put it in the same spot, standing the same way, at its true size relative to the room. "
+        "Copy its shape, colours and materials exactly from reference 2. Change nothing else: every "
+        "wall, window, door, artwork, rug, plant, lamp and other piece of furniture stays exactly "
+        "as it is, with the same camera, framing, lens, light and grain. Add nothing. "
+        "Photorealistic, natural contact shadows, no text. Landscape 3:2."
+    )
+    refs = [turn.render_url, new.image_url, *([old.image_url] if old else [])]
+    try:
+        url = await _fal_edit(prompt, refs)
+        _step(send, "Checking the new picture against the last one and the shop photos.",
+              "checking")  # fmt: skip
+        before = await image_data(turn.render_url)
+        check = await _check(before, url, chosen, [f"the previous {slot.lower()}"])
+        items = render_items(check, chosen, final=True)
+    except (LLMError, FalError, httpx.HTTPError, OSError, ValueError) as exc:
+        log.warning("In-place swap not used (%s)", type(exc).__name__)
+        _step(send, "That edit changed more than the piece, so I'm drawing the whole room again.",
+              "rendering")  # fmt: skip
+        return False
+    for note in caveats(check, chosen):
+        _say(send, note)
+    send(("render.ready", {"render_id": hashlib.sha256(url.encode()).hexdigest()[:12],
+                           "kind": "render", "image_url": url, "items": items}))  # fmt: skip
+    return True
 
 
 def _fal_hosted(url: str) -> bool:

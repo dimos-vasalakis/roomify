@@ -20,6 +20,7 @@ class Settings(BaseModel):
     frontend_origins: list[str]
     retailers: list[str]
     serper_api_key: str | None
+    firecrawl_api_key: str | None
     cache_dir: Path
     refresh_catalogues: bool
 
@@ -61,6 +62,7 @@ def get_settings() -> Settings:
         ),
         retailers=[d.removeprefix("www.") for d in _csv(os.getenv("RETAILERS", ""))],
         serper_api_key=os.getenv("SERPER_API_KEY") or None,
+        firecrawl_api_key=os.getenv("FIRECRAWL_API_KEY") or None,
         cache_dir=Path(os.getenv("CACHE_DIR") or _default_cache(os.getenv("REPLAY", "0") == "1")),
         refresh_catalogues=(os.getenv("REFRESH_CATALOGUES") or "1") == "1",
     )

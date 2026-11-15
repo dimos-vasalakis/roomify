@@ -10,6 +10,7 @@ import httpx
 from pydantic import BaseModel
 
 from app.cache import HOUR, WEEK, cached
+from app.tools.firecrawl import FirecrawlError, firecrawl_enabled, firecrawl_html, plain_text
 from app.tools.shops import host_of
 
 # Shops block obvious bots; a normal browser identity with low volume is what we send.
@@ -135,6 +136,11 @@ async def _robots(url: str) -> Robots:
         try:
             return Robots(text=await _download(robots_url))
         except FetchError as exc:
+            if exc.status in (401, 403, 429) and firecrawl_enabled():
+                try:  # the shop refuses this server, not reading: ask through Firecrawl
+                    return Robots(text=plain_text(await firecrawl_html(robots_url)))
+                except FirecrawlError:
+                    pass
             if exc.status in (401, 403):  # read nothing now; ask again in an hour, not a week
                 return Robots(text="User-agent: *\nDisallow: /", locked=True)
             if exc.status is not None and 400 <= exc.status < 500 and exc.status != 429:
@@ -203,4 +209,18 @@ async def fetch_text(url: str) -> str:
         raise FetchError(f"{host_of(url)} is refusing requests right now", transient=True)
     if not robots_allow(robots_rules(robots.text), url):
         raise FetchError(f"{host_of(url)} does not allow reading this page")
-    return await _download(url)
+    try:
+        return await _download(url)
+    except FetchError as exc:
+        if exc.status not in (401, 403, 429) or not firecrawl_enabled():
+            raise
+        return await fetch_through_service(url, exc)
+
+
+async def fetch_through_service(url: str, cause: Exception | None = None) -> str:
+    """The page through Firecrawl, for shops that refuse this server or show it a bot check
+    instead of the product. Same robots rules; raises FetchError in plain words."""
+    try:
+        return await firecrawl_html(url)
+    except FirecrawlError as exc:
+        raise FetchError(f"{host_of(url)} refused the request, and {exc}") from (cause or exc)
