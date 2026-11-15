@@ -19,6 +19,12 @@ export function Compare({ s, onPin }: Props) {
   const root = useRef<HTMLDivElement>(null)
   const split = useRef(0)
   const dragging = useRef(false)
+  // The reveal in progress: a touch or a key ends it at once, so it never fights the person's hand.
+  const reveal = useRef<gsap.core.Timeline | null>(null)
+  const takeOver = () => {
+    reveal.current?.progress(1)
+    reveal.current = null
+  }
   const placed = s.products.filter((p) => p.placed !== false)
   const selected = state.selectedProductId
   const revealKey = state.reveal?.id === s.id ? state.reveal.key : 0
@@ -44,6 +50,7 @@ export function Compare({ s, onPin }: Props) {
       }
       apply()
       const tl = gsap.timeline({ onComplete: finish })
+      reveal.current = tl
       tl.set('[data-outline]', { opacity: 1, clipPath: 'inset(0 100% 0 0)' })
         .set('[data-pin]', { opacity: 0, scale: 0.4 })
         .fromTo('[data-revscan]', { yPercent: -100, opacity: 1 }, { yPercent: 1000, duration: 0.9, ease: 'power1.inOut' })
@@ -154,6 +161,7 @@ export function Compare({ s, onPin }: Props) {
         aria-valuenow={0}
         aria-valuetext="Percent of your photo showing"
         onPointerDown={(e) => {
+          takeOver()
           e.currentTarget.setPointerCapture(e.pointerId)
           dragging.current = true
         }}
@@ -161,6 +169,7 @@ export function Compare({ s, onPin }: Props) {
         onPointerUp={() => (dragging.current = false)}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
+          takeOver()
           const step = e.shiftKey ? 0.25 : 0.05
           if (e.key === 'ArrowRight') setSplit(split.current + step)
           else if (e.key === 'ArrowLeft') setSplit(split.current - step)
