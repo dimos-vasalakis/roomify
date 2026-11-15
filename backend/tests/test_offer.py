@@ -85,6 +85,7 @@ def pipeline(monkeypatch):
         ),
     )
     monkeypatch.setattr(loop, "_layout", AsyncMock(return_value=None))
+    monkeypatch.setattr(loop, "_locate", AsyncMock(return_value={}))
     monkeypatch.setattr(loop, "_render", AsyncMock(return_value="https://example.com/render.jpg"))
     monkeypatch.setattr(
         loop,

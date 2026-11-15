@@ -274,6 +274,8 @@ def _swap_setup(monkeypatch: pytest.MonkeyPatch, check: "loop.RenderCheck | Exce
     monkeypatch.setattr(loop, "_fal_edit", edit)
     monkeypatch.setattr(loop, "_picture", picture)
     monkeypatch.setattr(loop, "image_data", AsyncMock(return_value=b"before"))
+    # The placement, move and marker helpers see no model: each falls back on its own.
+    monkeypatch.setattr(loop, "llm", AsyncMock(side_effect=LLMError("down")))
     effect = {"side_effect": check} if isinstance(check, Exception) else {"return_value": check}
     monkeypatch.setattr(loop, "_check", AsyncMock(**effect))
     state = turn(basket=[DESK], render_url="https://v3.fal.media/old.jpg")
@@ -329,3 +331,119 @@ async def test_moving_a_piece_edits_the_latest_picture_instead_of_redrawing(
     assert refs == ["https://v3.fal.media/old.jpg", desk.image_url]
     assert "desk under the window" in prompt and "Change nothing else" in prompt
     assert any(k == "render.ready" for k, _ in sent)
+
+
+def test_a_swapped_in_piece_of_another_kind_gets_its_own_name() -> None:
+    """The live failure: a sofa swapped in for the coat stand kept the label "Coat stand"."""
+    assert loop._swapped_slot("Coat stand", "Sofa", {"Coat stand", "Coffee table"}) == "Sofa"
+    assert loop._swapped_slot("Desk", "desk", {"Desk"}) == "Desk"  # a warmer desk is the Desk
+    assert loop._swapped_slot("Lamp 2", "Lamp", {"Lamp", "Lamp 2"}) == "Lamp 2"
+    assert loop._swapped_slot("Coat stand", "Sofa", {"Coat stand", "Sofa"}) == "Sofa 2"
+    assert loop._swapped_slot("Chair", "", {"Chair"}) == "Chair"
+
+
+async def test_a_swap_to_another_kind_renames_the_piece_in_the_basket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.judges.basket import Basket, Pick
+    from app.tools.find_products import FindResult
+    from tests.test_offer import extract_listing, fixture
+
+    stand = extract_listing(*fixture("ikea_mittzon_desk")).model_copy(
+        update={"id": "stand", "title": "Coat stand", "price_eur": 50.0})  # fmt: skip
+    sofa = stand.model_copy(update={"id": "sofa", "title": "Black sofa", "price_eur": 250.0})
+    spec = loop.Spec(slot="Sofa", spec=loop.ProductSpec(item=["καναπές"]))
+    monkeypatch.setattr(loop, "_reread", AsyncMock(return_value={"Coat stand": stand}))
+    monkeypatch.setattr(loop, "_specs", AsyncMock(return_value=("", [spec])))
+    monkeypatch.setattr(loop, "_shop", AsyncMock(
+        return_value=FindResult(candidates=[sofa], rejected=[], searched=1, note=None)))  # fmt: skip
+    monkeypatch.setattr(loop, "judge_basket", AsyncMock(return_value=Basket(
+        text="ok", picks=[Pick(slot="Sofa", product_id="sofa", passed=True, reason="fits")])))  # fmt: skip
+    edited = AsyncMock(return_value=True)
+    monkeypatch.setattr(loop, "_swap_in_place", edited)
+    line = BasketLine(slot="Coat stand", url="https://www.ikea.gr/stand/", title="Coat stand",
+                      price_eur=50)  # fmt: skip
+    sent: list[tuple[str, dict[str, object]]] = []
+    state = turn(basket=[line], budget=500, render_url="https://v3.fal.media/old.jpg")
+    decision = Decision(action="swap", slot="Coat stand", instruction="a black sofa")
+    await loop._swap(b"photo", state, decision, sent.append)
+    assert ("product.removed", {"slot": "Coat stand", "url": line.url}) in sent
+    assert [d["slot"] for k, d in sent if k == "product.chosen"] == ["Sofa"]
+    assert edited.await_args.args[3] == {"Sofa": sofa}
+    assert edited.await_args.kwargs["into"] == "Sofa"
+
+
+def test_named_lost_and_invented_things_outweigh_a_yes() -> None:
+    from tests.test_offer import _check_result
+
+    check = loop.RenderCheck.model_validate(
+        _check_result("x").model_dump()
+        | {"lost": ["grey rubbish bin by the wall"], "extras": ["potted plant"]}
+    )
+    assert not check.room_preserved and not check.no_extra_products
+    problems = loop.identity_problems(check, {})
+    assert any("grey rubbish bin by the wall" in p for p in problems)
+    assert any("potted plant" in p for p in problems)
+
+
+async def test_a_wrong_edit_is_fixed_in_place_naming_what_it_lost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.test_offer import _check_result
+
+    desk, new, edit, _picture, state = _swap_setup(monkeypatch, None)  # type: ignore[arg-type]
+    good = _check_result(new.id)
+    lost = good.model_copy(update={"lost": ["the grey bin"], "room_preserved": False})
+    monkeypatch.setattr(loop, "_check", AsyncMock(side_effect=[lost, good]))
+    sent: list[tuple[str, dict[str, object]]] = []
+    assert await loop._swap_in_place(state, "Desk", desk, {"Desk": new}, sent.append)
+    assert edit.await_count == 2
+    assert "the grey bin" in edit.await_args.args[0]  # the second try is told what it lost
+    assert any(k == "render.ready" for k, _ in sent)
+
+
+async def test_a_vague_turn_is_made_exact_and_checked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The live failure: "turn the sofa a little to face the table" turned it to the wall."""
+    from tests.test_offer import _check_result
+
+    desk, _, edit, _, state = _swap_setup(monkeypatch, None)  # type: ignore[arg-type]
+    plan = {"moves": [{"slot": "Desk", "now": "its front faces the window",
+                       "to": "turn 20 degrees anticlockwise so its front faces the sofa"}],
+            "stays": ["grey bin by the wall"]}  # fmt: skip
+    monkeypatch.setattr(loop, "llm", AsyncMock(return_value=plan))
+    check = AsyncMock(return_value=_check_result(desk.id))
+    monkeypatch.setattr(loop, "_check", check)
+    monkeypatch.setattr(loop, "_locate", AsyncMock(return_value={}))
+    sent: list[tuple[str, dict[str, object]]] = []
+    assert await loop._arrange_in_place(
+        state, {"Desk": desk}, "turn the desk a bit to face the sofa", [], sent.append
+    )
+    prompt = edit.await_args.args[0]
+    assert "turn 20 degrees anticlockwise" in prompt and "grey bin by the wall" in prompt
+    assert "20 degrees" in check.await_args.kwargs["asked"]
+
+
+async def test_a_move_the_picture_got_wrong_keeps_the_old_picture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.test_offer import _check_result
+
+    desk, _, edit, picture, state = _swap_setup(monkeypatch, None)  # type: ignore[arg-type]
+    wrong = _check_result(desk.id).model_copy(
+        update={"asked_done": False, "asked_note": "it now faces the wall"})  # fmt: skip
+    monkeypatch.setattr(loop, "_check", AsyncMock(return_value=wrong))
+    sent: list[tuple[str, dict[str, object]]] = []
+    assert await loop._arrange_in_place(state, {"Desk": desk}, "turn it", [], sent.append)
+    assert edit.await_count == 2
+    assert not any(k == "render.ready" for k, _ in sent)
+    assert any("it now faces the wall" in str(d.get("text")) for k, d in sent if k == "message")
+    picture.assert_not_awaited()
+
+
+async def test_price_dots_come_from_the_locator(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_offer import _check_result
+
+    monkeypatch.setattr(loop, "_check", AsyncMock(return_value=_check_result("x")))
+    monkeypatch.setattr(loop, "_locate", AsyncMock(return_value={"x": [10, 20, 30, 40]}))
+    check = await loop._verify(b"before", "https://v3.fal.media/new.jpg", {})
+    assert check.products[0].box_2d == [10, 20, 30, 40]
