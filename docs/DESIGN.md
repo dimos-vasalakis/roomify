@@ -76,10 +76,8 @@ Every mistake and every failure has a way back. Keep it that way when adding any
 - **Opening:** the preview dissolves into the 3D room, then the camera rises to show the room. Photo / Front / Left / Right / Back / Top; drag to orbit all the way round, scroll or pinch to zoom. A camera choice or drag stays put; rotation is an explicit play/pause control. Keyboard arrows turn the room, +/− zoom, Home resets. Escape closes and returns focus to the opening button. Full screen gives the room the stage on desktop and a usable canvas on phones.
 - **Inspection:** price pins and a compact piece picker both focus a product. Its shop photo, recorded dimensions, price and shop link stay one interaction away, including on phones. Model progress and flat-photo fallbacks are labelled; inferred room geometry and unseen product sides are never presented as a measured scan or exact replica.
 - **Recorded demo:** `?replay=3d` loads the committed room, depth, measurements and GLBs locally. The room is explicitly labelled as recorded, with prices from the recording. Opening it never requests generation or a shop page.
-- Never call the walk-in video 3D; this view is the 3D room.
 
-## Walk-in
-One "Walk in" button in the caption row once the room is done. It makes a 5 s push-in from the middle of the near edge and plays inside the room frame, labelled "Walk-in preview" (never 3D). While it is being made the button reads "Making walk-in…". Real conversations (offers) don't have walk-ins yet; asking "show it from the door" in words changes the view instead.
+- **Always there:** "Look around in 3D" sits in the caption row of every room. With a photo it opens the room in 3D; before the picture is made the room is the photo alone and the pieces join once it is. It is disabled only with no photo or while the agent works, with the reason on hover.
 
 ## Tokens
 Source of truth: `frontend/src/styles/tokens.css`.

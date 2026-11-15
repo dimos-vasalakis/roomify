@@ -136,7 +136,7 @@ export function Composer() {
         held.current = false
         return cancel()
       }
-      if (e.code !== 'Space' || e.repeat || typing(e.target) || busy || state.playingWalkInId) return
+      if (e.code !== 'Space' || e.repeat || typing(e.target) || busy) return
       e.preventDefault()
       held.current = true
       start({ hold: true })
@@ -153,7 +153,7 @@ export function Composer() {
       window.removeEventListener('keydown', down, true)
       window.removeEventListener('keyup', up)
     }
-  }, [start, stop, cancel, listening, busy, state.playingWalkInId, s.recorded3d, state.view3d])
+  }, [start, stop, cancel, listening, busy, s.recorded3d, state.view3d])
 
   const placeholder = busy
     ? 'Type your next message; it sends when Roomify is done'

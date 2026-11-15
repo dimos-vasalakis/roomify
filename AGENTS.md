@@ -23,7 +23,6 @@ Built in a 36-hour agentic AI hackathon by a team of three. Read `README.md` for
 - Every external call (LLM, treg, fal, oumi) goes through the cache wrapper in `backend/app/cache.py`, keyed by a hash of its inputs. `REPLAY=1` must run the whole demo with no network.
 - Agent steps stream to the front end with server-sent events. Event names and payloads are listed in `docs/TECH_STACK.md`; add new ones there first.
 - A product may only reach the render if it passed the oumi extraction judge. Never show a price, size or stock claim that was not read from the shop's page.
-- Never call the walk-in video "3D". It is a walk-in preview.
 
 ## Repo layout (target)
 ```
@@ -105,7 +104,7 @@ During the hackathon, compress this: build, one screenshot check at both widths,
 3. One render with 3 to 5 real products, then the render check.
 4. Room view with price dots and the receipt (shop, price, size, link, total).
 5. Cached replay.
-6. Then: swap one item, walk-in video in the background, phone capture by QR, nearest-store logic.
+6. Then: swap one item, phone capture by QR, nearest-store logic.
 7. Stretch: voice for swaps, one product in 3D.
 
 ## Explaining

@@ -8,6 +8,11 @@ import type { Geometry } from './roomShell'
 export const canView3D = (s: Session): boolean =>
   !!(s.recorded3d || OFFERS) && !!s.beforeSrc && s.status === 'done' && s.products.some((p) => p.placed !== false && !!p.thumb?.src)
 
+/** The 3D button opens the room whenever it has a photo and isn't mid-run: without a finished
+ * picture it is the room from the photo alone, and the pieces join once the picture is made. */
+export const canOpen3D = (s: Session): boolean =>
+  !!(s.recorded3d || OFFERS) && !!s.beforeSrc && s.status !== 'shopping' && s.status !== 'drawing'
+
 /** Asked for once per page; a failure is forgotten so it can be tried again. */
 function once<T>(cache: Map<string, Promise<T>>, key: string, make: () => Promise<T>): Promise<T> {
   let made = cache.get(key)

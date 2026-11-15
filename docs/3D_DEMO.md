@@ -28,7 +28,7 @@ Focus stays within the expanded viewer and returns to the opening button on clos
 This is a reconstruction from photos, not a measured architectural survey. The
 room surfaces outside the photo are inferred; hidden sides of product meshes are
 approximate. Listed dimensions appear only where the captured listing supplied
-them. The walk-in video remains a separate feature.
+them.
 
 ## Live rooms
 

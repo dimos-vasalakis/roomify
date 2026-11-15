@@ -77,18 +77,6 @@ export type Model3DOut = { glb_url: string; views: number; sides: string[] }
 /** POST /transcribe: what was said into the mic. */
 export type TranscriptOut = { text: string }
 
-export type WalkinOut = {
-  id: string
-  status: 'queued' | 'ready' | 'failed'
-  from: { x: number; y: number }
-  aim_deg: number
-  move: 'push' | 'orbit' | 'rise'
-  seconds: 5 | 8
-  video_url: string | null
-  poster_url: string | null
-  created_at: string
-}
-
 /** One server-sent event of a run. Unknown types are ignored. */
 export type RunEvent =
   | { type: 'run.status'; seq: number; data: { status: RunStatus } }
@@ -111,9 +99,6 @@ export type RunEvent =
   | { type: 'product.swapped'; seq: number; data: { slot: string; old_product_id: string; product: ProductOut; reason: string } }
   | { type: 'render.ready'; seq: number; data: { render_id: string; kind: string; image_url: string; items: { product_id: string; box: BoxOut; point?: { x: number; y: number } }[] } }
   | { type: 'verify.result'; seq: number; data: { product_id: string; match: boolean; note: string } }
-  | { type: 'walkin.queued'; seq: number; data: { walkin: WalkinOut } }
-  | { type: 'video.ready'; seq: number; data: { walkin_id: string; video_url: string; poster_url: string | null } }
-  | { type: 'walkin.failed'; seq: number; data: { walkin_id: string; error: string } }
   | { type: 'error'; seq: number; data: { message: string; retryable?: boolean; code?: string } }
   | { type: 'fit.proof'; seq: number; data: { product_id: string; ok: boolean; lines: string[] } }
   | { type: 'done'; seq: number; data: { total_eur: number; currency?: string } }

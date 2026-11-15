@@ -1,11 +1,11 @@
 import { ApiError, api } from '../api/client'
 import { LIVE, OFFERS } from '../api/config'
 import { followTurn } from '../api/stream'
-import { fromDetail, fromSummary, walkIn } from '../api/map'
+import { fromDetail, fromSummary } from '../api/map'
 import { money, roomName } from '../lib/format'
 import { compose, isWorking } from '../lib/session'
 import { toRoomPhoto } from '../lib/photo'
-import type { Product, Session, WalkIn, WalkMove } from '../types'
+import type { Product, Session } from '../types'
 import { DRAFT_ID, MAX_PAST, checkpointOf, useStore, type Block } from './store'
 
 /** The prepared photo of each room, kept for sending with the offer. */
@@ -306,42 +306,6 @@ export function useActions() {
       const ok = !!runId && (await guard('swap', active.id, async () => api.swap(runId, productId, instruction)))
       if (!ok) dispatch({ type: 'cancelSwap' })
       else dispatch({ type: 'refollow' })
-    },
-
-    async makeWalkIn(move: WalkMove, seconds: 5 | 8, view?: { from: { x: number; y: number }; aimDeg: number }) {
-      // A real room: a video of its render, made by fal (one per render, kept).
-      if (active.offer && active.afterSrc?.startsWith('https://')) {
-        const id = active.id
-        const src = active.afterSrc
-        const walkId = `w-${src.slice(-24)}`
-        const existing = active.walkIns.find((w) => w.id === walkId)
-        if (existing?.status === 'making') return
-        if (existing?.status === 'ready') return void dispatch({ type: 'play', id: walkId })
-        const walk: WalkIn = {
-          id: walkId, src, from: view?.from ?? { x: 0.5, y: 0.92 }, aimDeg: view?.aimDeg ?? 0, move: 'push', seconds: 5,
-          status: 'making', createdAt: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-        }  // fmt: skip
-        if (existing) dispatch({ type: 'patchWalkIn', id, walkId, patch: { status: 'making', error: undefined } })
-        else dispatch({ type: 'addWalkIn', id, walk })
-        dispatch({ type: 'setError', block: 'walkin', sessionId: id, message: null })
-        try {
-          const made = await api.walkinPreview(src)
-          dispatch({ type: 'patchWalkIn', id, walkId, patch: { status: 'ready', videoUrl: made.video_url } })
-        } catch (err) {
-          dispatch({ type: 'patchWalkIn', id, walkId, patch: { status: 'failed', error: message(err) } })
-          dispatch({ type: 'setError', block: 'walkin', sessionId: id, message: message(err) })
-        }
-        return
-      }
-      if (!LIVE) return void dispatch({ type: 'createWalkIn', move, seconds, view })
-      const runId = active.runId
-      const draft = view ?? state.draft
-      if (!runId || !draft) return
-      await guard('walkin', active.id, async () => {
-        const made = await api.walkIn(runId, { from: draft.from, aim_deg: Math.round(draft.aimDeg), move, seconds })
-        dispatch({ type: 'addWalkIn', id: active.id, walk: walkIn(made) })
-        dispatch({ type: 'refollow' })
-      })
     },
 
     /** Reload one room from the server (used by "Try again"). */

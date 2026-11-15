@@ -6,10 +6,10 @@ import type { RunEvent } from '../api/wire'
 import { SAMPLES } from '../data/loadSamples'
 import { roomName } from '../lib/format'
 import { isWorking } from '../lib/session'
-import type { Checkpoint, Point, Product, Session, WalkIn, WalkMove } from '../types'
+import type { Checkpoint, Product, Session } from '../types'
 
 /** Where an error belongs on screen, so it shows inside the block that failed. */
-export type Block = 'rooms' | 'photo' | 'start' | 'ask' | 'swap' | 'walkin' | 'feed' | 'room'
+export type Block = 'rooms' | 'photo' | 'start' | 'ask' | 'swap' | 'feed' | 'room'
 
 export type State = {
   sessions: Session[]
@@ -22,10 +22,6 @@ export type State = {
   swapping: { productId: string; instruction: string } | null
   /** Last change to the total, shown briefly next to it. */
   lastDelta: { sessionId: string; eur: number; at: number } | null
-  walkMode: boolean
-  /** The viewpoint being placed, before the user confirms it. */
-  draft: { from: Point; aimDeg: number } | null
-  playingWalkInId: string | null
   /** The finished room is open in the 3D view. */
   view3d: boolean
   /** Drawing lengths on the room photo. */
@@ -35,7 +31,7 @@ export type State = {
   roomsLoading: boolean
   /** One error per block, per room. */
   errors: Partial<Record<Block, { sessionId: string; message: string }>>
-  /** Bumped to listen to a room's run again (after a swap or walk-in on a finished run). */
+  /** Bumped to listen to a room's run again (after a swap on a finished run). */
   refollow: number
   /** Talking to the room: live caption, and a sentence waiting for the person to tap an item. */
   voice: { listening: boolean; caption: string; pending: string | null; error: string | null }
@@ -59,11 +55,6 @@ export type Action =
   | { type: 'setPhoto'; url: string }
   | { type: 'startRun'; prompt: string; budgetEur: number; city: string }
   | { type: 'liveTick' }
-  | { type: 'setWalkMode'; on: boolean }
-  | { type: 'setDraft'; draft: State['draft'] }
-  | { type: 'createWalkIn'; move: WalkMove; seconds: 5 | 8; view?: { from: Point; aimDeg: number } }
-  | { type: 'walkInReady'; id: string }
-  | { type: 'play'; id: string | null }
   | { type: 'view3d'; on: boolean }
   | { type: 'measuring'; on: boolean }
   | { type: 'toggleCompare' }
@@ -74,8 +65,6 @@ export type Action =
   | { type: 'renameRoom'; id: string; name: string }
   | { type: 'resetRun'; id: string }
   | { type: 'runEvent'; id: string; event: RunEvent }
-  | { type: 'addWalkIn'; id: string; walk: WalkIn }
-  | { type: 'patchWalkIn'; id: string; walkId: string; patch: Partial<WalkIn> }
   | { type: 'setError'; block: Block; sessionId: string; message: string | null }
   | { type: 'cancelSwap' }
   | { type: 'refollow' }
@@ -94,9 +83,6 @@ const updateActive = (state: State, fn: (s: Session) => Session): State => ({
 const clearTransient = {
   selectedProductId: null,
   swapping: null,
-  walkMode: false,
-  draft: null,
-  playingWalkInId: null,
   view3d: false,
   measuring: false,
   compare: false,
@@ -128,7 +114,6 @@ const blankRoom = (): Session => ({
   products: [],
   rejections: [],
   alternatives: {},
-  walkIns: [],
   ask: null,
   now: null,
 })
@@ -152,7 +137,7 @@ function reducer(state: State, action: Action): State {
       return { ...state, sheetOpen: action.open }
 
     case 'selectProduct':
-      return { ...state, selectedProductId: action.id, walkMode: false, draft: null }
+      return { ...state, selectedProductId: action.id }
 
     case 'startSwap':
       return {
@@ -229,51 +214,14 @@ function reducer(state: State, action: Action): State {
         }),
       }
 
-    case 'setWalkMode':
-      return { ...state, walkMode: action.on, draft: null, selectedProductId: null, compare: false }
-
-    case 'setDraft':
-      return { ...state, draft: action.draft }
-
-    case 'createWalkIn': {
-      const view = action.view ?? state.draft
-      if (!view) return state
-      const walk: WalkIn = {
-        id: `w-${Date.now()}`,
-        from: view.from,
-        aimDeg: view.aimDeg,
-        move: action.move,
-        seconds: action.seconds,
-        status: 'making',
-        createdAt: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-      }
-      return {
-        ...updateActive(state, (s) => ({ ...s, walkIns: [walk, ...s.walkIns] })),
-        draft: null,
-        walkMode: false,
-      }
-    }
-
-    case 'walkInReady':
-      return {
-        ...state,
-        sessions: state.sessions.map((s) => ({
-          ...s,
-          walkIns: s.walkIns.map((w) => (w.id === action.id ? { ...w, status: 'ready' } : w)),
-        })),
-      }
-
-    case 'play':
-      return { ...state, playingWalkInId: action.id, selectedProductId: null, walkMode: false, draft: null }
-
     case 'measuring':
-      return { ...state, measuring: action.on, view3d: false, playingWalkInId: null, selectedProductId: null }
+      return { ...state, measuring: action.on, view3d: false, selectedProductId: null }
 
     case 'view3d':
-      return { ...state, view3d: action.on, measuring: false, playingWalkInId: null, selectedProductId: null, walkMode: false, draft: null }
+      return { ...state, view3d: action.on, measuring: false, selectedProductId: null }
 
     case 'toggleCompare':
-      return { ...state, compare: !state.compare, walkMode: false, draft: null, selectedProductId: null }
+      return { ...state, compare: !state.compare, selectedProductId: null }
 
     case 'setRooms': {
       const byId = new Map(state.sessions.map((s) => [s.id, s]))
@@ -313,7 +261,7 @@ function reducer(state: State, action: Action): State {
       return {
         ...state,
         sessions: state.sessions.map((s) =>
-          s.id === action.id ? { ...s, products: [], rejections: [], walkIns: [], afterSrc: null, direction: undefined, phase: 'planning', ask: null, now: null, error: undefined, lastSeq: 0 } : s,
+          s.id === action.id ? { ...s, products: [], rejections: [], afterSrc: null, direction: undefined, phase: 'planning', ask: null, now: null, error: undefined, lastSeq: 0 } : s,
         ),
       }
 
@@ -336,24 +284,6 @@ function reducer(state: State, action: Action): State {
       }
       return e.type === 'done' && action.id === state.activeId ? withReveal(next, true) : next
     }
-
-    case 'patchWalkIn':
-      return {
-        ...state,
-        sessions: state.sessions.map((s) =>
-          s.id === action.id ? { ...s, walkIns: s.walkIns.map((w) => (w.id === action.walkId ? { ...w, ...action.patch } : w)) } : s,
-        ),
-      }
-
-    case 'addWalkIn':
-      return {
-        ...state,
-        sessions: state.sessions.map((s) =>
-          s.id === action.id && !s.walkIns.some((w) => w.id === action.walk.id) ? { ...s, walkIns: [action.walk, ...s.walkIns] } : s,
-        ),
-        draft: null,
-        walkMode: false,
-      }
 
     case 'setError': {
       const errors = { ...state.errors }
@@ -422,9 +352,6 @@ const initial: State = {
   selectedProductId: null,
   swapping: null,
   lastDelta: null,
-  walkMode: false,
-  draft: null,
-  playingWalkInId: null,
   view3d: false,
   measuring: false,
   compare: false,
@@ -449,12 +376,8 @@ export const MAX_PAST = 5
 
 /** A room saved mid-run (the page was reloaded or closed) can never finish: say so and offer the way back. */
 function settle(room: Session): Session {
-  // A walk-in being made when the page went away will never arrive: it can be asked for again.
-  const s = room.walkIns.some((w) => w.status === 'making' && w.src)
-    ? { ...room, walkIns: room.walkIns.map((w) => (w.status === 'making' && w.src ? { ...w, status: 'failed' as const } : w)) }
-    : room
-  if (!isWorking(s)) return s
-  return { ...s, status: 'failed', now: null, error: { what: 'The page was reloaded before Roomify finished.', lastGood: '' } }
+  if (!isWorking(room)) return room
+  return { ...room, status: 'failed', now: null, error: { what: 'The page was reloaded before Roomify finished.', lastGood: '' } }
 }
 
 /** Rooms worth keeping across a reload: a photo that isn't a temporary blob, and not a sample. */

@@ -44,25 +44,6 @@ export type Rejection = {
   reason: string
 }
 
-export type WalkMove = 'push' | 'orbit' | 'rise'
-
-export type WalkIn = {
-  id: string
-  from: Point
-  /** Direction the camera looks, in degrees: 0 is up the image (into the room), 90 is right. */
-  aimDeg: number
-  move: WalkMove
-  seconds: 5 | 8
-  status: 'making' | 'ready' | 'failed'
-  createdAt: string
-  /** The real clip, once the back end has made it. Samples have none and simulate the move. */
-  videoUrl?: string | null
-  posterUrl?: string | null
-  error?: string
-  /** The render it walks into: a new render needs a new walk-in. */
-  src?: string
-}
-
 export type ChatLine = { role: 'user' | 'agent'; text: string }
 
 export type SessionStatus = 'new' | 'asking' | 'shopping' | 'drawing' | 'done' | 'failed'
@@ -97,7 +78,6 @@ export type Session = {
   rejections: Rejection[]
   /** Replacement products the agent would pick on a swap, keyed by the product they replace. */
   alternatives: Record<string, Product>
-  walkIns: WalkIn[]
   /** The question the agent is waiting on, when status is 'asking'. */
   ask: { question: string; unit: string; suggestion?: number | null } | null
   /** The conversation with the agent about this room, oldest first. */

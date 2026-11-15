@@ -10,7 +10,6 @@ import type {
   HandoffOut,
   TranscriptOut,
   RunSummary,
-  WalkinOut,
 } from './wire'
 
 /** An error a person can read: the back end's `detail`, or what went wrong on the way. */
@@ -75,8 +74,6 @@ export const api = {
     request<void>(`/runs/${runId}/answer`, { method: 'POST', body: json({ value, unit }) }),
   swap: (runId: string, productId: string, instruction: string) =>
     request<void>(`/runs/${runId}/swap`, { method: 'POST', body: json({ product_id: productId, instruction }) }),
-  walkIn: (runId: string, body: { from: { x: number; y: number }; aim_deg: number; move: string; seconds: number }) =>
-    request<WalkinOut>(`/runs/${runId}/walkins`, { method: 'POST', body: json(body) }),
   depth: (imageUrl: string) =>
     request<DepthOut>('/depth', { method: 'POST', body: json({ image_url: imageUrl }), signal: AbortSignal.timeout(60_000) }),
   /** The empty room photo's depth: the shell of the 3D room. */
@@ -93,9 +90,6 @@ export const api = {
       body: json({ image_url: imageUrl, page_url: pageUrl, title }),
       signal: AbortSignal.timeout(420_000),
     }),
-  /** A 5-second walk-in preview video of a finished render. The first time takes one to three minutes. */
-  walkinPreview: (renderUrl: string) =>
-    request<{ video_url: string }>('/walkin', { method: 'POST', body: json({ render_url: renderUrl }), signal: AbortSignal.timeout(400_000) }),
   /** A drop box the phone can send a photo into (the QR code on the empty room). */
   openHandoff: () => request<HandoffOut>('/handoff', { method: 'POST' }),
   sendHandoff: (code: string, photo: Blob) => {

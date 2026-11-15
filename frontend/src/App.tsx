@@ -36,15 +36,6 @@ function useSampleRun() {
     const t = setTimeout(() => dispatch({ type: 'finishSwap' }), 2200)
     return () => clearTimeout(t)
   }, [state.swapping, realSwap, dispatch])
-
-  // A walk-in takes about five seconds in the sample (about a minute for real).
-  const making = state.sessions.flatMap((s) => s.walkIns.filter((w) => w.status === 'making').map((w) => w.id)).join()
-  useEffect(() => {
-    if (LIVE || !making) return
-    const ids = making.split(',')
-    const t = setTimeout(() => ids.forEach((id) => dispatch({ type: 'walkInReady', id })), 5000)
-    return () => clearTimeout(t)
-  }, [making, dispatch])
 }
 
 function useShortcuts() {
@@ -64,7 +55,6 @@ function useShortcuts() {
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
       if (e.key === 'Escape') {
         if (state.view3d) dispatch({ type: 'view3d', on: false })
-        else if (state.playingWalkInId) dispatch({ type: 'play', id: null })
         else if (state.selectedProductId) dispatch({ type: 'selectProduct', id: null })
         else if (state.voice.pending) dispatch({ type: 'setVoice', voice: { pending: null } })
         else if (state.toast) dispatch({ type: 'toast', toast: null })
@@ -72,7 +62,7 @@ function useShortcuts() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [state.view3d, state.playingWalkInId, state.selectedProductId, state.voice.pending, state.toast, canUndo, undo, dispatch])
+  }, [state.view3d, state.selectedProductId, state.voice.pending, state.toast, canUndo, undo, dispatch])
 
   // Closing or reloading the tab while Roomify works would throw the run away: the browser asks first.
   const anyWorking = state.sessions.some(isWorking)

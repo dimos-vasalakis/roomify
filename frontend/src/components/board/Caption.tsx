@@ -1,15 +1,12 @@
-import { Footprints, Play, Rotate3d, RotateCcw, Ruler, Undo2 } from 'lucide-react'
+import { Rotate3d, RotateCcw, Ruler, Undo2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { gsap, reducedMotion, useGSAP } from '../../lib/motion'
-import { canView3D, prepare3D } from '../../lib/depth'
+import { canOpen3D, canView3D, prepare3D } from '../../lib/depth'
 import { PHASES, isWorking, phaseOf, statusText } from '../../lib/session'
 import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
-import { BlockError } from '../common/BlockError'
 import { LiveDot } from '../common/LiveDot'
 
-/** A walk-in always starts from the middle of the near edge, looking into the room. */
-const VIEW = { from: { x: 0.5, y: 0.92 }, aimDeg: 0 }
 
 /** One line under the room: the step the agent is on, or the room's name once it is done, and the room's tools. */
 export function Caption() {
@@ -29,15 +26,15 @@ export function Caption() {
   const phase = phaseOf(s)
   const index = phase ? PHASES.findIndex((p) => p.id === phase) : -1
   const done = s.status === 'done' && !!s.afterSrc
-  // The walk-in of the picture on screen: an older render's walk-in is not this room any more.
-  const walk = s.walkIns.find((w) => !w.src || w.src === s.afterSrc)
-  const making = walk?.status === 'making'
   // A failed room has its own "Back to the last room" on the photo.
   const canUndo = !!s.past?.length && !isWorking(s) && s.status !== 'new' && s.status !== 'failed'
 
   // The room's depth and every piece's 3D model are made as soon as the room is drawn, so the
   // 3D view has them ready (a model takes a minute or two the first time).
   const in3d = done && canView3D(s)
+  // The 3D button is always there; it opens whenever the room has a photo and isn't mid-run.
+  const canOpen = canOpen3D(s)
+  const why3d = !s.beforeSrc ? 'Add a photo of the room first' : isWorking(s) ? 'Roomify is still working on this room' : !canOpen ? 'The 3D room needs the live back end' : undefined
   // Lengths are drawn on the photo whenever the agent isn't busy with it.
   const canMeasure = !!s.beforeSrc && !isWorking(s) && !state.view3d && !s.recorded3d
   const ready3d = in3d ? JSON.stringify([s.id, s.afterSrc, s.recorded3d, s.products.map((p) => [p.id, p.box, p.thumb?.src])]) : ''
@@ -45,13 +42,6 @@ export function Caption() {
     if (ready3d) prepare3D(s)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per set of pieces
   }, [ready3d])
-
-  // A walk-in that just finished plays at once.
-  const was = useRef(walk?.status)
-  useEffect(() => {
-    if (was.current === 'making' && walk?.status === 'ready') dispatch({ type: 'play', id: walk.id })
-    was.current = walk?.status
-  }, [walk?.status, walk?.id, dispatch])
 
   // The step line rolls up when the step changes.
   const key = phase ? `${phase}:${s.now?.text ?? ''}` : `${s.status}:${s.id}`
@@ -124,42 +114,21 @@ export function Caption() {
           >
             <RotateCcw size={16} strokeWidth={2} />
           </button>
-          {in3d && (
-            <button
-              type="button"
-              ref={open3d}
-              data-open-room3d
-              aria-pressed={state.view3d}
-              onClick={() => dispatch({ type: 'view3d', on: !state.view3d })}
-              className={`press inline-flex h-9 items-center gap-1.5 rounded-control px-3.5 text-chrome font-medium ${state.view3d ? 'bg-secondary text-ink' : 'bg-primary text-surface'}`}
-            >
-              <Rotate3d size={15} strokeWidth={2} />
-              {state.view3d ? 'Back to the photo' : 'Look around in 3D'}
-            </button>
-          )}
-          {(!s.offer || s.afterSrc?.startsWith('https://')) &&
-            (walk?.status === 'ready' ? (
-              <button
-                type="button"
-                onClick={() => dispatch({ type: 'play', id: walk.id })}
-                className="press inline-flex h-9 items-center gap-1.5 rounded-control bg-primary px-3.5 text-chrome font-medium text-surface"
-              >
-                <Play size={14} strokeWidth={2.25} className="fill-current" /> Play walk-in
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={making}
-                onClick={() => void actions.makeWalkIn('push', 5, VIEW)}
-                className="press inline-flex h-9 items-center gap-1.5 rounded-control bg-primary px-3.5 text-chrome font-medium text-surface disabled:bg-secondary disabled:text-ink"
-              >
-                {making ? <LiveDot /> : <Footprints size={15} strokeWidth={2} />}
-                {making ? 'Making walk-in… a couple of minutes' : walk?.status === 'failed' ? 'Try walk-in again' : 'Walk-in preview'}
-              </button>
-            ))}
         </div>
       )}
-      <BlockError block="walkin" className="w-full" />
+      <button
+        type="button"
+        ref={open3d}
+        data-open-room3d
+        aria-pressed={state.view3d}
+        disabled={!canOpen && !state.view3d}
+        title={why3d}
+        onClick={() => dispatch({ type: 'view3d', on: !state.view3d })}
+        className={`press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-control px-3.5 text-chrome font-medium disabled:cursor-not-allowed disabled:opacity-45 ${state.view3d ? 'bg-secondary text-ink' : 'bg-primary text-surface'}`}
+      >
+        <Rotate3d size={15} strokeWidth={2} />
+        {state.view3d ? 'Back to the photo' : 'Look around in 3D'}
+      </button>
     </div>
   )
 }

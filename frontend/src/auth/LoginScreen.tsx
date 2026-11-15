@@ -44,7 +44,7 @@ export function LoginScreen({ initialMode = 'in', onBack }: Props) {
           <Mark />
         )}
         <h1 className="mt-8 text-title font-semibold tracking-[-0.01em]">{mode === 'in' ? 'Log in to your rooms' : 'Create an account'}</h1>
-        <p className="mt-1 text-chrome text-muted">Your rooms, baskets and walk-ins are saved to your account.</p>
+        <p className="mt-1 text-chrome text-muted">Your rooms and baskets are saved to your account.</p>
 
         <form onSubmit={submit} className="mt-6 flex flex-col gap-4">
           <div>

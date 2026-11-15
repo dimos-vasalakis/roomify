@@ -45,14 +45,14 @@ export function useLiveSync(signedIn: boolean) {
   }, [needsDetail, active.id, dispatch])
 
   // Follow the open room's run: replay its stored events, then keep listening while it runs.
-  // After a swap or walk-in on a finished run, listen again from the last event seen.
+  // After a swap on a finished run, listen again from the last event seen.
   const runId = LIVE && signedIn && active.loaded ? active.runId : undefined
   const lastSeq = useRef(0)
   lastSeq.current = active.lastSeq ?? 0
   const followed = useRef<string | undefined>(undefined)
-  // Work still owed by the server: a swap in flight or a walk-in being made.
+  // Work still owed by the server: a swap in flight.
   const pending = useRef(false)
-  pending.current = !!state.swapping || active.walkIns.some((w) => w.status === 'making')
+  pending.current = !!state.swapping
   useEffect(() => {
     if (!runId) return
     const id = active.id

@@ -1,14 +1,13 @@
 import { RotateCcw, Undo2 } from 'lucide-react'
 import { Suspense, lazy, useRef } from 'react'
 import { DUR, enter, useGSAP } from '../../lib/motion'
-import { canView3D } from '../../lib/depth'
+import { canOpen3D } from '../../lib/depth'
 import { pictureOf } from '../../lib/session'
 import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
 import type { Product } from '../../types'
 import { BlockError } from '../common/BlockError'
 import { PhoneHandoff } from './PhoneHandoff'
-import { WalkInPlayer } from '../walkin/WalkInPlayer'
 import { Caption } from './Caption'
 import { Compare } from './Compare'
 import { EmptyDrop } from './EmptyDrop'
@@ -25,7 +24,6 @@ export function Board() {
   const frame = useRef<HTMLDivElement>(null)
   const picture = pictureOf(s)
   const done = s.status === 'done' && !!s.afterSrc
-  const playing = s.walkIns.find((w) => w.id === state.playingWalkInId) ?? null
 
   useGSAP(() => void enter(frame.current?.querySelector('[data-picture]') ?? null, { duration: DUR.base }), { scope: frame, dependencies: [s.id] })
 
@@ -111,9 +109,8 @@ export function Board() {
         )}
 
 
-        {playing && s.afterSrc && <WalkInPlayer walk={playing} src={s.afterSrc} />}
 
-        {done && state.view3d && canView3D(s) && (
+        {state.view3d && canOpen3D(s) && (
           <Suspense fallback={<div className="absolute inset-0 z-30 bg-scrim" />}>
             <Room3D key={`3d-${s.id}`} s={s} />
           </Suspense>

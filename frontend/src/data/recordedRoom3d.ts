@@ -63,7 +63,6 @@ export const RECORDED_ROOM: Session = {
   ],
   "rejections": [],
   "alternatives": {},
-  "walkIns": [],
   "ask": null,
   "now": null,
   "offer": true,

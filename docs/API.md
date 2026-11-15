@@ -20,7 +20,6 @@ Shared between the front end (`frontend/src/api/`) and the back end (`backend/ap
 | `GET /runs/{run_id}/events` (stream) | **Needed** |
 | `POST /runs/{run_id}/answer` | **Needed** |
 | `POST /runs/{run_id}/swap` | **Needed** |
-| `POST /runs/{run_id}/walkins` | **Needed** |
 
 The front end already calls every route in this file. Until a route exists, the screen shows the route's error inside the block that needed it; nothing crashes.
 
@@ -57,7 +56,7 @@ Server-sent events. The front end reads it with `fetch` (not `EventSource`), so 
   ```
 - Send a comment line (`: keepalive`) every 15 s so proxies do not cut the stream.
 - On a dropped connection the front end reconnects with `after=<last seq it saw>`.
-- A swap or walk-in on a finished run adds new events to that run. Keep the stream open while that work is pending, then close. The front end reconnects with `after=<last seq>` right after it calls `swap` or `walkins`, and again every 2 s while that work has not reported back, so a stream that closes early only adds a short delay.
+- A swap on a finished run adds new events to that run. Keep the stream open while that work is pending, then close. The front end reconnects with `after=<last seq>` right after it calls `swap`, and again every 2 s while that work has not reported back, so a stream that closes early only adds a short delay.
 
 ### `POST /runs/{run_id}/answer`
 ```json
@@ -71,19 +70,6 @@ Server-sent events. The front end reads it with `fetch` (not `EventSource`), so 
 ```
 → `202`. The agent finds a replacement for that product's slot, re-renders that region, and reports through `product.swapped` and `render.ready` on the run's stream.
 
-### `POST /runs/{run_id}/walkins`
-```json
-{ "from": { "x": 0.2, "y": 0.89 }, "aim_deg": 40, "move": "push", "seconds": 5 }
-```
-- `from`: where the camera stands, 0 to 1 of the latest render's width and height.
-- `aim_deg`: which way it looks. 0 is up the image (into the room), 90 is right, -90 is left.
-- `move`: `push` (walk forward), `orbit` (circle what it looks at), `rise` (lift up).
-- `seconds`: 5 or 8.
-
-→ `201 WalkinOut` with `status: "queued"`. The result arrives on the run's stream as `video.ready` or `walkin.failed`. Uses the latest render of the run.
-
-**Table change needed:** `walkins` has no columns for the spot yet. Add `from_x`, `from_y` (float), `aim_deg` (float), `move` (text), `seconds` (int).
-
 ## Event types
 
 Live offer refinement: `step.started` also accepts optional `phase` (`planning`, `shopping`, `rendering`, `checking`).
@@ -91,7 +77,7 @@ An `error` may include `code`, a sanitized exception class and HTTP status for d
 `product.chosen` may include `reason` (one sentence explaining relevance).
 `plan.ready` carries `{text, slots: string[]}`: a short design direction and the requested pieces.
 Offer completion requires a successful render. Unknown product positions are omitted from `render.ready.items`.
-The client refines an offer by submitting the revised complete brief to `/offer`; receipt-only swaps and walk-ins are not offered on this path.
+The client refines an offer by submitting the revised complete brief to `/offer`; receipt-only swaps are not offered on this path.
 
 The front end ignores types it does not know, so new ones never break it. Names follow `docs/TECH_STACK.md`.
 
@@ -110,9 +96,6 @@ The front end ignores types it does not know, so new ones never break it. Names 
 | `assessment.ready` | `{who, findings: [{thing, verdict, why, box: {x, y, w, h} \| null}], buy: [{slot, why, needs}], advice: string[], source_url \| null}`; `verdict` is `keep`, `remove`, `move`, `replace` or `missing` | A story only (the person said who the room is for, and the agent decides). Dots on the original photo for each finding, coloured by verdict, with `why` on tap. Boxes are 0 to 1 of the photo. `source_url` is the company page any brand fact came from. The same findings also arrive as a `message` |
 | `story.checked` | `{covered: [{need, by}], unclear: string[], open: string[], risks: string[], verdict, judged_by}`; `judged_by` is `oumi` or `llm` | A story only: the basket against the needs. Also said as a `message` |
 | `verify.result` | `{product_id, match, note}` | Reserved; shown later |
-| `walkin.queued` | `{walkin: WalkinOut}` | A walk-in card appears. Sent when `POST /walkins` creates one, so reopening a room replays its walk-ins too |
-| `video.ready` | `{walkin_id, video_url, poster_url}` | Walk-in becomes playable |
-| `walkin.failed` | `{walkin_id, error}` | Walk-in card says why |
 | `error` | `{message, retryable}` | The block-level error. Run becomes `failed` |
 | `done` | `{total_eur, currency}` | Run finished. Every price is in its shop's own currency (`currency` on each product; `plan.ready` also carries the budget's currency) |
 
@@ -134,11 +117,6 @@ ProductOut = {
   delivery_text: string | null
   in_stock: boolean | null
 }
-
-WalkinOut = {
-  id: string
-  status: "queued" | "ready" | "failed"
-  from: { x: number, y: number }
   aim_deg: number
   move: "push" | "orbit" | "rise"
   seconds: 5 | 8

@@ -9,7 +9,7 @@ phone / laptop ──photo, prompt, budget──▶ FastAPI ──▶ agent loop
                                               │            │
                                               │            ├─ tools via treg: product search, page fetch, maps
                                               │            ├─ oumi: judge extracted products, score candidates
-                                              │            ├─ fal: render the room, swap one item, walk-in video
+                                              │            ├─ fal: render the room, swap one item
                                               │            └─ cache: every tool result on disk, replayable
                                               ▼
 React app ◀──server-sent events: every step, decision, rejection, render──
@@ -34,7 +34,6 @@ React app ◀──server-sent events: every step, decision, rejection, render�
 | Render | fal `google/nano-banana-2.1/edit` (up to 14 reference images, about $0.04 at 1K, about 16 s) | Best reported at keeping specific products recognisable | `bytedance/seedream/v5.5/edit`, then `fal-ai/nano-banana-pro/edit` |
 | Render check | Gemini vision compares each product's crop in the render with its listing photo | The step competitors skip | Side-by-side for the human |
 | One-item swap | Re-render from the original photo with the new list, then paste only that item's region back with Pillow and a mask | Rest of the room stays pixel-identical | Full re-render |
-| Walk-in video | fal `minimax/h3-max/camera-controls` (about $0.08 per second at 768p) | "Scene frozen, only the camera moves" | `kling/v4/image-to-video`, `fal-ai/veo3.1/fast/image-to-video` |
 | 3D room: products | fal `fal-ai/meshy/v7.1/multi-image-to-3d` from up to four shop photos (a Gemini vision check picks the whole-product photos and which side each shows), about $1.20 and 2 to 3 min per product, made once | The back and sides of the model are the shop's own photos, not a guess | `fal-ai/trellis-2` from the main photo, then `fal-ai/trellis` |
 | 3D room: the room | fal `fal-ai/moge-2` measures the shell picture in metres with the lens's field of view (about $0.02, 5 to 10 s); walls are fitted as straight lines and the picture painted onto them where the camera saw them | Pieces at their listed size match the picture; walk all the way round | Depth Anything v2 depth, scaled from the pieces' listed heights |
 | 3D room: what was already there | Gemini vision lists the furniture in the shell; each is redrawn alone on white (`nano-banana-2/edit`) and modelled with `fal-ai/trellis-2`, sized from MoGe's measurements | The room's own furniture stands in 3D instead of being painted flat on the floor | Painted on the room's surfaces |
@@ -46,8 +45,7 @@ React app ◀──server-sent events: every step, decision, rejection, render�
 ## fal: where it is used
 1. **Render** the room with the chosen products (`render_room`).
 2. **Swap** one item (`swap_item`), same model, then the mask paste.
-3. **Walk-in** camera move (`make_walkin`), started in the background as soon as the render passes its check.
-4. Stretch: one product as a 3D model.
+3. Stretch: one product as a 3D model.
 
 All fal calls go through `backend/app/tools/fal_client.py`, use the queue API with a timeout, and fall back to the cache.
 
@@ -86,7 +84,6 @@ The model chooses which tool to call next. Tools are plain Python functions in `
 | `render_room(photo, products)` | Rendered image | fal |
 | `verify_render(render, products)` | Per-product match or mismatch | Gemini vision |
 | `swap_item(slot, instruction)` | New product and new render | search + oumi + fal |
-| `make_walkin(render)` | Video URL | fal |
 
 ## Data shapes
 
@@ -108,7 +105,7 @@ class Product(BaseModel):
 ```
 
 SSE events, all JSON with `type`, `run_id`, `t`:
-`message`, `step.started`, `step.result`, `ask`, `fit.proof`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `product.removed`, `budget.update`, `budget.changed` (`{budget_eur}`: the person changed the budget in words), `render.ready`, `assessment.ready`, `story.checked`, `verify.result`, `video.ready`, `error`, `done`.
+`message`, `step.started`, `step.result`, `ask`, `fit.proof`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `product.removed`, `budget.update`, `budget.changed` (`{budget_eur}`: the person changed the budget in words), `render.ready`, `assessment.ready`, `story.checked`, `verify.result`, `error`, `done`.
 
 ## Shops and the scraper (`backend/app/tools/`)
 Flow: the LLM turns the photo and the user's words into a `ProductSpec` (item names as shops print them, keywords, exclude, an English `meaning`, max price and size) → `find_products(spec)` searches the catalogues (word matching, minus built-in other senses such as whiteboards for πίνακας), lets one text-only LLM pass (`tools/relevance.py`) keep only names that are the item, best first, with a reason for the ones it turns away, reads the top 20 pages 4 at a time, and returns verified `candidates` plus `rejected` with a plain reason each ("Width 160 cm, your space allows 140 cm") → oumi ranks the candidates → fal renders the top 3.
@@ -147,7 +144,7 @@ API routes (all except `/health` need `Authorization: Bearer <supabase access to
 `GEMINI_API_KEY`, `FAL_KEY`, `TREG_TOKEN`, and the optional direct fallbacks `SERPER_API_KEY`, `FIRECRAWL_API_KEY`. Plus `REPLAY`, `RETAILERS`, `DEFAULT_CITY`. Database and login: `DATABASE_URL` (Supabase session pooler), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_JWT_SECRET` (older projects only), `FRONTEND_ORIGINS`.
 
 ## Cost per full run (estimate)
-Three renders (about $0.12), one 5-second video (about $0.40), 10 to 20 search and scrape calls through treg (a few cents), Gemini and judge calls (cents). About **$0.60 per run**.
+Three renders (about $0.12), 10 to 20 search and scrape calls through treg (a few cents), Gemini and judge calls (cents). About **$0.20 per run**.
 
 ## Kickoff tests (20:00, before any feature)
 | Test | Pass | If it fails |
@@ -155,4 +152,3 @@ Three renders (about $0.12), one 5-second video (about $0.40), 10 to 20 search a
 | 1. Fidelity: room photo + 4 product photos into the render model | A stranger matches each product to its listing; walls and windows don't move | Try the two backups. If all fail, stop and rethink the pitch |
 | 2. Search and read: 10 Greek queries through treg, read the pages | Image, price and size come back for most | Direct provider keys, then a hand-built catalogue of 100 items |
 | 3. oumi: run one judge config against Gemini on 5 extracted products | Judge returns per-field verdicts | Same prompts through `llm()`, keep oumi for the offline eval |
-| 4. Walk-in: one render into the video model | Products stay recognisable | Cut the video |

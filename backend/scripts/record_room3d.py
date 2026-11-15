@@ -96,7 +96,7 @@ def record(shell_path: Path, photo_path: Path, cache: Path, output: Path) -> Non
             "group": "Earlier", "updatedLabel": "Recorded demo", "status": "done",
             "beforeSrc": asset(read(photo_path)["result"]["image_url"], ".jpg"),
             "afterSrc": asset(shell["inputs"]["render_url"], ".jpg"),
-            "products": products, "rejections": [], "alternatives": {}, "walkIns": [],
+            "products": products, "rejections": [], "alternatives": {},
             "ask": None, "now": None, "offer": True, "recorded3d": "/demo3d/scene.json",
             "chat": [{"role": "agent", "text": "Recorded 3D demo. These are saved shop listings and generated models, not a live shopping run. Prices are from the recording. Open the 3D view to explore the room and inspect each piece."}],
         }

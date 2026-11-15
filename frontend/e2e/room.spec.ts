@@ -79,8 +79,6 @@ test('real agent stream: steps, before/after, pins, a reply, and restore', async
   await expect(page.getByLabel('Schedule of pieces').getByRole('link', { name: /Shop/ })).toHaveAttribute('href', /ikea\.gr/)
   await expect(page.getByRole('button', { name: 'Another like it' })).toBeVisible()
 
-  // Real conversations have no walk-in yet.
-  await expect(page.getByRole('button', { name: /walk in/i })).toHaveCount(0)
 
   // A question gets a reply and keeps the basket.
   await say(page, 'How wide is the desk?')
@@ -395,5 +393,25 @@ test('the 3D room builds from the empty photo, and a piece without a model stand
   await page.getByRole('button', { name: 'Top', exact: true }).click()
   await page.keyboard.press('Escape')
   await expect(room).toHaveCount(0)
+  expect(errors).toEqual([])
+})
+
+test('the 3D button is always there: off without a photo, the room from the photo alone before any picture', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await page.route(/\/depth\/photo$/, (r) => r.fulfill({ json: { depth_url: 'http://127.0.0.1:4173/fake-depth.png', image_url: '', width: 2, height: 2 } }))
+  await page.route('http://127.0.0.1:4173/fake-depth.png', (r) => r.fulfill({ contentType: 'image/png', body: fakeDepth() }))
+  await newRoom(page)
+  const open = page.getByRole('button', { name: 'Look around in 3D' })
+  await expect(open).toBeDisabled()
+  await expect(open).toHaveAttribute('title', 'Add a photo of the room first')
+  await upload(page)
+  await expect(open).toBeEnabled()
+  await open.click()
+  const room = page.locator('[data-room3d]')
+  await expect(room.getByText('Your room in 3D', { exact: true })).toBeVisible({ timeout: 15_000 })
+  await page.keyboard.press('Escape')
+  await expect(room).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /walk-?in/i })).toHaveCount(0)
   expect(errors).toEqual([])
 })

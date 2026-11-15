@@ -1,4 +1,4 @@
-"""Supabase Storage: room photos, renders and walk-in videos, in one private bucket.
+"""Supabase Storage: room photos and renders, in one private bucket.
 
 Rows store the object path; the front end gets a short-lived signed URL.
 """

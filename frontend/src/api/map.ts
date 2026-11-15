@@ -1,6 +1,6 @@
 /* Turn the back end's shapes into the screen's room model, and fold run events into a room. */
-import type { Product, Session, SessionStatus, WalkIn } from '../types'
-import type { ConversationDetail, ConversationSummary, ProductOut, RunEvent, RunStatus, WalkinOut } from './wire'
+import type { Product, Session, SessionStatus } from '../types'
+import type { ConversationDetail, ConversationSummary, ProductOut, RunEvent, RunStatus } from './wire'
 
 const DAY = 86_400_000
 
@@ -72,7 +72,6 @@ export function blank(id: string): Session {
     products: [],
     rejections: [],
     alternatives: {},
-    walkIns: [],
     ask: null,
     now: null,
     loaded: false,
@@ -96,20 +95,6 @@ function product(p: ProductOut, slot: string): Product {
     box: { x: 0.45, y: 0.45, w: 0.1, h: 0.1 },
     thumb: { src: p.image_url },
     placed: false,
-  }
-}
-
-export function walkIn(w: WalkinOut): WalkIn {
-  return {
-    id: w.id,
-    from: w.from,
-    aimDeg: w.aim_deg,
-    move: w.move,
-    seconds: w.seconds,
-    status: w.status === 'queued' ? 'making' : w.status,
-    createdAt: new Date(w.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-    videoUrl: w.video_url,
-    posterUrl: w.poster_url,
   }
 }
 
@@ -180,18 +165,6 @@ export function applyEvent(s: Session, e: RunEvent): Session {
         products: s.products.map((p) => ({ ...p, placed: boxes.has(p.id), ...(boxes.has(p.id) ? { box: boxes.get(p.id)!, anchor: points.get(p.id) } : {}) })),
       }
     }
-    case 'walkin.queued':
-      if (s.walkIns.some((w) => w.id === e.data.walkin.id)) return s
-      return { ...s, walkIns: [walkIn(e.data.walkin), ...s.walkIns] }
-    case 'video.ready':
-      return {
-        ...s,
-        walkIns: s.walkIns.map((w) =>
-          w.id === e.data.walkin_id ? { ...w, status: 'ready', videoUrl: e.data.video_url, posterUrl: e.data.poster_url } : w,
-        ),
-      }
-    case 'walkin.failed':
-      return { ...s, walkIns: s.walkIns.map((w) => (w.id === e.data.walkin_id ? { ...w, status: 'failed', error: e.data.error } : w)) }
     case 'error':
       return {
         ...s,

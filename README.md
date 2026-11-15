@@ -12,7 +12,6 @@ Built during a 36-hour hackathon.
 - **Visible decisions.** Follow the agent's progress, inspect its choices and see why candidates were rejected.
 - **A room you can revise.** Add, remove, move or replace pieces through item controls or natural language. Compare the furnished preview with the original photo.
 - **Interactive 3D.** Orbit the reconstructed room, switch camera angles, zoom and inspect individual product models alongside their listing photos and dimensions.
-- **Walk-in preview.** Generate a short camera-move video from the furnished room.
 - **Voice and phone capture.** Speak a brief or transfer a room photo from a phone using a QR code.
 
 The preview and 3D models are reconstructions, not exact product replicas or architectural surveys. Unseen surfaces and details are approximate; the original shop listing remains the reference.
@@ -39,7 +38,7 @@ Use `?replay=3d&stage=1` for larger projector text. See the [3D demo guide](docs
 
 - Python 3.12
 - Node.js 22.12+ and npm
-- A fal API key for live rendering, 3D model generation and walk-in previews
+- A fal API key for live rendering, 3D model generation
 
 Supabase is optional for the browser-based demo flow. It is used for account access and saved-data routes.
 
@@ -105,7 +104,7 @@ Tables are defined in [backend/app/db/tables.py](backend/app/db/tables.py); migr
 - **Frontend:** React, TypeScript, Vite and Tailwind CSS, with GSAP for interface motion and Three.js for the 3D viewer.
 - **API and agent:** Python and FastAPI. The agent loop lives in [backend/app/agent/loop.py](backend/app/agent/loop.py); progress streams to the browser over server-sent events.
 - **Shopping and evaluation:** Local retailer catalogues, page extraction and evidence-based basket checks, with optional Serper, Firecrawl and Oumi integrations.
-- **Generation:** fal handles room rendering, product meshes, room geometry and walk-in video. Model access is centralized in [backend/app/llm.py](backend/app/llm.py).
+- **Generation:** fal handles room rendering, product meshes and room geometry. Model access is centralized in [backend/app/llm.py](backend/app/llm.py).
 - **Persistence and hosting:** Supabase for database, storage and authentication; Vercel for the frontend and Render for the backend.
 
 External model and service results pass through the [cache layer](backend/app/cache.py). Backend `REPLAY=1` reads matching cache records without making external calls; it requires an existing recording. The bundled `?replay=3d` demo is independent of that backend mode.
