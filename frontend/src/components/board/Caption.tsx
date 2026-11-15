@@ -1,6 +1,7 @@
-import { Footprints, Play, RotateCcw } from 'lucide-react'
+import { Footprints, Play, Rotate3d, RotateCcw } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { gsap, reducedMotion, useGSAP } from '../../lib/motion'
+import { canView3D, depthOf } from '../../lib/depth'
 import { PHASES, phaseOf, statusText } from '../../lib/session'
 import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
@@ -12,7 +13,7 @@ const VIEW = { from: { x: 0.5, y: 0.92 }, aimDeg: 0 }
 
 /** One line under the room: the step the agent is on, or the room's name once it is done, and the room's tools. */
 export function Caption() {
-  const { active: s, dispatch } = useStore()
+  const { state, active: s, dispatch } = useStore()
   const actions = useActions()
   const line = useRef<HTMLDivElement>(null)
   const phase = phaseOf(s)
@@ -20,6 +21,12 @@ export function Caption() {
   const done = s.status === 'done' && !!s.afterSrc
   const walk = s.walkIns[0]
   const making = walk?.status === 'making'
+
+  // The depth map is asked for as soon as the room is drawn, so the 3D view opens at once.
+  const in3d = done && canView3D(s.afterSrc) ? s.afterSrc : null
+  useEffect(() => {
+    if (in3d) depthOf(in3d).catch(() => {})
+  }, [in3d])
 
   // A walk-in that just finished plays at once.
   const was = useRef(walk?.status)
@@ -81,6 +88,17 @@ export function Caption() {
           >
             <RotateCcw size={16} strokeWidth={2} />
           </button>
+          {in3d && (
+            <button
+              type="button"
+              aria-pressed={state.view3d}
+              onClick={() => dispatch({ type: 'view3d', on: !state.view3d })}
+              className={`press inline-flex h-9 items-center gap-1.5 rounded-control px-3.5 text-chrome font-medium ${state.view3d ? 'bg-secondary text-ink' : 'bg-primary text-surface'}`}
+            >
+              <Rotate3d size={15} strokeWidth={2} />
+              {state.view3d ? 'Back to the photo' : 'Look around in 3D'}
+            </button>
+          )}
           {!s.offer &&
             (walk?.status === 'ready' ? (
               <button

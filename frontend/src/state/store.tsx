@@ -27,6 +27,8 @@ export type State = {
   /** The viewpoint being placed, before the user confirms it. */
   draft: { from: Point; aimDeg: number } | null
   playingWalkInId: string | null
+  /** The finished room is open in the 3D view. */
+  view3d: boolean
   compare: boolean
   /** Live mode: the rooms list is loading. */
   roomsLoading: boolean
@@ -60,6 +62,7 @@ export type Action =
   | { type: 'createWalkIn'; move: WalkMove; seconds: 5 | 8; view?: { from: Point; aimDeg: number } }
   | { type: 'walkInReady'; id: string }
   | { type: 'play'; id: string | null }
+  | { type: 'view3d'; on: boolean }
   | { type: 'toggleCompare' }
   | { type: 'setRooms'; sessions: Session[] }
   | { type: 'upsertRoom'; session: Session; select?: boolean }
@@ -87,6 +90,7 @@ const clearTransient = {
   walkMode: false,
   draft: null,
   playingWalkInId: null,
+  view3d: false,
   compare: false,
 } as const
 
@@ -257,6 +261,9 @@ function reducer(state: State, action: Action): State {
     case 'play':
       return { ...state, playingWalkInId: action.id, selectedProductId: null, walkMode: false, draft: null }
 
+    case 'view3d':
+      return { ...state, view3d: action.on, playingWalkInId: null, selectedProductId: null, walkMode: false, draft: null }
+
     case 'toggleCompare':
       return { ...state, compare: !state.compare, walkMode: false, draft: null, selectedProductId: null }
 
@@ -380,6 +387,7 @@ const initial: State = {
   walkMode: false,
   draft: null,
   playingWalkInId: null,
+  view3d: false,
   compare: false,
   roomsLoading: LIVE,
   errors: {},

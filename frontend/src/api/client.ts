@@ -4,6 +4,7 @@ import type {
   ConversationDetail,
   ConversationSummary,
   ProfileOut,
+  DepthOut,
   RunSummary,
   WalkinOut,
 } from './wire'
@@ -72,4 +73,6 @@ export const api = {
     request<void>(`/runs/${runId}/swap`, { method: 'POST', body: json({ product_id: productId, instruction }) }),
   walkIn: (runId: string, body: { from: { x: number; y: number }; aim_deg: number; move: string; seconds: number }) =>
     request<WalkinOut>(`/runs/${runId}/walkins`, { method: 'POST', body: json(body) }),
+  depth: (imageUrl: string) =>
+    request<DepthOut>('/depth', { method: 'POST', body: json({ image_url: imageUrl }), signal: AbortSignal.timeout(60_000) }),
 }

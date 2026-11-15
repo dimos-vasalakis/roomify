@@ -57,14 +57,15 @@ function useShortcuts() {
       }
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
       if (e.key === 'Escape') {
-        if (state.playingWalkInId) dispatch({ type: 'play', id: null })
+        if (state.view3d) dispatch({ type: 'view3d', on: false })
+        else if (state.playingWalkInId) dispatch({ type: 'play', id: null })
         else if (state.selectedProductId) dispatch({ type: 'selectProduct', id: null })
         else if (state.voice.pending) dispatch({ type: 'setVoice', voice: { pending: null } })
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [state.playingWalkInId, state.selectedProductId, state.voice.pending, dispatch])
+  }, [state.view3d, state.playingWalkInId, state.selectedProductId, state.voice.pending, dispatch])
 }
 
 /** The board: rooms rail, the room, and the conversation. */

@@ -1,11 +1,13 @@
 import { RotateCcw } from 'lucide-react'
 import { useRef, useSyncExternalStore } from 'react'
 import { DUR, enter, useGSAP } from '../../lib/motion'
+import { canView3D } from '../../lib/depth'
 import { pictureOf } from '../../lib/session'
 import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
 import type { Product } from '../../types'
 import { BlockError } from '../common/BlockError'
+import { Room3D } from '../room3d/Room3D'
 import { WalkInPlayer } from '../walkin/WalkInPlayer'
 import { Caption } from './Caption'
 import { Compare } from './Compare'
@@ -108,6 +110,8 @@ export function Board() {
         {selected && <PinCard product={selected} picture={picture} currency={s.currency} onClose={() => dispatch({ type: 'selectProduct', id: null })} />}
 
         {playing && s.afterSrc && <WalkInPlayer walk={playing} src={s.afterSrc} />}
+
+        {done && state.view3d && canView3D(s.afterSrc) && <Room3D key={`3d-${s.id}`} s={s} />}
 
         {s.status === 'failed' && s.error && (
           <div className="absolute inset-x-4 bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-card bg-surface px-4 py-3 sm:right-auto sm:max-w-md">

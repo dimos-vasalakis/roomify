@@ -61,6 +61,9 @@ export type ProductOut = {
 
 export type BoxOut = { x: number; y: number; w: number; h: number }
 
+/** POST /depth: the render's depth map, white near and black far. */
+export type DepthOut = { depth_url: string; width: number; height: number }
+
 export type WalkinOut = {
   id: string
   status: 'queued' | 'ready' | 'failed'
