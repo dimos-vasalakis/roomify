@@ -25,6 +25,8 @@ The back end must list this app's address in its `FRONTEND_ORIGINS` (add the Ver
 ## Other switches
 
 - `?stage=1` scales everything up 12.5% for a projector.
+- `?replay=3d` opens the portable recorded 3D room. No backend or keys required;
+  all five textured meshes and room assets ship locally. See [the demo guide](../docs/3D_DEMO.md).
 
 ## Where things live
 
@@ -53,10 +55,14 @@ totals, keyboard comparison, brief edits, refinement, tab reload, HTTP errors,
 truncated streams, CRLF events, unknown events, and replay network isolation.
 Screenshots are saved under `test-results/`; failures retain a Playwright trace.
 
+The 3D tests load the real committed GLBs at both widths and check camera controls,
+product inspection, focus containment, replay network isolation and recovery from
+failed models and room preparation. The recording is read-only.
+
 The test-only backend (`backend/tests/e2e_app.py`) uses the production routes and
 agent loop with deterministic planning, shop, judge and render fixtures. It never
 calls paid providers or writes to Supabase. Synthetic images check the interface,
-not furniture quality. Do not deploy this test server.
+not new furniture generation quality. Do not deploy this test server.
 
 Other checks, from `backend/`:
 

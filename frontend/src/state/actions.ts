@@ -53,6 +53,10 @@ export function useActions() {
    * The room's conversation and basket go with it, so the server keeps no state.
    */
   const talk = async (text: string, room: Partial<Session> = {}, block: Block = 'start', intent?: Intent) => {
+    if (active.recorded3d || !OFFERS) {
+      dispatch({ type: 'toast', toast: { text: active.recorded3d ? 'This is a recorded room. Start a new room to make a live design.' : 'Live design is unavailable in replay. Open the app without replay to make a design.' } })
+      return
+    }
     const said = text.trim()
     if (!said) return
     await guard(block, active.id, async () => {

@@ -29,6 +29,8 @@ MULTI_TIMEOUT_S = 210  # about three minutes in practice
 MODEL = "fal-ai/trellis-2"
 FALLBACK = "fal-ai/trellis"
 TIMEOUT_S = 150
+PRODUCT_TIMEOUT_S = 380  # below the browser's 420 s deadline, including all fallbacks
+ENRICH_TIMEOUT_S = 75  # optional measurements/objects must not hold the shell indefinitely
 # New models are paid compute: a ceiling per hour, so a loop or a stranger can't run up a bill.
 # Models already made are free and never count.
 NEW_PER_HOUR = 40
@@ -116,13 +118,17 @@ async def product_model(image_url: str, page_url: str | None = None, title: str 
     """The product from every side its shop photographed, or from its main photo alone."""
     if not (image_url.startswith("https://") and is_public_url(image_url)):
         raise Model3DError("That product photo can't be used for a 3D model.")
-    views = await product_views(image_url, page_url, title)
-    if len(views.image_urls) >= 2:
-        try:
-            return await _from_views(views.image_urls, views.sides)
-        except Model3DError as exc:
-            log.warning("Multi-view model failed (%s); one photo instead", exc)
-    return await _from_one_photo(views.image_urls[0])
+    try:
+        async with asyncio.timeout(PRODUCT_TIMEOUT_S):
+            views = await product_views(image_url, page_url, title)
+            if len(views.image_urls) >= 2:
+                try:
+                    return await _from_views(views.image_urls, views.sides)
+                except Model3DError as exc:
+                    log.warning("Multi-view model failed (%s); one photo instead", exc)
+            return await _from_one_photo(views.image_urls[0])
+    except TimeoutError as exc:
+        raise Model3DError("The 3D model took too long. The piece can still be shown as a photo.") from exc
 
 
 class PhotoDepth(Depth):
@@ -139,12 +145,19 @@ async def _measured(shell: PhotoDepth) -> PhotoDepth:
 
     async def geometry() -> Geometry | None:
         try:
-            return await room_geometry(shell.image_url)
-        except (DepthError, ReplayMiss) as exc:
+            return await asyncio.wait_for(room_geometry(shell.image_url), ENRICH_TIMEOUT_S)
+        except (DepthError, ReplayMiss, TimeoutError) as exc:
             log.warning("Room not measured (%s)", exc)
             return None
 
-    measured, objects = await asyncio.gather(geometry(), room_objects(shell.image_url))
+    async def existing() -> list[RoomObject]:
+        try:
+            return await asyncio.wait_for(room_objects(shell.image_url), ENRICH_TIMEOUT_S)
+        except TimeoutError:
+            log.warning("Existing furniture preparation took too long; keeping it in the room photo")
+            return []
+
+    measured, objects = await asyncio.gather(geometry(), existing())
     return shell.model_copy(update={"geometry": measured, "objects": objects})
 
 

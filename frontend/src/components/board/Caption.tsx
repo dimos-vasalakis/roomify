@@ -16,6 +16,16 @@ export function Caption() {
   const { state, active: s, dispatch } = useStore()
   const actions = useActions()
   const line = useRef<HTMLDivElement>(null)
+  const open3d = useRef<HTMLButtonElement>(null)
+  const was3d = useRef(state.view3d)
+  useEffect(() => {
+    const closed = was3d.current && !state.view3d
+    was3d.current = state.view3d
+    if (!closed) return
+    // Restore from the surviving control, after the expanded viewer restores its background.
+    const frame = requestAnimationFrame(() => open3d.current?.focus({ preventScroll: true }))
+    return () => cancelAnimationFrame(frame)
+  }, [state.view3d])
   const phase = phaseOf(s)
   const index = phase ? PHASES.findIndex((p) => p.id === phase) : -1
   const done = s.status === 'done' && !!s.afterSrc
@@ -28,7 +38,7 @@ export function Caption() {
   // The room's depth and every piece's 3D model are made as soon as the room is drawn, so the
   // 3D view has them ready (a model takes a minute or two the first time).
   const in3d = done && canView3D(s)
-  const ready3d = in3d ? `${s.beforeSrc.slice(-40)}|${s.products.map((p) => p.thumb?.src).join('|')}` : ''
+  const ready3d = in3d ? JSON.stringify([s.id, s.afterSrc, s.recorded3d, s.products.map((p) => [p.id, p.box, p.thumb?.src])]) : ''
   useEffect(() => {
     if (ready3d) prepare3D(s)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per set of pieces
@@ -104,6 +114,8 @@ export function Caption() {
           {in3d && (
             <button
               type="button"
+              ref={open3d}
+              data-open-room3d
               aria-pressed={state.view3d}
               onClick={() => dispatch({ type: 'view3d', on: !state.view3d })}
               className={`press inline-flex h-9 items-center gap-1.5 rounded-control px-3.5 text-chrome font-medium ${state.view3d ? 'bg-secondary text-ink' : 'bg-primary text-surface'}`}

@@ -163,3 +163,36 @@ def test_only_roomify_renders_get_a_shell() -> None:
     with TestClient(app) as client:
         got = client.post("/depth/shell", json=SHELL | {"render_url": "https://example.com/a.jpg"})
     assert got.status_code == 422
+
+
+async def test_optional_room_measurements_and_objects_cannot_hold_the_shell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    async def slow(*_args: object) -> None:
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(model3d, "ENRICH_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(model3d, "room_geometry", slow)
+    monkeypatch.setattr(model3d, "room_objects", slow)
+    shell = model3d.PhotoDepth(
+        image_url="https://v3b.fal.media/room.jpg",
+        depth_url="https://v3b.fal.media/depth.png", width=30, height=20,
+    )
+    result = await model3d._measured(shell)
+    assert result.geometry is None
+    assert result.objects == []
+    assert result.image_url == shell.image_url
+
+
+async def test_model_fallbacks_share_one_total_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    async def slow(*_args: object) -> None:
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(model3d, "PRODUCT_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(model3d, "product_views", slow)
+    with pytest.raises(model3d.Model3DError, match="took too long"):
+        await model3d.product_model(PHOTO)

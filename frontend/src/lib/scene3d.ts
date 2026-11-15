@@ -29,7 +29,7 @@ export type Piece = {
   /** The shop's photo: laid on a rug. */
   photo: string | null
   /** Resolves to the GLB of the product, made from its shop photos. */
-  model: Promise<string> | null
+  model: Promise<string | null> | null
   /** Already in the room (cut out of the photo), not one of the chosen pieces. */
   existing?: boolean
   onTop?: boolean
@@ -42,6 +42,8 @@ export type Scene3D = {
   /** Circle one piece, close, to see it from every side; null goes back to the room. */
   focus: (id: string | null) => void
   setAuto: (on: boolean) => void
+  orbit: (horizontal: number, vertical: number) => void
+  zoom: (factor: number) => void
   dispose: () => void
 }
 type Options = {
@@ -70,6 +72,7 @@ const FLY_S = 1.5
 type Pose = { target: THREE.Vector3; spherical: THREE.Spherical }
 
 export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
+  let dirty = true
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
   renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -157,6 +160,7 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
   // ---- The camera ----
   const camera = new THREE.PerspectiveCamera(room.vfov, 1.5, 0.05, 100)
   const controls = new OrbitControls(camera, canvas)
+  controls.addEventListener('change', () => { dirty = true })
   controls.enableDamping = true
   controls.dampingFactor = 0.08
   controls.enablePan = false
@@ -175,7 +179,9 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
   const sidePose = (name: Exclude<ViewName, 'photo'>): Pose => {
     const turn = SIDE_DEG[name] * RAD
     const dir = room.axisT.clone().multiplyScalar(Math.cos(turn)).addScaledVector(room.axisS, Math.sin(turn))
-    const distance = (roomRadius / Math.sin((camera.fov * RAD) / 2)) * 1.02
+    const halfY = camera.fov * RAD / 2
+    const halfX = Math.atan(Math.tan(halfY) * camera.aspect)
+    const distance = (roomRadius / Math.sin(Math.min(halfY, halfX))) * 1.02
     const target = centre.clone().setY(floorY + 0.7)
     const elevation = name === 'top' ? 86 * RAD : ELEVATION
     return { target, spherical: new THREE.Spherical(distance, Math.PI / 2 - elevation, Math.atan2(dir.x, dir.z)) }
@@ -217,6 +223,7 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
   type Placed = { id: string; group: THREE.Group; place: Placement; top: number; existing: boolean }
   const placed: Placed[] = []
   const loader = new GLTFLoader()
+  const downloads = new AbortController()
   const accent = new THREE.Color(o.accent)
   const growing: { pivot: THREE.Object3D; t: number }[] = []
   const billboards: THREE.Mesh[] = []
@@ -247,6 +254,7 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
           material.map = texture
           material.color.set(0xffffff)
           material.needsUpdate = true
+          dirty = true
         })
       o.onPiece(p.id, 'ready')
       continue
@@ -262,15 +270,21 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
     o.onPiece(p.id, 'modelling')
 
     const asCard = () => {
+      // Keep the outline if neither image is available; never leave a vanished piece running.
+      const source = o.render ?? o.photo
+      o.onPiece(p.id, 'card')
+      dirty = true
+      if (!source) return
       group.remove(outline)
-      if (!o.render) return
+      outline.geometry.dispose()
+      outline.material.dispose()
       // No model: the piece as the render shows it, on a card that turns to face the camera.
       const crop = document.createElement('canvas')
-      const iw = o.render.naturalWidth
-      const ih = o.render.naturalHeight
+      const iw = source.naturalWidth
+      const ih = source.naturalHeight
       crop.width = Math.max(1, Math.round(p.box.w * iw))
       crop.height = Math.max(1, Math.round(p.box.h * ih))
-      crop.getContext('2d')!.drawImage(o.render, p.box.x * iw, p.box.y * ih, p.box.w * iw, p.box.h * ih, 0, 0, crop.width, crop.height)
+      crop.getContext('2d')!.drawImage(source, p.box.x * iw, p.box.y * ih, p.box.w * iw, p.box.h * ih, 0, 0, crop.width, crop.height)
       const texture = new THREE.CanvasTexture(crop)
       texture.colorSpace = THREE.SRGBColorSpace
       const card = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, side: THREE.DoubleSide }))
@@ -285,9 +299,16 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
       continue
     }
     p.model
-      .then((url) => loader.loadAsync(url))
+      .then((url) => {
+        if (disposed || !url) throw new Error('No model')
+        // A dead asset URL must reach the same labelled fallback as a failed generation.
+        return fetch(url, { signal: AbortSignal.any([downloads.signal, AbortSignal.timeout(45_000)]) }).then(async (response) => {
+          if (!response.ok) throw new Error('Model unavailable')
+          return loader.parseAsync(await response.arrayBuffer(), new URL('.', new URL(url, location.href)).href)
+        })
+      })
       .then((gltf) => {
-        if (disposed) return
+        if (disposed) return disposeObject(gltf.scene)
         const model = gltf.scene
         fitModel(model, place, p)
         model.traverse((child) => {
@@ -298,12 +319,16 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
         })
         const pivot = new THREE.Group()
         pivot.add(model)
-        pivot.scale.setScalar(0.001)
+        const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+        pivot.scale.setScalar(reduce ? 1 : 0.95)
         group.remove(outline)
+        outline.geometry.dispose()
+        outline.material.dispose()
         group.add(pivot)
         entry.top = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()).y
-        growing.push({ pivot, t: 0 })
+        if (!reduce) growing.push({ pivot, t: 0 })
         o.onPiece(p.id, 'ready')
+        dirty = true
       })
       .catch(() => {
         if (!disposed) asCard()
@@ -315,8 +340,9 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
   let down: { x: number; y: number } | null = null
   const onDown = (e: PointerEvent) => (down = { x: e.clientX, y: e.clientY })
   const onUp = (e: PointerEvent) => {
-    if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return
+    const origin = down
     down = null
+    if (!origin || Math.hypot(e.clientX - origin.x, e.clientY - origin.y) > 5) return
     const rect = canvas.getBoundingClientRect()
     raycaster.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1), camera)
     const hit = raycaster.intersectObjects(placed.filter((x) => !x.existing).map((x) => x.group), true)[0]
@@ -339,6 +365,7 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
     // Wider than the photo on a narrow screen: show all of it rather than crop the room.
     camera.fov = Math.max(room.vfov, (2 * Math.atan((Math.tan((room.vfov * RAD) / 2) * room.aspect) / camera.aspect)) / RAD)
     camera.updateProjectionMatrix()
+    dirty = true
   }
   const observer = new ResizeObserver(resize)
   observer.observe(canvas)
@@ -370,7 +397,9 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
     for (const w of walls) {
       toCamera.copy(camera.position).sub(w.surface.origin)
       const goal = toCamera.dot(w.surface.inward) > 0.05 ? 1 : 0
+      const before = w.opacity
       w.opacity += clamp(goal - w.opacity, -dt / FADE_S, dt / FADE_S)
+      if (w.opacity !== before) dirty = true
       w.material.opacity = w.opacity
       w.material.transparent = w.opacity < 1
       w.material.depthWrite = w.opacity > 0.5
@@ -384,14 +413,16 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
       card.rotation.y = Math.atan2(camera.position.x - tmp.x, camera.position.z - tmp.z) - parent.rotation.y
     }
     for (const g of growing) {
+      if (g.t >= 1) continue
+      dirty = true
       g.t = Math.min(1, g.t + dt / 0.5)
-      g.pivot.scale.setScalar(Math.max(0.001, 1 - Math.pow(1 - g.t, 3)))
+      g.pivot.scale.setScalar(1 - 0.05 * Math.pow(1 - g.t, 3))
     }
-    renderer.render(scene, camera)
+    if (dirty) renderer.render(scene, camera)
 
     const cw = canvas.clientWidth
     const ch = canvas.clientHeight
-    o.onPins(
+    if (dirty) o.onPins(
       placed.filter((x) => !x.existing).map(({ id, group, top }) => {
         tmp.set(0, top, 0).applyMatrix4(group.matrixWorld).project(camera)
         const x = ((tmp.x + 1) / 2) * cw
@@ -399,6 +430,7 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
         return { id, x, y, visible: tmp.z < 1 && x > -20 && y > -20 && x < cw + 20 && y < ch + 20 }
       }),
     )
+    dirty = false
     raf = requestAnimationFrame(frame)
   }
   raf = requestAnimationFrame(frame)
@@ -424,30 +456,47 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
     setAuto: (on) => {
       auto = on
     },
+    orbit: (horizontal, vertical) => {
+      auto = false
+      const pose = poseOf(controls.target.clone(), camera.position)
+      pose.spherical.theta += horizontal
+      pose.spherical.phi = clamp(pose.spherical.phi + vertical, 0.08, Math.PI / 2 - 0.02)
+      fly(pose)
+    },
+    zoom: (factor) => {
+      auto = false
+      const pose = poseOf(controls.target.clone(), camera.position)
+      pose.spherical.radius = clamp(pose.spherical.radius * factor, controls.minDistance, controls.maxDistance)
+      fly(pose)
+    },
     dispose: () => {
       disposed = true
+      downloads.abort()
       cancelAnimationFrame(raf)
       observer.disconnect()
       controls.dispose()
       canvas.removeEventListener('pointerdown', onDown)
       canvas.removeEventListener('pointerup', onUp)
-      scene.traverse((child) => {
-        const mesh = child as THREE.Mesh
-        if (!mesh.isMesh && !(child as THREE.LineSegments).isLineSegments) return
-        mesh.geometry?.dispose()
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-        for (const m of mats) {
-          if (!m) continue
-          for (const value of Object.values(m)) if (value instanceof THREE.Texture) value.dispose()
-          m.dispose()
-        }
-      })
+      disposeObject(scene)
       textures.forEach((t) => t.dispose())
       environment.dispose()
       pmrem.dispose()
       renderer.dispose()
     },
   }
+}
+
+function disposeObject(root: THREE.Object3D) {
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh
+    if (!mesh.isMesh && !(child as THREE.LineSegments).isLineSegments) return
+    mesh.geometry?.dispose()
+    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      if (!m) continue
+      for (const value of Object.values(m)) if (value instanceof THREE.Texture) value.dispose()
+      m.dispose()
+    }
+  })
 }
 
 /** A surface as two triangles facing into the room, its texture running from `origin`. */

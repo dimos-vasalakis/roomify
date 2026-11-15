@@ -73,7 +73,9 @@ Every mistake and every failure has a way back. Keep it that way when adding any
 "Look around in 3D" once a room is done. It is a real 3D scene, not a warped picture:
 - **Your room** is your own empty photo, pushed back by its depth with straight walls and a flat floor; its edges fade into the dark once the camera moves, so nothing is invented beyond what the photo saw.
 - **Every piece** is a 3D model made from its shop photo, at its listed size, where the preview put it; soft shadows on the floor. While a model is being made its real-size outline shows in pine and the caption says "Modelling the desk in 3D…"; a piece without a model stands in flat, and the caption says so.
-- **Opening:** the preview you just saw dissolves into the 3D room from the same viewpoint, then the camera swings round and sways until you drag. Front / Left / Right / Above, drag to walk round (about 50° each way), scroll to come closer; Escape closes. Price pins stay on their pieces.
+- **Opening:** the preview dissolves into the 3D room, then the camera rises to show the room. Photo / Front / Left / Right / Back / Top; drag to orbit all the way round, scroll or pinch to zoom. A camera choice or drag stays put; rotation is an explicit play/pause control. Keyboard arrows turn the room, +/− zoom, Home resets. Escape closes and returns focus to the opening button. Full screen gives the room the stage on desktop and a usable canvas on phones.
+- **Inspection:** price pins and a compact piece picker both focus a product. Its shop photo, recorded dimensions, price and shop link stay one interaction away, including on phones. Model progress and flat-photo fallbacks are labelled; inferred room geometry and unseen product sides are never presented as a measured scan or exact replica.
+- **Recorded demo:** `?replay=3d` loads the committed room, depth, measurements and GLBs locally. The room is explicitly labelled as recorded, with prices from the recording. Opening it never requests generation or a shop page.
 - Never call the walk-in video 3D; this view is the 3D room.
 
 ## Walk-in

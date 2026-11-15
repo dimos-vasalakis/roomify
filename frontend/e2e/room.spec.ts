@@ -380,7 +380,6 @@ function fakeDepth(): Buffer {
 }
 
 test('the 3D room builds from the empty photo, and a piece without a model stands in flat', async ({ page }) => {
-  test.skip(phone(page), 'Same scene on phones')
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   await page.route(/\/depth\/photo$/, (r) => r.fulfill({ json: { depth_url: 'http://127.0.0.1:4173/fake-depth.png', image_url: '', width: 2, height: 2 } }))
@@ -389,10 +388,10 @@ test('the 3D room builds from the empty photo, and a piece without a model stand
   await start(page)
   await done(page)
   await page.getByRole('button', { name: 'Look around in 3D' }).click()
-  const room = page.getByRole('region', { name: /in 3D$/ })
-  await expect(room.getByText(/^3D view · drag/)).toBeVisible({ timeout: 15_000 })
+  const room = page.locator('[data-room3d]')
+  await expect(room.getByText('Your room in 3D', { exact: true })).toBeVisible({ timeout: 15_000 })
   await expect(room.getByText(/Shown flat: desk/)).toBeVisible({ timeout: 15_000 })
-  await expect(room.getByRole('button', { name: /Desk, €219.00/ })).toBeAttached()
+  await expect(room.getByRole('button', { name: /Desk, €219.00: inspect in 3D/ })).toBeAttached()
   await page.getByRole('button', { name: 'Top', exact: true }).click()
   await page.keyboard.press('Escape')
   await expect(room).toHaveCount(0)

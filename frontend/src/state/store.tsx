@@ -465,7 +465,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const ids = new Set(rooms.map((s) => s.id))
       // Saved rooms first, then the samples; an untouched blank room is not worth keeping.
       const rest = base.sessions.filter((s) => !ids.has(s.id) && (s.status !== 'new' || s.beforeSrc || SAMPLE_IDS.has(s.id)))
-      if (rooms.length) return withReveal({ ...base, sessions: [...rooms, ...rest], activeId: rooms[0].id })
+      if (rooms.length) return withReveal({ ...base, sessions: [...rooms, ...rest], activeId: SAMPLES[0]?.recorded3d ? SAMPLES[0].id : rooms[0].id })
     } catch { /* Storage may be unavailable; the workspace still works. */ }
     return withReveal(base)
   })

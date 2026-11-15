@@ -177,6 +177,16 @@ Deprecated: returns 409 with instructions to refresh and adjust the brief. The c
 
 
 ## The 3D room (`/depth/shell`, `/depth/photo`, `/model3d`)
+
+The portable front-end recording (`?replay=3d`) uses local assets and calls none of
+these endpoints. See [3D_DEMO.md](3D_DEMO.md) for recording and demo instructions.
+Live shell requests allow up to 270 seconds (edit, depth and optional enrichment);
+photo-depth requests allow 160 seconds. Optional measurements and existing-object
+preparation each stop after 75 seconds and fall back to the room photo/depth.
+Product model generation has one 380-second deadline shared by gallery reading
+and every generation fallback, below the client's 420-second timeout. Downloading
+a finished GLB has a separate 45-second client deadline and falls back to a photo.
+
 - `POST /depth/shell`, JSON `{"render_url": "<the room picture, fal-hosted>", "pieces": [{"name": "sofa: HELLERUP 3-seater", "box": {"x", "y", "w", "h"}}]}` (1 to 8 pieces, boxes 0 to 1 of the frame) → `{"depth_url", "width", "height", "image_url", "geometry", "objects"}`: the finished render with those pieces taken out (one image edit on fal) and its depth. This is the room the 3D models stand in, so a piece the design replaced or removed is not left behind in 3D. Saved for good per render and pieces; about 20 to 40 s the first time. Only Roomify renders (`422`); a failure is `502` with a readable `detail`, and the front end then falls back to `/depth/photo`.
   - `geometry`: the room measured in metres (MoGe-2 on fal), or `null` when it couldn't be: `{"fov_y", "fov_x", "cols", "rows", "distance"}`, where `distance` is `(cols + 1) × (rows + 1)` metres from the camera along each grid ray, row by row from the top left, `0` where unknown. Grid point `(i, j)` looks through `(i / cols, j / rows)` of the picture.
   - `objects`: what already stands in the room (a side table, a coffee table, a bowl on it), each `{"name", "box", "on_top", "crop_url"}`; `crop_url` is that object alone on white, drawn from its cut-out (one image edit on fal), to model with `/model3d`. Walls, windows, curtains, rugs and pictures are never listed: they stay painted on the room's surfaces. `[]` when none could be listed.

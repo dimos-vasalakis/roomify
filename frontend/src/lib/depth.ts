@@ -1,12 +1,12 @@
 import { api } from '../api/client'
-import { API_URL } from '../api/config'
+import { API_URL, OFFERS } from '../api/config'
 import type { Model3DOut } from '../api/wire'
 import type { Product, Session } from '../types'
 import type { Geometry } from './roomShell'
 
 /** The 3D room needs the back end (depth and models), the room's own photo and placed pieces. */
 export const canView3D = (s: Session): boolean =>
-  !!API_URL && !!s.beforeSrc && s.status === 'done' && s.products.some((p) => p.placed !== false && !!p.thumb?.src)
+  !!(s.recorded3d || OFFERS) && !!s.beforeSrc && s.status === 'done' && s.products.some((p) => p.placed !== false && !!p.thumb?.src)
 
 /** Asked for once per page; a failure is forgotten so it can be tried again. */
 function once<T>(cache: Map<string, Promise<T>>, key: string, make: () => Promise<T>): Promise<T> {
@@ -33,6 +33,20 @@ const roomDepthOf = (photoSrc: string) =>
 /** Something already standing in the room, cut out of the picture to be modelled. */
 export type RoomObject = { name: string; box: Product['box']; on_top: boolean; crop_url: string }
 type Shell = { photo: string; depth: string; geometry: Geometry | null; objects: RoomObject[] }
+type Recording = { capturedAt: string; shell: Shell; models: Record<string, Model3DOut> }
+const recordings = new Map<string, Promise<Recording>>()
+const recordingOf = (url: string) => once(recordings, url, async () => {
+  const response = await fetch(url, { signal: AbortSignal.timeout(20_000) })
+  if (!response.ok) throw new Error("Couldn't load the recorded room. Refresh to try again.")
+  return response.json() as Promise<Recording>
+})
+
+async function recordedModel(s: Session, photo: string): Promise<Model3DOut> {
+  const recording = await recordingOf(s.recorded3d!)
+  const model = recording.models[photo]
+  if (!model) throw new Error('This piece has no recorded 3D model.')
+  return model
+}
 const shells = new Map<string, Promise<Shell>>()
 
 /** A room picture Roomify made (fal storage): the only kind the back end makes a shell from. */
@@ -47,8 +61,7 @@ async function askShell(render: string, pieces: ReturnType<typeof shellPieces>):
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ render_url: render, pieces }),
-    // The first time takes a minute or two (usually already started when the render was drawn).
-    signal: AbortSignal.timeout(300_000),
+    signal: AbortSignal.timeout(270_000), // image edit (120), depth (45), optional enrichment (75)
   })
   const body = await response.json().catch(() => null)
   if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : "Couldn't prepare the room for 3D.")
@@ -60,6 +73,7 @@ async function askShell(render: string, pieces: ReturnType<typeof shellPieces>):
  * the design replaced or removed is not left behind in 3D. Without a render, the person's own photo.
  */
 export function roomShellOf(s: Session): Promise<Shell> {
+  if (s.recorded3d) return recordingOf(s.recorded3d).then((r) => r.shell)
   const pieces = shellPieces(s)
   const render = s.afterSrc
   const fromPhoto = () => roomDepthOf(s.beforeSrc)
@@ -69,17 +83,17 @@ export function roomShellOf(s: Session): Promise<Shell> {
 }
 
 /** A 3D model of something already in the room, from its cut-out of the picture. */
-export const objectModelOf = (o: RoomObject) => once(models, o.crop_url, () => api.model3d(o.crop_url, '', o.name))
+export const objectModelOf = (o: RoomObject, s: Session) => s.recorded3d ? recordedModel(s, o.crop_url) : once(models, o.crop_url, () => api.model3d(o.crop_url, '', o.name))
 
 /** A product's 3D model, from the shop's photos of it (its page's gallery). */
-export const modelOf = (p: Product) => once(models, p.thumb!.src, () => api.model3d(p.thumb!.src, p.url, p.title))
+export const modelOf = (p: Product, s: Session) => s.recorded3d ? recordedModel(s, p.thumb!.src) : once(models, p.thumb!.src, () => api.model3d(p.thumb!.src, p.url, p.title))
 
 /** Start everything the 3D room needs as soon as a room is finished, so it opens fast. */
 export function prepare3D(s: Session) {
   if (!canView3D(s)) return
   void import('../components/room3d/Room3D').catch(() => {}) // the viewer's code, ahead of the click
   roomShellOf(s)
-    .then((shell) => shell.objects.forEach((o) => objectModelOf(o).catch(() => {})))
+    .then((shell) => shell.objects.forEach((o) => objectModelOf(o, s).catch(() => {})))
     .catch(() => {})
-  for (const p of s.products) if (p.placed !== false && p.thumb?.src) modelOf(p).catch(() => {})
+  for (const p of s.products) if (p.placed !== false && p.thumb?.src) modelOf(p, s).catch(() => {})
 }

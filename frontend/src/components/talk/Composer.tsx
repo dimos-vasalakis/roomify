@@ -1,5 +1,6 @@
 import { ArrowUp, LoaderCircle, Mic, Square } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { API_URL } from '../../api/config'
 import { money } from '../../lib/format'
 import { instructionOf, productNamed, widthIn } from '../../lib/match'
 import { useMicBars } from '../../lib/micLevel'
@@ -127,6 +128,7 @@ export function Composer() {
   const { start, stop, cancel } = speech
   const listening = speech.listening
   useEffect(() => {
+    if (s.recorded3d || state.view3d) return
     const down = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && listening) {
         e.preventDefault()
@@ -151,7 +153,7 @@ export function Composer() {
       window.removeEventListener('keydown', down, true)
       window.removeEventListener('keyup', up)
     }
-  }, [start, stop, cancel, listening, busy, state.playingWalkInId])
+  }, [start, stop, cancel, listening, busy, state.playingWalkInId, s.recorded3d, state.view3d])
 
   const placeholder = busy
     ? 'Type your next message; it sends when Roomify is done'
@@ -164,6 +166,14 @@ export function Composer() {
           : 'Swap a piece, like “a warmer lamp”'
   const pending = state.voice.pending
   const note = hint ?? speech.error ?? (pending ? `Which piece? Tap it on the room for “${pending}”.` : null)
+
+  if (s.recorded3d) return (
+    <div className="rounded-board bg-surface p-4 text-chrome text-ink">
+      <p className="font-semibold">Explore this recorded room</p>
+      <p className="mt-1 text-muted">Orbit the room, inspect each piece and open its shop listing. This recording stays as captured.</p>
+      {API_URL && <a href="/?demo=1" className="press mt-3 inline-flex min-h-9 items-center rounded-control bg-primary px-3 font-semibold text-surface">Open a live room</a>}
+    </div>
+  )
 
   return (
     <div className="flex flex-col gap-2">

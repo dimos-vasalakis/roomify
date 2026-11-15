@@ -83,7 +83,7 @@ export const api = {
   photoDepth: (photo: Blob) => {
     const form = new FormData()
     form.append('photo', photo, 'room.jpg')
-    return request<PhotoDepthOut>('/depth/photo', { method: 'POST', body: form, signal: AbortSignal.timeout(90_000) })
+    return request<PhotoDepthOut>('/depth/photo', { method: 'POST', body: form, signal: AbortSignal.timeout(160_000) })
   },
   /** A real 3D model (GLB) of one product, made from the shop's photos of it from every side its page shows.
    *  The first time takes up to about three minutes. */

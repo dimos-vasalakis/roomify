@@ -72,6 +72,8 @@ export type LiveStep =
   | { kind: 'rejected'; rejection: Rejection }
 
 export type Session = {
+  /** Portable, explicitly labelled 3D recording; all assets are local. */
+  recorded3d?: string
   id: string
   name: string
   city: string

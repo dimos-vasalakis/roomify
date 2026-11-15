@@ -106,7 +106,7 @@ export function Sheet() {
                     n={i + 1}
                     p={p}
                     currency={s.currency}
-                    busy={busy || !s.offer}
+                    busy={busy || !s.offer || !!s.recorded3d}
                     selected={state.selectedProductId === p.id}
                     onSelect={() => dispatch({ type: 'selectProduct', id: state.selectedProductId === p.id ? null : p.id })}
                   />
