@@ -573,29 +573,54 @@ function distanceToSeen(seen: Float32Array, W: number, H: number) {
  */
 function floorPatch(p: Painted): Base | null {
   const { W, H } = p
-  // How many unseen texels in each rectangle, in O(1), from a summed table.
-  const sum = new Float64Array((W + 1) * (H + 1))
+  // Summed tables: unseen texels, brightness and brightness squared, each rectangle in O(1).
+  const stride = W + 1
+  const unseenSum = new Float64Array(stride * (H + 1))
+  const lumSum = new Float64Array(stride * (H + 1))
+  const lum2Sum = new Float64Array(stride * (H + 1))
   for (let r = 0; r < H; r++)
-    for (let i = 0; i < W; i++)
-      sum[(r + 1) * (W + 1) + i + 1] = (p.weight[r * W + i] >= 0.99 ? 0 : 1) + sum[r * (W + 1) + i + 1] + sum[(r + 1) * (W + 1) + i] - sum[r * (W + 1) + i]
-  const unseen = (x: number, y: number, n: number) =>
-    sum[(y + n) * (W + 1) + x + n] - sum[y * (W + 1) + x + n] - sum[(y + n) * (W + 1) + x] + sum[y * (W + 1) + x]
-  for (let n = Math.min(W, H, Math.round(1.2 * PX_PER_M)); n >= Math.round(0.35 * PX_PER_M); n = Math.round(n * 0.8)) {
-    const step = Math.max(4, Math.round(n / 6))
+    for (let i = 0; i < W; i++) {
+      const k = r * W + i
+      const l = 0.299 * p.rgb[k * 3] + 0.587 * p.rgb[k * 3 + 1] + 0.114 * p.rgb[k * 3 + 2]
+      const at = (r + 1) * stride + i + 1
+      const up = r * stride + i + 1
+      const left = (r + 1) * stride + i
+      const diag = r * stride + i
+      unseenSum[at] = (p.weight[k] >= 0.99 ? 0 : 1) + unseenSum[up] + unseenSum[left] - unseenSum[diag]
+      lumSum[at] = l + lumSum[up] + lumSum[left] - lumSum[diag]
+      lum2Sum[at] = l * l + lum2Sum[up] + lum2Sum[left] - lum2Sum[diag]
+    }
+  const box = (t: Float64Array, x: number, y: number, n: number) => t[(y + n) * stride + x + n] - t[y * stride + x + n] - t[(y + n) * stride + x] + t[y * stride + x]
+  for (let size = Math.min(W, H, Math.round(1 * PX_PER_M)); size >= Math.round(0.3 * PX_PER_M); size = Math.round(size * 0.8)) {
+    let n = size
+    const step = Math.max(4, Math.round(n / 8))
+    // The calmest clean square: a sunbeam or a shadow repeated across the floor would be a pattern.
+    let best: { x: number; y: number; spread: number } | null = null
     for (let y = 0; y + n <= H; y += step)
       for (let x = 0; x + n <= W; x += step) {
-        if (unseen(x, y, n) > 0) continue
-        const patch = new Float32Array(n * n * 3)
-        for (let r = 0; r < n; r++) for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) patch[(r * n + i) * 3 + c] = p.rgb[((y + r) * W + x + i) * 3 + c]
-        const mirror = (v: number) => {
-          const m = v % (2 * n)
-          return m < n ? m : 2 * n - 1 - m
-        }
-        return (i, r) => {
-          const k = (mirror(r) * n + mirror(i)) * 3
-          return [patch[k] * 0.92 + 238 * 0.08, patch[k + 1] * 0.92 + 235 * 0.08, patch[k + 2] * 0.92 + 230 * 0.08]
-        }
+        if (box(unseenSum, x, y, n) > 0) continue
+        const area = n * n
+        const mean = box(lumSum, x, y, n) / area
+        const spread = Math.sqrt(Math.max(0, box(lum2Sum, x, y, n) / area - mean * mean))
+        if (!best || spread < best.spread) best = { x, y, spread }
       }
+    if (!best) continue
+    // A few texels in from the square's edge: edges carry a hint of skirting or shadow that,
+    // mirrored, would draw faint lines across the floor.
+    const margin = Math.max(2, Math.round(n * 0.04))
+    const x = best.x + margin
+    const y = best.y + margin
+    n -= 2 * margin
+    const patch = new Float32Array(n * n * 3)
+    for (let r = 0; r < n; r++) for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) patch[(r * n + i) * 3 + c] = p.rgb[((y + r) * W + x + i) * 3 + c]
+    const mirror = (v: number) => {
+      const m = v % (2 * n)
+      return m < n ? m : 2 * n - 1 - m
+    }
+    return (i, r) => {
+      const k = (mirror(r) * n + mirror(i)) * 3
+      return [patch[k] * 0.92 + 238 * 0.08, patch[k + 1] * 0.92 + 235 * 0.08, patch[k + 2] * 0.92 + 230 * 0.08]
+    }
   }
   return null
 }
