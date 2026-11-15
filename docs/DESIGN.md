@@ -55,6 +55,16 @@ A pine dot with a white ring on each placed piece. Click: a small card next to i
 - First message: "What do you need, and what's the budget?" A budget written in the sentence ("€300") is read from it; otherwise the budget chip above the composer is used (editable).
 - **Speak in:** tap the mic and talk (it sends by itself a moment after you stop), or hold Space and let go. A thin live waveform of the real microphone level replaces the input text while listening; in Chrome and Edge the words appear as they are heard. Browsers without their own speech recognition (Firefox, Brave, Safari, in-app browsers, phones) send the recording to `POST /transcribe` and show “Writing down what you said…” for a second. Escape throws the sentence away.
 
+## Nothing is ever a dead end
+Every mistake and every failure has a way back. Keep it that way when adding anything.
+- **Undo (Ctrl Z):** each message saves the room as it was (last five). "Undo" in the caption goes back one step and puts the message back in the composer to edit.
+- **Stop:** while Roomify works, the send button becomes Stop. It ends the run and restores the room as it was, message back in the box. You can type the next message while it works.
+- **Failures:** a run that fails halfway keeps "Back to the last room" next to "Try again". A message that never reached the agent comes back to the composer.
+- **Budget:** click the budget in the header at any time and type a new one (from €20). Over budget shows "Bring it under €x" (asks the agent for the same room for less) and "Raise budget to €y".
+- **Deleting a room:** gone at once with "Undo" in a toast for six seconds; the server only deletes after that.
+- **Reloads:** rooms with a photo survive a reload. A room that was mid-run comes back as "The page was reloaded before Roomify finished", with Back and Try again; the browser asks before leaving while Roomify works.
+- **Input:** drafts are kept per room; a wall width reads "160", "160 cm", "1.6 m" or "3,2m"; a file that isn't a photo is named in the error; a pin's Swap goes in front of what you typed, never over it; the same message can't be sent twice by a double press.
+
 ## Walk-in
 One "Walk in" button in the caption row once the room is done. It makes a 5 s push-in from the middle of the near edge and plays inside the room frame, labelled "Walk-in preview" (never 3D). While it is being made the button reads "Making walk-in…". Real conversations (offers) don't have walk-ins yet; asking "show it from the door" in words changes the view instead.
 

@@ -2,13 +2,19 @@ import { ApiError, api } from '../api/client'
 import { LIVE, OFFERS } from '../api/config'
 import { followTurn } from '../api/stream'
 import { fromDetail, fromSummary, walkIn } from '../api/map'
-import { roomName } from '../lib/format'
+import { money, roomName } from '../lib/format'
+import { compose, isWorking, totalOf } from '../lib/session'
 import { toRoomPhoto } from '../lib/photo'
 import type { Session, WalkMove } from '../types'
-import { DRAFT_ID, useStore, type Block } from './store'
+import { DRAFT_ID, MAX_PAST, checkpointOf, useStore, type Block } from './store'
 
 /** The prepared photo of each room, kept for sending with the offer. */
 const photos = new Map<string, Blob>()
+/** The open stream of each room's message, so Stop can end it. */
+const streams = new Map<string, () => void>()
+/** Rooms deleted a moment ago: the server delete waits, so Undo can bring them back. */
+const deleting = new Map<string, ReturnType<typeof setTimeout>>()
+const UNDO_MS = 6000
 
 const message = (err: unknown) =>
   err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Something went wrong. Try again.'
@@ -53,10 +59,15 @@ export function useActions() {
       const s = { ...active, ...room }
       const name = s.name === 'New room' ? roomName(said) : s.name
       const history = s.chat ?? []
+      // The room as it is now, so Undo, Stop or a failure can come back to it. A failed room is
+      // not a place to come back to: its own checkpoint is already saved.
+      const past = active.status === 'failed' || isWorking(active)
+        ? active.past ?? []
+        : [...(active.past ?? []), checkpointOf(active, said)].slice(-MAX_PAST)
       dispatch({
         type: 'patchRoom',
         id,
-        patch: { ...room, name, prompt: s.prompt || said, offer: true, ask: null, status: 'shopping', error: undefined,
+        patch: { ...room, name, prompt: s.prompt || said, offer: true, ask: null, status: 'shopping', error: undefined, past,
                  chat: [...history, { role: 'user', text: said }], now: { text: 'Thinking about what you said', startedAt: Date.now() } },
       })
       if (LIVE && name !== active.name) void api.renameRoom(id, name).catch(() => undefined)
@@ -74,29 +85,69 @@ export function useActions() {
       if (s.afterSrc?.startsWith('https://')) form.append('render_url', s.afterSrc)
       let got = 0
       let completed = false
-      followTurn(form, {
+      const stop = followTurn(form, {
         onEvent: (event) => {
           got += 1
           if (event.type === 'done' || event.type === 'error' || event.type === 'ask') completed = true
           dispatch({ type: 'runEvent', id, event })
         },
         onEnd: () => {
+          streams.delete(id)
           if (!completed) dispatch({ type: 'patchRoom', id, patch: { status: 'failed', now: null, error: { what: 'The connection ended before the agent finished. Try again.', lastGood: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) } } })
         },
         onTrouble: (problem) => {
+          streams.delete(id)
           // Nothing arrived: back where we were, with the reason. Mid-way: keep what was found.
           if (!got) {
-            dispatch({ type: 'patchRoom', id, patch: { status: s.products.length ? 'done' : 'new', now: null, chat: history } })
+            dispatch({ type: 'patchRoom', id, patch: { status: s.products.length ? 'done' : 'new', now: null, chat: history, past: active.past ?? [] } })
+            compose(said) // the message comes back to the composer, ready to send again
             dispatch({ type: 'setError', block, sessionId: id, message: problem })
           } else {
             dispatch({ type: 'patchRoom', id, patch: { status: 'failed', now: null, error: { what: problem, lastGood: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) } } })
           }
         },
       })
+      streams.set(id, stop)
     })
   }
 
+  /** Back to the room before the last message: the message returns to the composer to edit. */
+  const undo = (id = active.id) => {
+    const room = state.sessions.find((x) => x.id === id)
+    const back = room?.past?.at(-1)
+    if (!room || !back) return
+    streams.get(id)?.()
+    streams.delete(id)
+    dispatch({ type: 'undo', id })
+    if (id === active.id) compose(back.said)
+    dispatch({ type: 'toast', toast: { text: `Back to the room before “${back.said.length > 48 ? back.said.slice(0, 47) + '…' : back.said}”` } })
+  }
+
   return {
+    undo,
+
+    /** Stop the agent mid-message: the room goes back to how it was. */
+    stop() {
+      if (active.past?.length) return undo(active.id)
+      streams.get(active.id)?.()
+      streams.delete(active.id)
+      dispatch({ type: 'patchRoom', id: active.id, patch: { status: active.products.length ? 'done' : 'new', now: null } })
+    },
+
+    /** A budget can change at any time; the next message carries it to the agent. */
+    setBudget(eur: number) {
+      const value = Math.round(eur)
+      if (!Number.isFinite(value) || value < 20 || value === active.budgetEur) return
+      dispatch({ type: 'patchRoom', id: active.id, patch: { budgetEur: value } })
+    },
+
+    /** Over budget: ask for the same room for less. */
+    fitBudget() {
+      const target = money(active.budgetEur, active.currency)
+      const over = money(totalOf(active) - active.budgetEur, active.currency)
+      return talk(`That is ${over} over my budget. Bring the total under ${target}: swap the priciest pieces for cheaper ones that still fit, and keep the rest.`, {}, 'swap')
+    },
+
     async newRoom() {
       if (!LIVE) return dispatch({ type: 'newRoom' })
       await guard('rooms', active.id, async () => {
@@ -115,11 +166,34 @@ export function useActions() {
       if (!ok && before) dispatch({ type: 'renameRoom', id, name: before })
     },
 
-    async deleteRoom(id: string) {
-      if (!LIVE || id === DRAFT_ID) return dispatch({ type: 'removeRoom', id })
-      await guard('rooms', id, async () => {
-        await api.deleteRoom(id)
-        dispatch({ type: 'removeRoom', id })
+    /** Gone at once, with Undo for a few seconds; the server only deletes once that has passed. */
+    deleteRoom(id: string) {
+      const room = state.sessions.find((x) => x.id === id)
+      if (!room) return
+      streams.get(id)?.()
+      streams.delete(id)
+      const index = state.sessions.findIndex((x) => x.id === id)
+      dispatch({ type: 'removeRoom', id })
+      const forGood = () => {
+        deleting.delete(id)
+        if (!LIVE || id === DRAFT_ID) return
+        api.deleteRoom(id).catch((err: unknown) => {
+          // The server kept it: show it again rather than pretend it is gone.
+          dispatch({ type: 'restoreRoom', session: room, index })
+          dispatch({ type: 'setError', block: 'rooms', sessionId: '', message: message(err) })
+        })
+      }
+      deleting.set(id, setTimeout(forGood, UNDO_MS))
+      dispatch({
+        type: 'toast',
+        toast: {
+          text: `Deleted “${room.name}”`,
+          undo: () => {
+            clearTimeout(deleting.get(id))
+            deleting.delete(id)
+            dispatch({ type: 'restoreRoom', session: room, index, select: true })
+          },
+        },
       })
     },
 

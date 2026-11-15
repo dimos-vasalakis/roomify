@@ -1,4 +1,4 @@
-import { RotateCcw } from 'lucide-react'
+import { RotateCcw, Undo2 } from 'lucide-react'
 import { useRef } from 'react'
 import { DUR, enter, useGSAP } from '../../lib/motion'
 import { canView3D } from '../../lib/depth'
@@ -107,21 +107,34 @@ export function Board() {
         {done && state.view3d && canView3D(s.afterSrc) && <Room3D key={`3d-${s.id}`} s={s} />}
 
         {s.status === 'failed' && s.error && (
-          <div className="absolute inset-x-4 bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-card bg-surface px-4 py-3 sm:right-auto sm:max-w-md">
+          <div className="absolute inset-x-4 bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-card bg-surface px-4 py-3 sm:right-auto sm:max-w-xl">
             <div className="min-w-0">
               <p className="flex items-center gap-2 text-chrome font-semibold text-ink">
                 <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-negative" />
                 {s.error.what}
               </p>
-              <p className="mt-0.5 text-small text-muted">Your photo and brief are kept for another try.</p>
+              <p className="mt-0.5 text-small text-muted">
+                {s.past?.length ? 'Nothing is lost: go back to the room as it was, or try the message again.' : 'Your photo and brief are kept for another try.'}
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => (s.offer ? void actions.retry() : void actions.reloadRoom(s.id))}
-              className="press inline-flex h-9 items-center gap-1.5 rounded-control bg-primary px-3 text-chrome font-medium text-surface"
-            >
-              <RotateCcw size={14} strokeWidth={2} /> Try again
-            </button>
+            <div className="flex shrink-0 gap-1.5">
+              {!!s.past?.length && (
+                <button
+                  type="button"
+                  onClick={() => actions.undo()}
+                  className="press inline-flex h-9 items-center gap-1.5 rounded-control px-3 text-chrome font-medium text-ink ring-1 ring-control hover:ring-ink"
+                >
+                  <Undo2 size={14} strokeWidth={2} /> Back to the last room
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => (s.offer ? void actions.retry() : void actions.reloadRoom(s.id))}
+                className="press inline-flex h-9 items-center gap-1.5 rounded-control bg-primary px-3 text-chrome font-medium text-surface"
+              >
+                <RotateCcw size={14} strokeWidth={2} /> Try again
+              </button>
+            </div>
           </div>
         )}
       </div>

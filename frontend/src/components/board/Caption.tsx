@@ -1,8 +1,8 @@
-import { Footprints, Play, Rotate3d, RotateCcw } from 'lucide-react'
+import { Footprints, Play, Rotate3d, RotateCcw, Undo2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { gsap, reducedMotion, useGSAP } from '../../lib/motion'
 import { canView3D, depthOf } from '../../lib/depth'
-import { PHASES, phaseOf, statusText } from '../../lib/session'
+import { PHASES, isWorking, phaseOf, statusText } from '../../lib/session'
 import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
 import { BlockError } from '../common/BlockError'
@@ -21,6 +21,8 @@ export function Caption() {
   const done = s.status === 'done' && !!s.afterSrc
   const walk = s.walkIns[0]
   const making = walk?.status === 'making'
+  // A failed room has its own "Back to the last room" on the photo.
+  const canUndo = !!s.past?.length && !isWorking(s) && s.status !== 'new' && s.status !== 'failed'
 
   // The depth map is asked for as soon as the room is drawn, so the 3D view opens at once.
   const in3d = done && canView3D(s.afterSrc) ? s.afterSrc : null
@@ -77,8 +79,12 @@ export function Caption() {
         </p>
       </div>
 
+      {canUndo && !done && (
+        <UndoButton onClick={() => actions.undo()} />
+      )}
       {done && (
         <div className="flex shrink-0 items-center gap-1.5">
+          {canUndo && <UndoButton onClick={() => actions.undo()} />}
           <button
             type="button"
             onClick={() => dispatch({ type: 'replayReveal' })}
@@ -123,5 +129,19 @@ export function Caption() {
       )}
       <BlockError block="walkin" className="w-full" />
     </div>
+  )
+}
+
+/** Back to the room before the last message (Ctrl Z). */
+function UndoButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Undo the last change (Ctrl Z)"
+      className="press inline-flex h-9 items-center gap-1.5 rounded-control px-2.5 text-chrome font-medium text-ink hover:bg-raised"
+    >
+      <Undo2 size={15} strokeWidth={2} /> Undo
+    </button>
   )
 }

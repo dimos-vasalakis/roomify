@@ -7,13 +7,18 @@ import { PhoneHandoff } from './PhoneHandoff'
 
 /** The empty room: one frame to drop a photo into. */
 export function EmptyDrop() {
-  const { dispatch } = useStore()
+  const { dispatch, active } = useStore()
   const actions = useActions()
   const [over, setOver] = useState(false)
   const sample = SAMPLES.find((s) => s.status === 'done')
 
   const take = (file?: File | null) => {
-    if (file && file.type.startsWith('image/')) void actions.setPhoto(file)
+    if (!file) return
+    if (!file.type.startsWith('image/') && !/\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)) {
+      dispatch({ type: 'setError', block: 'photo', sessionId: active.id, message: `“${file.name}” isn’t a photo. Use a JPEG, PNG or WebP.` })
+      return
+    }
+    void actions.setPhoto(file)
   }
 
   return (

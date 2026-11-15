@@ -1,7 +1,7 @@
 import { ArrowUp, LoaderCircle, Mic, Square } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { money } from '../../lib/format'
-import { instructionOf, productNamed } from '../../lib/match'
+import { instructionOf, productNamed, widthIn } from '../../lib/match'
 import { useMicBars } from '../../lib/micLevel'
 import { useSpeech } from '../../lib/speech'
 import { isWorking } from '../../lib/session'
@@ -10,6 +10,9 @@ import { useStore } from '../../state/store'
 
 const BARS = 32
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
+
+/** What was typed in each room and not sent yet: switching rooms never throws a sentence away. */
+const drafts = new Map<string, string>()
 
 /** "€300", "300 euros", "300€" in a sentence. */
 const budgetIn = (text: string) => {
@@ -25,32 +28,57 @@ const budgetIn = (text: string) => {
 export function Composer() {
   const { state, active: s, dispatch } = useStore()
   const actions = useActions()
-  const [text, setText] = useState('')
+  const [text, setRawText] = useState(() => drafts.get(s.id) ?? '')
+  const room = s.id
+  const setText = useCallback(
+    (next: string | ((t: string) => string)) =>
+      setRawText((t) => {
+        const value = typeof next === 'function' ? next(t) : next
+        drafts.set(room, value)
+        return value
+      }),
+    [room],
+  )
   const [budget, setBudget] = useState(String(s.budgetEur))
   const [editBudget, setEditBudget] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
   const input = useRef<HTMLTextAreaElement>(null)
-  const busy = !!state.swapping || isWorking(s)
+  const working = isWorking(s)
+  const busy = !!state.swapping || working
   const fresh = s.status === 'new'
+  // Two quick presses of Enter (or Enter and a click) must not send the same message twice.
+  const sending = useRef<string | null>(null)
 
-  const send = (sentence: string) => {
+  /** True when the sentence went to the agent (or became a pending swap); false keeps it in the box. */
+  const send = (sentence: string): boolean => {
     const said = sentence.trim()
-    if (!said || busy) return
+    if (!said) return false
+    if (sending.current === said) return false
+    if (busy) {
+      setHint('Roomify is still working on the last message. Wait for it, or press Stop.')
+      return false
+    }
+    sending.current = said
+    setTimeout(() => (sending.current = null), 800)
     setHint(null)
     if (fresh) {
-      if (!s.beforeSrc) return setHint('Add a photo of the room first.')
+      if (!s.beforeSrc) {
+        setHint('Add a photo of the room first.')
+        return false
+      }
       lastSent.current = said
       const b = budgetIn(said) ?? Number(budget)
       void actions.startRun(instructionOf(said), b >= 20 ? b : 500, s.city, s.wallCm)
-      return
+      return true
     }
     if (s.status === 'asking') {
-      const n = Number(said.replace(/[^\d.]/g, ''))
-      if (/^\D*\d+(\.\d+)?\s*(cm|m)?\D*$/i.test(said) && n >= 40) return void actions.answer(Math.round(n))
-      if (s.offer) return void actions.talk(said, {}, 'ask')
-      return setHint('Say or type the width in cm, like “160”.')
+      const cm = widthIn(said)
+      if (cm) return void actions.answer(cm), true
+      if (s.offer) return void actions.talk(said, {}, 'ask'), true
+      setHint('Say or type the width, like “160 cm” or “1.6 m”.')
+      return false
     }
-    if (s.offer) return void actions.talk(said)
+    if (s.offer) return void actions.talk(said), true
     const product = productNamed(said, s.products)
     if (product) {
       dispatch({ type: 'selectProduct', id: product.id })
@@ -59,6 +87,7 @@ export function Composer() {
       dispatch({ type: 'selectProduct', id: null })
       dispatch({ type: 'setVoice', voice: { pending: instructionOf(said) } })
     }
+    return true
   }
 
   // A first message that never reached the agent comes back to the input, ready to send again.
@@ -66,15 +95,23 @@ export function Composer() {
   const startError = state.errors.start?.sessionId === s.id ? state.errors.start.message : null
   useEffect(() => {
     if (startError && fresh && lastSent.current) setText((t) => t || lastSent.current)
-  }, [startError, fresh])
+  }, [startError, fresh, setText])
+  // Once the room has moved on (an answer, a failure), the same words may be sent again.
+  const swapError = state.errors.swap?.sessionId === s.id ? state.errors.swap.message : null
+  useEffect(() => {
+    sending.current = null
+  }, [s.status, startError, swapError, s.chat?.length])
 
-  const speech = useSpeech({ onFinal: send })
+  // A spoken sentence that can't go yet stays in the box instead of vanishing.
+  const speech = useSpeech({ onFinal: (said) => void (send(said) || setText(said)) })
   const bars = useMicBars(speech.listening, BARS, speech.level)
 
   // A pin's Swap writes into the composer.
   useEffect(() => {
     const take = (e: Event) => {
-      setText((e as CustomEvent<string>).detail)
+      const incoming = (e as CustomEvent<string>).detail
+      // A pin's "Swap the desk: " goes in front of what was already typed, never over it.
+      setText((t) => (t.trim() && /:\s$/.test(incoming) && !t.startsWith(incoming) ? incoming + t.trim() : incoming))
       requestAnimationFrame(() => {
         const el = input.current
         el?.focus()
@@ -83,7 +120,7 @@ export function Composer() {
     }
     window.addEventListener('roomify:compose', take)
     return () => window.removeEventListener('roomify:compose', take)
-  }, [])
+  }, [setText])
 
   // Hold Space to talk; Escape throws away what was heard.
   const held = useRef(false)
@@ -117,7 +154,7 @@ export function Composer() {
   }, [start, stop, cancel, listening, busy, state.playingWalkInId])
 
   const placeholder = busy
-    ? 'Roomify is working…'
+    ? 'Type your next message; it sends when Roomify is done'
     : fresh
       ? 'A desk and a chair for long days, €400'
       : s.status === 'asking'
@@ -141,8 +178,7 @@ export function Composer() {
         className={`flex flex-col rounded-board border bg-surface shadow-[0_1px_0_rgb(23_23_23/0.04),0_12px_32px_-16px_rgb(23_23_23/0.18)] transition-colors duration-200 focus-within:border-ink ${speech.listening ? 'border-ink' : 'border-control'}`}
         onSubmit={(e) => {
           e.preventDefault()
-          send(text)
-          setText('')
+          if (send(text)) setText('')
         }}
       >
         <label htmlFor="say" className="sr-only">
@@ -162,7 +198,7 @@ export function Composer() {
                 e.currentTarget.form?.requestSubmit()
               }
             }}
-            disabled={busy || speech.transcribing}
+            disabled={speech.transcribing}
             placeholder={speech.listening ? '' : speech.transcribing ? 'Writing down what you said…' : placeholder}
             className={`block w-full resize-none bg-transparent px-4 pt-3 text-body leading-6 placeholder:text-muted focus:outline-none disabled:cursor-not-allowed ${speech.listening ? 'text-ink' : ''}`}
           />
@@ -189,8 +225,14 @@ export function Composer() {
                     inputMode="numeric"
                     value={budget}
                     onChange={(e) => setBudget(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
-                    onBlur={() => setEditBudget(false)}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), setEditBudget(false))}
+                    onBlur={() => {
+                      if (Number(budget) < 20) {
+                        setBudget('20')
+                        setHint('A budget starts at €20.')
+                      }
+                      setEditBudget(false)
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), e.currentTarget.blur())}
                     className="num h-full w-16 bg-transparent px-1 text-chrome font-semibold focus:outline-none"
                   />
                 </span>
@@ -222,14 +264,30 @@ export function Composer() {
               )}
             </button>
           )}
-          <button
-            type="submit"
-            aria-label="Send"
-            disabled={!text.trim() || busy || speech.listening}
-            className="press grid size-10 shrink-0 place-items-center rounded-full bg-primary text-surface disabled:bg-secondary disabled:text-muted"
-          >
-            <ArrowUp size={18} strokeWidth={2.25} />
-          </button>
+          {working && s.offer ? (
+            // Never stuck watching: Stop puts the room back as it was and the message back in the box.
+            <button
+              key="stop"
+              type="button"
+              onClick={() => actions.stop()}
+              aria-label="Stop Roomify"
+              title="Stop, and go back to the room as it was"
+              className="press grid size-10 shrink-0 place-items-center rounded-full bg-primary text-surface"
+            >
+              <Square size={13} strokeWidth={2.5} className="fill-current" />
+            </button>
+          ) : (
+            // Its own element: if React reused Stop's button, the click that stops would also submit.
+            <button
+              key="send"
+              type="submit"
+              aria-label="Send"
+              disabled={!text.trim() || busy || speech.listening}
+              className="press grid size-10 shrink-0 place-items-center rounded-full bg-primary text-surface disabled:bg-secondary disabled:text-muted"
+            >
+              <ArrowUp size={18} strokeWidth={2.25} />
+            </button>
+          )}
         </div>
       </form>
     </div>

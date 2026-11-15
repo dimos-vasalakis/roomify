@@ -5,7 +5,8 @@ import { applyEvent, blank } from '../api/map'
 import type { RunEvent } from '../api/wire'
 import { SAMPLES } from '../data/loadSamples'
 import { roomName } from '../lib/format'
-import type { Point, Product, Session, WalkIn, WalkMove } from '../types'
+import { isWorking } from '../lib/session'
+import type { Checkpoint, Point, Product, Session, WalkIn, WalkMove } from '../types'
 
 /** Where an error belongs on screen, so it shows inside the block that failed. */
 export type Block = 'rooms' | 'photo' | 'start' | 'ask' | 'swap' | 'walkin' | 'feed' | 'room'
@@ -41,6 +42,8 @@ export type State = {
   /** The before-to-after reveal: which room plays it now, and the rooms already shown this visit. */
   reveal: { id: string; key: number } | null
   revealed: string[]
+  /** One short note at the foot of the screen, with an optional way back ("Room deleted · Undo"). */
+  toast: { id: number; text: string; undo?: () => void } | null
 }
 
 export type Action =
@@ -78,6 +81,9 @@ export type Action =
   | { type: 'setVoice'; voice: Partial<State['voice']> }
   | { type: 'replayReveal' }
   | { type: 'revealDone' }
+  | { type: 'undo'; id: string }
+  | { type: 'restoreRoom'; session: Session; index: number; select?: boolean }
+  | { type: 'toast'; toast: { text: string; undo?: () => void } | null }
 
 const updateActive = (state: State, fn: (s: Session) => Session): State => ({
   ...state,
@@ -352,6 +358,35 @@ function reducer(state: State, action: Action): State {
     case 'revealDone':
       return { ...state, reveal: null }
 
+    case 'undo': {
+      const room = state.sessions.find((x) => x.id === action.id)
+      const back = room?.past?.at(-1)
+      if (!room || !back) return state
+      const { said: _said, ...fields } = back
+      const restored: Session = { ...room, ...fields, past: room.past!.slice(0, -1), now: null, error: undefined, phase: undefined }
+      const errors = { ...state.errors }
+      for (const block of ['start', 'swap', 'feed', 'ask'] as Block[]) if (errors[block]?.sessionId === action.id) delete errors[block]
+      return {
+        ...state,
+        ...(state.activeId === action.id ? clearTransient : {}),
+        errors,
+        reveal: null,
+        sessions: state.sessions.map((x) => (x.id === action.id ? restored : x)),
+      }
+    }
+
+    case 'restoreRoom': {
+      if (state.sessions.some((x) => x.id === action.session.id)) return state
+      // A blank room made only because the list emptied goes again.
+      const others = state.sessions.filter((x) => !(x.status === 'new' && !x.beforeSrc && x.id !== state.activeId) && !(state.sessions.length === 1 && x.status === 'new' && !x.beforeSrc))
+      const sessions = [...others]
+      sessions.splice(Math.min(action.index, sessions.length), 0, action.session)
+      return { ...state, ...(action.select ? clearTransient : {}), sessions, activeId: action.select ? action.session.id : state.activeId }
+    }
+
+    case 'toast':
+      return { ...state, toast: action.toast ? { id: (state.toast?.id ?? 0) + 1, ...action.toast } : null }
+
     case 'setVoice':
       return { ...state, voice: { ...state.voice, ...action.voice } }
 
@@ -395,7 +430,28 @@ const initial: State = {
   voice: { listening: false, caption: '', pending: null, error: null },
   reveal: null,
   revealed: [],
+  toast: null,
 }
+
+/** The room before a message, so it can be gone back to. */
+export function checkpointOf(s: Session, said: string): Checkpoint {
+  return {
+    products: s.products, rejections: s.rejections, afterSrc: s.afterSrc, chat: s.chat, status: s.status,
+    budgetEur: s.budgetEur, wallCm: s.wallCm, prompt: s.prompt, name: s.name, direction: s.direction,
+    ask: s.ask, currency: s.currency, said,
+  }  // fmt: skip
+}
+export const MAX_PAST = 5
+
+/** A room saved mid-run (the page was reloaded or closed) can never finish: say so and offer the way back. */
+function settle(s: Session): Session {
+  if (!isWorking(s)) return s
+  return { ...s, status: 'failed', now: null, error: { what: 'The page was reloaded before Roomify finished.', lastGood: '' } }
+}
+
+/** Rooms worth keeping across a reload: a photo that isn't a temporary blob, and not a sample. */
+const keepable = (s: Session) => !!s.beforeSrc && !s.beforeSrc.startsWith('blob:') && !SAMPLE_IDS.has(s.id) && s.id !== DRAFT_ID && Array.isArray(s.products)
+const SAMPLE_IDS = new Set(SAMPLES.map((s) => s.id))
 
 const Ctx = createContext<{ state: State; dispatch: Dispatch<Action> } | null>(null)
 
@@ -405,9 +461,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initial, (base) => {
     try {
       const saved: Session[] = JSON.parse(sessionStorage.getItem(savedKey) ?? '[]')
-      const rooms = saved.filter((s) => s.offer && s.afterSrc && s.beforeSrc && !s.beforeSrc.startsWith('blob:') && Array.isArray(s.products))
-        .map((s) => ({ ...s, loaded: !LIVE }))
-      if (rooms.length) return withReveal({ ...base, sessions: rooms, activeId: rooms[0].id })
+      const rooms = saved.filter(keepable).map((s) => settle({ ...s, loaded: !LIVE }))
+      const ids = new Set(rooms.map((s) => s.id))
+      // Saved rooms first, then the samples; an untouched blank room is not worth keeping.
+      const rest = base.sessions.filter((s) => !ids.has(s.id) && (s.status !== 'new' || s.beforeSrc || SAMPLE_IDS.has(s.id)))
+      if (rooms.length) return withReveal({ ...base, sessions: [...rooms, ...rest], activeId: rooms[0].id })
     } catch { /* Storage may be unavailable; the workspace still works. */ }
     return withReveal(base)
   })
@@ -418,7 +476,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [state.railHidden])
   useEffect(() => {
     try {
-      sessionStorage.setItem(savedKey, JSON.stringify(state.sessions.filter((s) => s.offer && s.afterSrc).slice(0, 3)))
+      // Photos are data URLs here, so at most four rooms; a full storage area drops the oldest.
+      const rooms = state.sessions.filter(keepable)
+      for (let n = Math.min(4, rooms.length); n >= 0; n--) {
+        try {
+          sessionStorage.setItem(savedKey, JSON.stringify(rooms.slice(0, n)))
+          break
+        } catch { /* too big: try with one room fewer */ }
+      }
     } catch { /* A full or private storage area must not interrupt a design. */ }
   }, [savedKey, state.sessions])
   return <Ctx.Provider value={{ state, dispatch }}>{children}</Ctx.Provider>

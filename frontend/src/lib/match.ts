@@ -40,3 +40,14 @@ export const instructionOf = (sentence: string) => {
   const t = sentence.trim().replace(/\s+/g, ' ')
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
+
+/** "160", "160 cm", "1.6 m", "3,2m", "3 μέτρα" → centimetres; null when it isn't a width. */
+export const widthIn = (text: string): number | null => {
+  const m = text.trim().match(/^\D*?(\d+(?:[.,]\d+)?)\s*(cm|εκ\.?|m\b|μ\b|meters?|metres?|μέτρα)?\D*$/i)
+  if (!m) return null
+  const n = Number(m[1].replace(',', '.'))
+  const metres = m[2] ? /^(m|μ|met|μέτ)/i.test(m[2]) : n < 10
+  const cm = Math.round(metres ? n * 100 : n)
+  return cm >= 40 && cm <= 3000 ? cm : null
+}
+

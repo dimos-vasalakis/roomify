@@ -109,4 +109,12 @@ export type Session = {
   offer?: boolean
   direction?: string
   phase?: 'planning' | 'shopping' | 'rendering' | 'checking'
+  /** The room as it was before each of the last few messages, newest last: Undo, Stop and failures go back to it. */
+  past?: Checkpoint[]
 }
+
+/** What a message can change about a room, saved before the message is sent. */
+export type Checkpoint = Pick<
+  Session,
+  'products' | 'rejections' | 'afterSrc' | 'chat' | 'status' | 'budgetEur' | 'wallCm' | 'prompt' | 'name' | 'direction' | 'ask' | 'currency'
+> & { said: string }

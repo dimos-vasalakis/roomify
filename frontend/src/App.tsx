@@ -7,7 +7,10 @@ import { Backdrop } from './components/shell/Backdrop'
 import { PhoneBar } from './components/shell/PhoneBar'
 import { Rail } from './components/shell/Rail'
 import { RoomsPanel } from './components/shell/RoomsPanel'
+import { Toast } from './components/common/Toast'
 import { Talk } from './components/talk/Talk'
+import { isWorking } from './lib/session'
+import { useActions } from './state/actions'
 import { StoreProvider, useStore } from './state/store'
 import { useLiveSync } from './state/useLiveSync'
 
@@ -47,12 +50,22 @@ function useSampleRun() {
 }
 
 function useShortcuts() {
-  const { state, dispatch } = useStore()
+  const { state, active, dispatch } = useStore()
+  const actions = useActions()
+  const undo = actions.undo
+  const canUndo = !!active.past?.length && !isWorking(active) && active.status !== 'new'
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         dispatch({ type: 'toggleRail' })
+        return
+      }
+      // Ctrl Z / Cmd Z outside a text box: back to the room before the last message.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !typing(e.target)) {
+        if (!canUndo) return
+        e.preventDefault()
+        undo()
         return
       }
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
@@ -61,11 +74,24 @@ function useShortcuts() {
         else if (state.playingWalkInId) dispatch({ type: 'play', id: null })
         else if (state.selectedProductId) dispatch({ type: 'selectProduct', id: null })
         else if (state.voice.pending) dispatch({ type: 'setVoice', voice: { pending: null } })
+        else if (state.toast) dispatch({ type: 'toast', toast: null })
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [state.view3d, state.playingWalkInId, state.selectedProductId, state.voice.pending, dispatch])
+  }, [state.view3d, state.playingWalkInId, state.selectedProductId, state.voice.pending, state.toast, canUndo, undo, dispatch])
+
+  // Closing or reloading the tab while Roomify works would throw the run away: the browser asks first.
+  const anyWorking = state.sessions.some(isWorking)
+  useEffect(() => {
+    if (!anyWorking) return
+    const onLeave = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onLeave)
+    return () => window.removeEventListener('beforeunload', onLeave)
+  }, [anyWorking])
 }
 
 /** The board: rooms rail, the room, and the conversation. */
@@ -114,6 +140,7 @@ function Workspace() {
         </main>
       </div>
       <RoomsPanel />
+      <Toast />
     </div>
   )
 }
