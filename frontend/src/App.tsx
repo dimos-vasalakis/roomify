@@ -1,14 +1,12 @@
-import { PanelLeftOpen } from 'lucide-react'
 import { useEffect } from 'react'
 import { LIVE } from './api/config'
 import { AuthGate, useAuth } from './auth/AuthGate'
 import { Board } from './components/board/Board'
 import { Backdrop } from './components/shell/Backdrop'
-import { PhoneBar } from './components/shell/PhoneBar'
-import { Rail } from './components/shell/Rail'
+import { TopBar } from './components/shell/TopBar'
 import { RoomsPanel } from './components/shell/RoomsPanel'
 import { Toast } from './components/common/Toast'
-import { Talk } from './components/talk/Talk'
+import { Sheet } from './components/sheet/Sheet'
 import { isWorking } from './lib/session'
 import { useActions } from './state/actions'
 import { StoreProvider, useStore } from './state/store'
@@ -56,11 +54,6 @@ function useShortcuts() {
   const canUndo = !!active.past?.length && !isWorking(active) && active.status !== 'new'
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
-        e.preventDefault()
-        dispatch({ type: 'toggleRail' })
-        return
-      }
       // Ctrl Z / Cmd Z outside a text box: back to the room before the last message.
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !typing(e.target)) {
         if (!canUndo) return
@@ -94,51 +87,25 @@ function useShortcuts() {
   }, [anyWorking])
 }
 
-/** The board: rooms rail, the room, and the conversation. */
+/** One drawing sheet: the title strip, the room as large as it fits, and the schedule beside it. */
 function Workspace() {
   const { signedIn } = useAuth()
-  const { state, dispatch } = useStore()
   useSampleRun()
   useLiveSync(signedIn)
   useShortcuts()
-  const hidden = state.railHidden
 
   return (
-    <div className="relative flex min-h-dvh">
+    <div className="relative flex min-h-dvh flex-col lg:h-dvh">
       <Backdrop />
-      {/* The rail slides fully away; the room takes the width. */}
-      <div
-        className={`sticky top-0 z-10 hidden h-dvh shrink-0 overflow-hidden transition-[width] duration-500 ease-[var(--ease-in-out)] lg:block ${hidden ? 'w-0' : 'w-rail'}`}
-        inert={hidden}
-      >
-        <div className={`transition-[transform,opacity] duration-500 ease-[var(--ease-in-out)] ${hidden ? '-translate-x-full opacity-0' : ''}`}>
-          <Rail />
+      <TopBar />
+      <main className="relative z-10 grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-[minmax(0,1fr)]">
+        <div className="flex min-h-0 min-w-0 flex-col justify-center">
+          <Board />
         </div>
-      </div>
-      {hidden && (
-        <button
-          type="button"
-          onClick={() => dispatch({ type: 'toggleRail' })}
-          aria-label="Show rooms (Ctrl B)"
-          title="Show rooms (Ctrl B)"
-          className="press fixed top-4 left-4 z-30 hidden size-10 place-items-center rounded-control bg-surface text-ink ring-1 ring-border hover:ring-ink lg:grid"
-        >
-          <PanelLeftOpen size={18} strokeWidth={2} />
-        </button>
-      )}
-      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-        <PhoneBar />
-        <main
-          className={`grid flex-1 grid-cols-[minmax(0,1fr)] items-start gap-4 px-4 pb-4 transition-[padding] duration-500 ease-[var(--ease-in-out)] lg:h-dvh lg:grid-cols-[minmax(0,1fr)_var(--spacing-talk)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:py-4 lg:pr-4 ${hidden ? 'lg:pl-16' : 'lg:pl-0'}`}
-        >
-          <div className="flex min-h-0 min-w-0 flex-col justify-center">
-            <Board />
-          </div>
-          <div className="h-[78dvh] min-h-0 lg:h-auto">
-            <Talk />
-          </div>
-        </main>
-      </div>
+        <div className="min-h-[34rem] lg:min-h-0">
+          <Sheet />
+        </div>
+      </main>
       <RoomsPanel />
       <Toast />
     </div>

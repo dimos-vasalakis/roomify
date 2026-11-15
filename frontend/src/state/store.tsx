@@ -15,8 +15,6 @@ export type State = {
   sessions: Session[]
   activeId: string
   sidebarOpen: boolean
-  /** Desktop: the rooms rail is put away completely, so the room gets the whole width. */
-  railHidden: boolean
   /** Phone only: the rooms sheet is open. */
   sheetOpen: boolean
   selectedProductId: string | null
@@ -51,7 +49,6 @@ export type Action =
   | { type: 'newRoom' }
   | { type: 'editBrief' }
   | { type: 'toggleSidebar' }
-  | { type: 'toggleRail' }
   | { type: 'setSheet'; open: boolean }
   | { type: 'selectProduct'; id: string | null }
   | { type: 'startSwap'; productId: string; instruction: string }
@@ -145,9 +142,6 @@ function reducer(state: State, action: Action): State {
 
     case 'toggleSidebar':
       return { ...state, sidebarOpen: !state.sidebarOpen }
-
-    case 'toggleRail':
-      return { ...state, railHidden: !state.railHidden, sidebarOpen: false }
 
     case 'setSheet':
       return { ...state, sheetOpen: action.open }
@@ -408,13 +402,6 @@ const initial: State = {
   sessions: firstSessions,
   activeId: firstSessions[0].id,
   sidebarOpen: false,
-  railHidden: (() => {
-    try {
-      return localStorage.getItem('roomify.rail') === 'hidden'
-    } catch {
-      return false
-    }
-  })(),
   sheetOpen: false,
   selectedProductId: null,
   swapping: null,
@@ -469,11 +456,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch { /* Storage may be unavailable; the workspace still works. */ }
     return withReveal(base)
   })
-  useEffect(() => {
-    try {
-      localStorage.setItem('roomify.rail', state.railHidden ? 'hidden' : 'shown')
-    } catch { /* the choice just isn't remembered */ }
-  }, [state.railHidden])
   useEffect(() => {
     try {
       // Photos are data URLs here, so at most four rooms; a full storage area drops the oldest.

@@ -21,6 +21,12 @@ const RESUME_MS = 7000
 
 const cssColor = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 
+/** A promise whose failure is handled where it is used, and must never surface as unhandled if the scene stops first. */
+function quiet<T>(p: Promise<T>): Promise<T> {
+  p.catch(() => {})
+  return p
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -82,7 +88,7 @@ export function Room3D({ s }: { s: Session }) {
             depthCm: p.depthCm,
             heightCm: p.heightCm ?? null,
             photo: p.thumb?.src ?? null,
-            model: model ? model.then((m) => m.glb_url) : null,
+            model: model ? quiet(model.then((m) => m.glb_url)) : null,
           }
         })
         // What already stands in the room is modelled too, from its cut-out of the picture.
@@ -96,7 +102,7 @@ export function Room3D({ s }: { s: Session }) {
             depthCm: null,
             heightCm: null,
             photo: null,
-            model: objectModelOf(obj).then((m) => m.glb_url),
+            model: quiet(objectModelOf(obj).then((m) => m.glb_url)),
             existing: true,
             onTop: obj.on_top,
           }),

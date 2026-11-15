@@ -66,7 +66,7 @@ export function linesOf(s: Session): ChatLine[] {
     const shops = [...new Set(s.products.map((p) => shopName(p.retailer)))]
     lines.push({
       role: 'agent',
-      text: `Done. ${s.products.length} pieces from ${shops.join(', ')}, ${money(totalOf(s), cur)} of your ${money(s.budgetEur, cur)}. Tap a pin to see a piece, or tell me what to change.`,
+      text: `Done. ${s.products.length} pieces from ${shops.join(', ')}, ${money(totalOf(s), cur)} of your ${money(s.budgetEur, cur)}. Each piece has its own buttons in the schedule; tell me anything else below.`,
     })
   }
   return lines

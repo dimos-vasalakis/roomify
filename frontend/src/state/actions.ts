@@ -5,11 +5,14 @@ import { fromDetail, fromSummary, walkIn } from '../api/map'
 import { money, roomName } from '../lib/format'
 import { compose, isWorking } from '../lib/session'
 import { toRoomPhoto } from '../lib/photo'
-import type { Session, WalkMove } from '../types'
+import type { Product, Session, WalkMove } from '../types'
 import { DRAFT_ID, MAX_PAST, checkpointOf, useStore, type Block } from './store'
 
 /** The prepared photo of each room, kept for sending with the offer. */
 const photos = new Map<string, Blob>()
+/** A piece's button: carried out exactly by the back end, no guessing what the words meant. */
+type Intent = { action: 'drop' | 'add' | 'arrange'; slot: string; instruction?: string }
+
 /** The open stream of each room's message, so Stop can end it. */
 const streams = new Map<string, () => void>()
 /** Rooms deleted a moment ago: the server delete waits, so Undo can bring them back. */
@@ -49,7 +52,7 @@ export function useActions() {
    * One message to the agent (POST /turn): the first brief, an answer, a change or a question.
    * The room's conversation and basket go with it, so the server keeps no state.
    */
-  const talk = async (text: string, room: Partial<Session> = {}, block: Block = 'start') => {
+  const talk = async (text: string, room: Partial<Session> = {}, block: Block = 'start', intent?: Intent) => {
     const said = text.trim()
     if (!said) return
     await guard(block, active.id, async () => {
@@ -78,6 +81,7 @@ export function useActions() {
       form.append('city', s.city)
       if (s.wallCm) form.append('wall_cm', String(s.wallCm))
       form.append('history', JSON.stringify(history.slice(-20)))
+      if (intent) form.append('intent', JSON.stringify(intent))
       form.append('basket', JSON.stringify(s.products.map((p) => ({
         slot: p.slot, url: p.url, title: p.title, price_eur: p.priceEur, currency: p.currency ?? 'EUR',
         width_cm: p.widthCm, depth_cm: p.depthCm, height_cm: p.heightCm ?? null,
@@ -125,6 +129,17 @@ export function useActions() {
 
   return {
     undo,
+
+    /** One of a piece's buttons. The words go in the log; the intent is what is carried out. */
+    press(action: Intent['action'], p: Product, instruction = '') {
+      const piece = p.slot.toLowerCase()
+      const said =
+        action === 'drop' ? `Remove the ${piece}.`
+        : action === 'add' ? `Add another ${piece} like this one, next to it.`
+        : `Move the ${piece}: ${instruction}.`  // fmt: skip
+      const wish = action === 'add' ? `another ${p.title} (${piece}), next to the existing one` : instruction
+      return talk(said, {}, 'swap', { action, slot: p.slot, instruction: wish })
+    },
 
     /** Stop the agent mid-message: the room goes back to how it was. */
     stop() {

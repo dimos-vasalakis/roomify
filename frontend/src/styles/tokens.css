@@ -21,6 +21,7 @@
   --color-scrim: #171717;
 
   --font-sans: "Manrope Variable", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --text-small: 0.75rem;
   --text-small--line-height: 1rem;

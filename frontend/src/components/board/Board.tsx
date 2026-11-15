@@ -12,7 +12,6 @@ import { WalkInPlayer } from '../walkin/WalkInPlayer'
 import { Caption } from './Caption'
 import { Compare } from './Compare'
 import { EmptyDrop } from './EmptyDrop'
-import { PinCard } from './PinCard'
 import { StepLayer } from './StepLayer'
 
 // three.js only loads for the 3D room (fetched in the background once a room is finished).
@@ -25,7 +24,6 @@ export function Board() {
   const frame = useRef<HTMLDivElement>(null)
   const picture = pictureOf(s)
   const done = s.status === 'done' && !!s.afterSrc
-  const selected = done ? (s.products.find((p) => p.id === state.selectedProductId) ?? null) : null
   const playing = s.walkIns.find((w) => w.id === state.playingWalkInId) ?? null
 
   useGSAP(() => void enter(frame.current?.querySelector('[data-picture]') ?? null, { duration: DUR.base }), { scope: frame, dependencies: [s.id] })
@@ -43,9 +41,17 @@ export function Board() {
 
   return (
     <section aria-label="Your room" className="flex min-w-0 flex-col gap-3">
+      <div className="relative mx-auto w-full lg:max-w-[calc((100dvh-10rem)*1.5)]">
+      {/* Crop marks, as on a printed drawing sheet. */}
+      <span aria-hidden="true" className="pointer-events-none absolute -inset-2 max-sm:hidden">
+        <span className="absolute top-0 left-0 h-3 w-px bg-ink/50" /><span className="absolute top-0 left-0 h-px w-3 bg-ink/50" />
+        <span className="absolute top-0 right-0 h-3 w-px bg-ink/50" /><span className="absolute top-0 right-0 h-px w-3 bg-ink/50" />
+        <span className="absolute bottom-0 left-0 h-3 w-px bg-ink/50" /><span className="absolute bottom-0 left-0 h-px w-3 bg-ink/50" />
+        <span className="absolute right-0 bottom-0 h-3 w-px bg-ink/50" /><span className="absolute right-0 bottom-0 h-px w-3 bg-ink/50" />
+      </span>
       <div
         ref={frame}
-        className="relative mx-auto aspect-[3/2] w-full overflow-hidden rounded-board bg-raised select-none lg:max-w-[calc((100dvh-6.5rem)*1.5)]"
+        className="relative aspect-[3/2] w-full overflow-hidden rounded-[3px] bg-raised ring-1 ring-ink/20 select-none"
         onClick={() => state.selectedProductId && dispatch({ type: 'selectProduct', id: null })}
       >
         {s.loaded === false ? (
@@ -102,7 +108,6 @@ export function Board() {
           </div>
         )}
 
-        {selected && <PinCard product={selected} picture={picture} currency={s.currency} onClose={() => dispatch({ type: 'selectProduct', id: null })} />}
 
         {playing && s.afterSrc && <WalkInPlayer walk={playing} src={s.afterSrc} />}
 
@@ -143,6 +148,7 @@ export function Board() {
             </div>
           </div>
         )}
+      </div>
       </div>
       <Caption />
     </section>

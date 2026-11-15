@@ -139,3 +139,33 @@ def test_too_expensive_is_always_a_fit() -> None:
 def test_a_new_budget_alone_never_redraws_the_room() -> None:
     assert heed(Decision(action="design"), turn("I can spend 300 more")).action == "reply"
     assert heed(Decision(action="design"), turn("budget 900, start over")).action == "design"
+
+
+async def test_a_piece_button_is_carried_out_exactly(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    async def never(photo: bytes, t: Turn) -> Decision:
+        raise AssertionError("a button never asks the model what it meant")
+
+    dropped: list[str | None] = []
+
+    async def drop(photo: bytes, t: Turn, d: Decision, send: object) -> None:
+        dropped.append(d.slot)
+
+    monkeypatch.setattr(loop, "decide", never)
+    monkeypatch.setattr(loop, "_drop", drop)
+    t = turn(
+        "Remove the chair", basket=[CHAIR, DESK], intent=loop.Intent(action="drop", slot="Chair")
+    )
+    sent: list[tuple[str, dict]] = []  # type: ignore[type-arg]
+    await loop._turn(b"photo", t, sent.append)
+    assert dropped == ["Chair"]
+    assert sent[0] == (
+        "message",
+        {"text": "Taking the chair out; everything else stays.", "action": "drop"},
+    )
+
+
+def test_a_button_for_a_piece_that_is_gone_does_nothing_harmful() -> None:
+    gone = loop._pressed(
+        loop.Intent(action="drop", slot="Sofa"), turn("Remove the sofa", basket=[CHAIR])
+    )
+    assert gone.action == "reply"

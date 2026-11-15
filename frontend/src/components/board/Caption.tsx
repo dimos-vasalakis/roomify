@@ -62,8 +62,8 @@ export function Caption() {
   }
 
   return (
-    <div className="mx-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 lg:max-w-[calc((100dvh-6.5rem)*1.5)]">
-      <div ref={line} className="flex min-h-9 min-w-0 flex-1 items-center gap-3 overflow-hidden" aria-live="polite">
+    <div className="mx-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-y border-ink/15 py-1.5 lg:max-w-[calc((100dvh-10rem)*1.5)]">
+      <div ref={line} className="flex min-h-9 min-w-0 flex-1 basis-full items-center gap-3 overflow-hidden sm:basis-auto" aria-live="polite">
         {phase && (
           <span className="flex shrink-0 items-center gap-1" aria-label={`Step ${index + 1} of 4`}>
             {PHASES.map((p, i) => (
@@ -77,9 +77,12 @@ export function Caption() {
         <p data-line className="flex min-w-0 items-baseline gap-2 text-body">
           {s.status === 'asking' && <LiveDot className="mb-0.5 self-center" />}
           <span className="shrink-0 font-semibold text-ink">{title}</span>
-          {detail && <span className="truncate text-muted">{detail}</span>}
+          {detail && <span className="label truncate text-muted">{detail}</span>}
           {phase && <span className="num shrink-0 text-muted">· {index + 1} of 4</span>}
         </p>
+        {s.wallCm && !phase && (
+          <span className="label shrink-0 border-l border-ink/15 pl-3 text-muted max-sm:hidden">Wall {s.wallCm} cm</span>
+        )}
       </div>
 
       {canUndo && !done && (

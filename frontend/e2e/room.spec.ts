@@ -26,8 +26,13 @@ async function start(page: Page, url?: string) {
   await say(page, 'A desk for focused work, €600')
 }
 async function rooms(page: Page) {
-  if (phone(page)) await page.getByRole('button', { name: /^Rooms/ }).click()
-  else await page.getByRole('button', { name: 'All rooms', exact: true }).click()
+  await page.getByRole('button', { name: /^Rooms\./ }).click()
+}
+/** The whole conversation lives in the schedule's log: open it, check, close it. */
+async function inLog(page: Page, text: string) {
+  await page.getByRole('button', { name: /Open the full log/ }).click()
+  await expect(page.getByRole('dialog', { name: 'Log' })).toContainText(text)
+  await page.getByRole('button', { name: 'Close the log' }).click()
 }
 const done = (page: Page) => expect(page.getByRole('slider', { name: 'Before and after' })).toBeVisible({ timeout: 15_000 })
 
@@ -38,7 +43,7 @@ test.beforeEach(async ({ page }) => {
 
 test('empty room: a photo comes first, and a new room starts clean', async ({ page }) => {
   await newRoom(page)
-  await expect(page.getByText('What do you need, and what’s the budget?')).toBeVisible()
+  await expect(page.getByText('What should this room hold, and for how much?')).toBeVisible()
   await say(page, 'A desk for room one')
   await expect(page.getByRole('status')).toHaveText('Add a photo of the room first.')
   await composer(page).fill('A desk for room one')
@@ -53,13 +58,13 @@ test('empty room: a photo comes first, and a new room starts clean', async ({ pa
 
 test('real agent stream: steps, before/after, pins, a reply, and restore', async ({ page }) => {
   await start(page)
-  const chat = page.getByLabel('Conversation with Roomify')
-  await expect(chat).toContainText('A desk for focused work, €600')
+  const chat = page.locator('body')
   await done(page)
+  await inLog(page, 'A desk for focused work, €600')
 
   // The total and its budget came from the brief; the agent's choice is a pin on the render.
   await expect(chat).toContainText('€219.00')
-  await expect(chat).toContainText('of €600.00')
+  await expect(page.getByTitle('Change the budget')).toHaveText('€600.00')
   const slider = page.getByRole('slider', { name: 'Before and after' })
   await expect(slider).toHaveAttribute('aria-valuenow', '0')
   await slider.focus()
@@ -67,12 +72,12 @@ test('real agent stream: steps, before/after, pins, a reply, and restore', async
   await expect(slider).toHaveAttribute('aria-valuenow', '5')
   await page.keyboard.press('Home')
 
+  // A numbered callout on the room picks that piece's line in the schedule.
   await page.locator('[data-pin]').first().click()
-  const card = page.getByRole('dialog')
-  await expect(card).toContainText('€219.00')
-  await expect(card.getByRole('link', { name: /View in shop/ })).toHaveAttribute('href', /ikea\.gr/)
-  await card.getByRole('button', { name: 'Swap' }).click()
-  await expect(composer(page)).toHaveValue('Swap the desk: ')
+  const row = page.getByLabel('Schedule of pieces').getByRole('button', { name: /MITTZON/, pressed: true })
+  await expect(row).toBeVisible()
+  await expect(page.getByLabel('Schedule of pieces').getByRole('link', { name: /Shop/ })).toHaveAttribute('href', /ikea\.gr/)
+  await expect(page.getByRole('button', { name: 'Another like it' })).toBeVisible()
 
   // Real conversations have no walk-in yet.
   await expect(page.getByRole('button', { name: /walk in/i })).toHaveCount(0)
@@ -145,7 +150,7 @@ test('replay never calls the configured offer API', async ({ page }) => {
   let offers = 0
   page.on('request', request => { if (/\/(offer|turn)$/.test(request.url())) offers++ })
   await start(page, '/?replay=1&demo=1')
-  const chat = page.getByLabel('Conversation with Roomify')
+  const chat = page.locator('body')
   await expect(chat).toContainText('How wide is the main wall in your photo?')
   await say(page, '20')
   await expect(page.getByRole('status')).toContainText('Say or type the width')
@@ -155,15 +160,6 @@ test('replay never calls the configured offer API', async ({ page }) => {
   expect(offers).toBe(0)
 })
 
-test('the rooms rail hides completely and comes back', async ({ page }) => {
-  test.skip(phone(page), 'The rail is a desktop feature')
-  await page.goto('/?demo=1')
-  await page.keyboard.press('Control+b')
-  await expect(page.getByRole('navigation', { name: 'Rooms' })).not.toBeInViewport()
-  await page.reload()
-  await page.getByRole('button', { name: 'Show rooms (Ctrl B)' }).click()
-  await expect(page.getByRole('navigation', { name: 'Rooms' })).toBeInViewport()
-})
 
 test('voice without the browser\'s recogniser: recorded, ends on silence, transcribed by the server', async ({ page }) => {
   test.skip(phone(page), 'Same code path on phones; the fake microphone is set up for desktop')
@@ -179,9 +175,9 @@ test('voice without the browser\'s recogniser: recorded, ends on silence, transc
   await expect(page.getByRole('button', { name: 'Stop and send' })).toBeVisible()
   // Nobody presses stop: the quiet after the "sentence" ends it.
   await sent
-  const chat = page.getByLabel('Conversation with Roomify')
-  await expect(chat).toContainText('How wide is the desk?', { timeout: 10_000 })
-  await expect(chat).toContainText('The desk is 140 cm wide.')
+  const chat = page.locator('body')
+  await expect(chat).toContainText('The desk is 140 cm wide.', { timeout: 10_000 })
+  await inLog(page, 'How wide is the desk?')
   await expect(page.getByRole('button', { name: 'Talk to Roomify' })).toBeEnabled()
 })
 
@@ -215,7 +211,7 @@ test('voice with the browser\'s recogniser: live caption, sent without a server 
   await done(page)
   await page.getByRole('button', { name: 'Talk to Roomify' }).click()
   await expect(composer(page)).toHaveValue(/How wide/)
-  const chat = page.getByLabel('Conversation with Roomify')
+  const chat = page.locator('body')
   await expect(chat).toContainText('The desk is 140 cm wide.', { timeout: 10_000 })
   expect(transcribed).toBe(0)
 })
@@ -232,7 +228,7 @@ test('Escape while listening throws the sentence away', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Talk to Roomify' })).toBeVisible()
   await page.waitForTimeout(2500)
   expect(transcribed).toBe(0)
-  await expect(page.getByLabel('Conversation with Roomify')).not.toContainText('How wide is the desk?')
+  await expect(page.locator('body')).not.toContainText('How wide is the desk?')
 })
 
 test('a photo taken on the phone lands on the laptop, and a retake replaces it', async ({ page, context }) => {
@@ -259,7 +255,7 @@ test('an expired phone link says so in words', async ({ page }) => {
 
 /* Foolproofing: every mistake and every failure has a way back. */
 
-const budgetButton = (page: Page) => page.getByRole('button', { name: /^of €/ })
+const budgetButton = (page: Page) => page.getByTitle('Change the budget')
 
 test('the budget can be changed after the room is done, and a bad value is refused', async ({ page }) => {
   await start(page)
@@ -269,11 +265,11 @@ test('the budget can be changed after the room is done, and a bad value is refus
   await page.getByLabel('Budget in euros').press('Enter')
   await expect(page.getByRole('alert').filter({ hasText: 'A budget starts at €20.00.' })).toBeVisible()
   await page.getByLabel('Budget in euros').press('Escape')
-  await expect(budgetButton(page)).toHaveText('of €600.00')
+  await expect(budgetButton(page)).toHaveText('€600.00')
   await budgetButton(page).click()
   await page.getByLabel('Budget in euros').fill('900')
   await page.getByLabel('Budget in euros').press('Enter')
-  await expect(budgetButton(page)).toHaveText('of €900.00')
+  await expect(budgetButton(page)).toHaveText('€900.00')
 })
 
 test('over budget offers a way out instead of a red number', async ({ page }) => {
@@ -284,14 +280,14 @@ test('over budget offers a way out instead of a red number', async ({ page }) =>
   await page.getByLabel('Budget in euros').press('Enter')
   await expect(page.getByText('€119.00 over')).toBeVisible()
   await page.getByRole('button', { name: 'Raise budget to €220.00' }).click()
-  await expect(budgetButton(page)).toHaveText('of €220.00')
+  await expect(budgetButton(page)).toHaveText('€220.00')
   await expect(page.getByRole('button', { name: /Bring it under/ })).toHaveCount(0)
 })
 
 test('undo goes back to the room before the last message, with the message back in the box', async ({ page }) => {
   await start(page)
   await done(page)
-  const chat = page.getByLabel('Conversation with Roomify')
+  const chat = page.locator('body')
   await say(page, 'How wide is the desk?')
   await expect(chat).toContainText('The desk is 140 cm wide.')
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
@@ -329,18 +325,17 @@ test('a run that fails halfway never loses the room before it', async ({ page })
   await expect(page.getByText('The design service could not finish this step.')).toBeVisible()
   await page.getByRole('button', { name: 'Back to the last room' }).click()
   await done(page)
-  await expect(page.getByLabel('Conversation with Roomify')).toContainText('€219.00')
+  await expect(page.locator('body')).toContainText('€219.00')
 })
 
 test('a deleted room comes back with Undo', async ({ page }) => {
   await start(page)
   await done(page)
-  const name = await page.getByLabel('Conversation with Roomify').locator('header').innerText()
   await rooms(page)
   await page.getByRole('button', { name: /^Delete Desk/ }).click({ force: true })
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
   await done(page)
-  expect(name).toContain('€219.00')
+  await expect(page.locator('body')).toContainText('€219.00')
 })
 
 test('reloading mid-run never leaves a room stuck working', async ({ page }) => {
@@ -370,9 +365,9 @@ test('a budget said in words changes the budget, with the sums done right', asyn
   await start(page)
   await done(page)
   await say(page, 'I can spend 300 more')
-  const chat = page.getByLabel('Conversation with Roomify')
+  const chat = page.locator('body')
   await expect(chat).toContainText('Your budget is now €900. Your pieces come to €219, so €681 is left.')
-  await expect(page.getByRole('button', { name: /^of €/ })).toHaveText('of €900.00')
+  await expect(page.getByTitle('Change the budget')).toHaveText('€900.00')
   await say(page, 'lower the budget to 150')
   await expect(chat).toContainText('€69 over. Want me to make it fit?')
   await expect(page.getByRole('button', { name: /Bring it under €150.00/ })).toBeVisible()
@@ -395,10 +390,10 @@ test('the 3D room builds from the empty photo, and a piece without a model stand
   await done(page)
   await page.getByRole('button', { name: 'Look around in 3D' }).click()
   const room = page.getByRole('region', { name: /in 3D$/ })
-  await expect(room.getByText('3D view · drag to walk round, scroll to come closer')).toBeVisible({ timeout: 15_000 })
+  await expect(room.getByText(/^3D view · drag/)).toBeVisible({ timeout: 15_000 })
   await expect(room.getByText(/Shown flat: desk/)).toBeVisible({ timeout: 15_000 })
-  await expect(room.getByRole('link', { name: /Desk, €219.00/ })).toBeAttached()
-  await page.getByRole('button', { name: 'Above', exact: true }).click()
+  await expect(room.getByRole('button', { name: /Desk, €219.00/ })).toBeAttached()
+  await page.getByRole('button', { name: 'Top', exact: true }).click()
   await page.keyboard.press('Escape')
   await expect(room).toHaveCount(0)
   expect(errors).toEqual([])

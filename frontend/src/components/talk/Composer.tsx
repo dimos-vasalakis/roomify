@@ -160,7 +160,7 @@ export function Composer() {
       : s.status === 'asking'
         ? 'Width in cm, like 160'
         : s.offer
-          ? 'Change anything, like “a lighter chair”'
+          ? 'Anything else, like “a rug under the desk”'
           : 'Swap a piece, like “a warmer lamp”'
   const pending = state.voice.pending
   const note = hint ?? speech.error ?? (pending ? `Which piece? Tap it on the room for “${pending}”.` : null)
@@ -175,7 +175,7 @@ export function Composer() {
       )}
 
       <form
-        className={`flex flex-col rounded-board border bg-surface shadow-[0_1px_0_rgb(23_23_23/0.04),0_12px_32px_-16px_rgb(23_23_23/0.18)] transition-colors duration-200 focus-within:border-ink ${speech.listening ? 'border-ink' : 'border-control'}`}
+        className={`flex flex-col rounded-[4px] border bg-surface transition-colors duration-200 focus-within:border-ink ${speech.listening ? 'border-ink' : 'border-ink/25'}`}
         onSubmit={(e) => {
           e.preventDefault()
           if (send(text)) setText('')
@@ -200,10 +200,10 @@ export function Composer() {
             }}
             disabled={speech.transcribing}
             placeholder={speech.listening ? '' : speech.transcribing ? 'Writing down what you said…' : placeholder}
-            className={`block w-full resize-none bg-transparent px-4 pt-3 text-body leading-6 placeholder:text-muted focus:outline-none disabled:cursor-not-allowed ${speech.listening ? 'text-ink' : ''}`}
+            className={`block w-full resize-none bg-transparent px-3 pt-2.5 text-chrome leading-5 placeholder:text-muted focus:outline-none disabled:cursor-not-allowed ${speech.listening ? 'text-ink' : ''}`}
           />
           {speech.listening && !speech.interim && (
-            <span className="pointer-events-none absolute top-3 left-4 text-body text-muted">Listening… it sends when you stop talking</span>
+            <span className="pointer-events-none absolute top-2.5 left-3 text-chrome text-muted">Listening… it sends when you stop talking</span>
           )}
         </div>
 
@@ -243,7 +243,7 @@ export function Composer() {
               )}
             </span>
           ) : (
-            <span className="flex-1 pl-2 text-small text-muted"><span className="max-lg:hidden">{speech.supported ? 'Tap the mic, or hold Space, to talk' : ''}</span></span>
+            <span className="flex-1 pl-2 text-small text-muted"><span className="max-lg:hidden">{speech.supported ? 'Mic, or hold Space' : ''}</span></span>
           )}
 
           {speech.supported && (

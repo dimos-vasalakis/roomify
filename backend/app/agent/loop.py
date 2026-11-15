@@ -1367,7 +1367,16 @@ class BasketLine(BaseModel):
     height_cm: float | None = None
 
 
+class Intent(BaseModel):
+    """A button the person pressed on one piece: exact, so no model has to guess it."""
+
+    action: Literal["drop", "add", "arrange"]
+    slot: str = Field(max_length=40)
+    instruction: str = Field(default="", max_length=300)
+
+
 class Turn(BaseModel):
+    intent: Intent | None = None
     message: str = Field(min_length=1, max_length=2000)
     history: list[ChatLine] = Field(default=[], max_length=40)
     basket: list[BasketLine] = Field(default=[], max_length=MAX_BASKET)
@@ -2158,8 +2167,26 @@ async def _fit(photo: bytes, turn: Turn, decision: Decision, send: Send) -> None
                                                           "instruction": wish}), send)  # fmt: skip
 
 
+def _pressed(intent: Intent, turn: Turn) -> Decision:
+    """A piece's button, as the action it names. Still checked: a piece no longer in the
+    basket can't be removed or moved."""
+    piece = intent.slot.lower()
+    say = {
+        "drop": f"Taking the {piece} out; everything else stays.",
+        "add": f"Finding another {piece} to go with yours.",
+        "arrange": f"Moving the {piece}.",
+    }[intent.action]
+    decision = Decision(
+        action=intent.action,
+        say=say,
+        slot=intent.slot if intent.action == "drop" else None,
+        instruction=intent.instruction or None,
+    )
+    return _sane(decision, turn)
+
+
 async def _turn(photo: bytes, turn: Turn, send: Send) -> None:
-    decision = heed(await decide(photo, turn), turn)
+    decision = _pressed(turn.intent, turn) if turn.intent else heed(await decide(photo, turn), turn)
     if decision.budget is not None:
         # The new budget holds from this message on: the screen updates, the action uses it.
         turn = turn.model_copy(update={"budget": decision.budget})

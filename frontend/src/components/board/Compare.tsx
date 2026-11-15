@@ -92,10 +92,10 @@ export function Compare({ s, onPin }: Props) {
         <span className="block h-px bg-surface" />
       </span>
 
-      <span className="pointer-events-none absolute top-4 left-4 rounded-[6px] bg-surface/90 px-2 py-0.5 text-small font-semibold text-ink" style={{ opacity: 'clamp(0, calc((var(--split) - 0.1) * 12), 1)' }}>
+      <span className="label pointer-events-none absolute top-4 left-4 rounded-[3px] bg-surface/90 px-1.5 py-0.5 text-ink" style={{ opacity: 'clamp(0, calc((var(--split) - 0.1) * 12), 1)' }}>
         Before
       </span>
-      <span className="pointer-events-none absolute top-4 right-4 rounded-[6px] bg-surface/90 px-2 py-0.5 text-small font-semibold text-ink" style={{ opacity: 'clamp(0, calc((0.9 - var(--split)) * 12), 1)' }}>
+      <span className="label pointer-events-none absolute top-4 right-4 rounded-[3px] bg-surface/90 px-1.5 py-0.5 text-ink" style={{ opacity: 'clamp(0, calc((0.9 - var(--split)) * 12), 1)' }}>
         After
       </span>
 
@@ -106,14 +106,14 @@ export function Compare({ s, onPin }: Props) {
             key={`o-${p.id}`}
             data-outline
             aria-hidden="true"
-            className="pointer-events-none absolute rounded-[4px] border-2 border-dashed border-surface opacity-0"
+            className="pointer-events-none absolute border-[1.5px] border-dashed border-surface opacity-0"
             style={{ left: `${p.box.x * 100}%`, top: `${p.box.y * 100}%`, width: `${p.box.w * 100}%`, height: `${p.box.h * 100}%` }}
           />
         ))}
-        {placed.map((p) => {
+        {placed.map((p, i) => {
           const on = p.id === selected
           const dim = !!selected && !on
-          const flip = p.box.x + p.box.w / 2 > 0.7
+          const flip = p.box.x + p.box.w / 2 > 0.62
           return (
             <button
               key={p.id}
@@ -123,14 +123,20 @@ export function Compare({ s, onPin }: Props) {
                 e.stopPropagation()
                 onPin(p)
               }}
-              aria-label={`${p.slot}, ${money(p.priceEur, p.currency ?? s.currency)}`}
+              aria-label={`${String(i + 1).padStart(2, '0')}, ${p.slot}, ${money(p.priceEur, p.currency ?? s.currency)}`}
               aria-pressed={on}
-              className={`group absolute flex -translate-y-1/2 items-center gap-1.5 transition-opacity duration-200 ${flip ? 'flex-row-reverse sm:-translate-x-[calc(100%-0.5rem)]' : ''} ${flip ? 'max-sm:-translate-x-2' : '-translate-x-2'} ${dim ? 'opacity-50' : ''}`}
+              className={`group absolute flex -translate-y-1/2 items-center transition-opacity duration-200 ${flip ? '-translate-x-[calc(100%-0.875rem)] flex-row-reverse' : '-translate-x-3.5'} ${dim ? 'opacity-45' : ''}`}
               style={{ left: `${(p.box.x + p.box.w / 2) * 100}%`, top: `${(p.box.y + p.box.h / 2) * 100}%` }}
             >
-              <span className={`size-4 shrink-0 rounded-full bg-chosen ring-[3px] ring-surface transition-transform duration-200 ease-[var(--ease-out)] group-hover:scale-125 ${on ? 'scale-125' : ''}`} />
-              <span className={`num rounded-[6px] px-1.5 py-0.5 text-small max-sm:hidden font-semibold whitespace-nowrap transition-colors duration-200 ${on ? 'bg-ink text-surface' : 'bg-surface text-ink'}`}>
-                {p.slot} · {money(p.priceEur, p.currency ?? s.currency)}
+              {/* A drawing's callout: the piece's number in a circle, its name on a leader line. */}
+              <span className={`label grid size-7 shrink-0 place-items-center rounded-full border-[1.5px] shadow-[0_1px_6px_rgb(23_23_23/0.25)] transition-transform duration-200 ease-[var(--ease-out)] group-hover:scale-110 ${on ? 'scale-110 border-surface bg-ink text-surface' : 'border-ink bg-surface text-ink'}`}>
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <span className={`flex items-center ${flip ? 'flex-row-reverse' : ''} ${on ? '' : 'max-sm:hidden opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100'} transition-opacity duration-150`}>
+                <span className="h-[1.5px] w-4 bg-surface shadow-[0_0_2px_rgb(23_23_23/0.5)]" />
+                <span className="num rounded-[3px] bg-ink px-1.5 py-0.5 font-mono text-[0.6875rem] whitespace-nowrap text-surface">
+                  {p.slot} · {money(p.priceEur, p.currency ?? s.currency)}
+                </span>
               </span>
             </button>
           )

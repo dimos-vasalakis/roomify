@@ -14,21 +14,25 @@ Owner: front end. Rebuilt 2026-11-15 ("the board"). Every screen follows this fi
 - Biggest block: the room.
 - Largest figure: the total against the budget, at the top of the conversation column.
 
-## Layout (1440 × 900)
+## Layout (1440 × 900): one drawing sheet
 ```
-rail 64 | room board (fills)                         | conversation 400
-  +     | ┌──────────────────────────────────────┐   | €287.00 of €300.00
-  ▣     | │ room, before ◀─||─▶ after, pins      │   | ───────────────
-  ▢     | │ steps drawn on the photo             │   | You  …
-  ▢     | └──────────────────────────────────────┘   | Roomify  …
-        | Reading your room · 1 of 4   [Walk in]   | [▁▃▆ Tell Roomify… 🎙 ↑]
+[mark] | [room thumb · ROOM 01 · name ▾] [+ New room]            TOTAL / BUDGET €295.50 / €500.00 [scale bar]
+┌ crop marks ─────────────────────────────────────────┐  ┌ SCHEDULE OF PIECES ───── 3 ITEMS ┐
+│ the room, before ◀─||─▶ after                        │  │ (01) [photo] DESK  title   €129 │
+│ numbered callouts (01)(02)(03) on the pieces         │  │      shop · 160×80×75 cm  Shop↗ │
+│                                                      │  │      [Move] [Another like it] [Remove]
+└──────────────────────────────────────────────────────┘  │ TOTAL                    €295.50 │
+ Title block: room name · 3 PIECES · 2 SHOPS | WALL 300 CM │ TURNED DOWN · 7  ▾               │
+                       [Undo] [↺] [Look around in 3D]      │ ● agent's latest word      Log  │
+                                                           │ [ anything else…      🎙  ↑ ]   │
 ```
-- **Rail:** 64px, room thumbnails (3:2), + for a new room. Hover shows name and status. The mark opens the full list as a panel over the board. Ctrl B (or the button at the rail's foot) puts the rail away completely; a single "Show rooms" button stays top left. The choice is remembered.
-- **Backdrop:** the page is a drafting table: a 24px dot grid that fades toward the edges, a little paper grain, and, only while the agent works, a band that slowly passes over the grid and darkens its dots. No colour, no glow.
-- **Room board:** the room at 3:2, as large as the height allows. Under it one caption line: the current step, or the room's name and size once done, with the room tools on the right.
-- **Conversation column:** not a box. The total against the budget at the top (36px), then the conversation, which scrolls inside the column and fades out at its top edge (newest lines sit just above the composer), then the composer, the one solid white card.
-- **Phone (390):** top bar (Rooms, name, New), room full width, caption, conversation below, composer sticky at the bottom.
-- **Stage (`?stage=1`):** root font size up 12.5% for the projector.
+- **Interaction is hybrid:** every chosen piece has its own buttons (Move with presets or a place in words, Another like it, Remove). They are sent as an exact `intent` to `POST /turn`, so no model guesses what a button meant. One command line stays for anything else, by voice or text. The full conversation is the Log, one tap away; the footer shows only the agent's latest word or the question it is waiting on, with its quick answers.
+- **The room is the hero.** Pieces are numbered callouts (a circle with the number, the name on a leader line on hover or when picked); the same number leads its line in the schedule. Picking either selects both.
+- **Top bar** replaces the rooms rail and the phone bar: the open room (its thumbnail and name open the rooms list), New room, and the total against the budget, editable in place, with a scale bar.
+- **While the agent works** the schedule's head is the live log: step n/4, what it is doing now, and how many it looked at, turned down and chose. **Turned down** lists every rejection with its reason.
+- **Before a brief** the column is the Brief: the question, one line on what happens, and three example briefs that fill the command line.
+- **Type:** Manrope for words, IBM Plex Mono for every number, size and the small capital labels of a title block. Square corners (3–4px), hairline rules, a drafting grid behind.
+- **Phone (390):** the same sheet stacked: top bar, room, title block, schedule with its command line.
 
 ## The room's states
 | State | On the room | Caption |

@@ -104,14 +104,16 @@ async def turn(
     history: Annotated[str, Form(max_length=100_000)] = "[]",
     basket: Annotated[str, Form(max_length=50_000)] = "[]",
     render_url: Annotated[str | None, Form(max_length=2000)] = None,
+    intent: Annotated[str | None, Form(max_length=1000)] = None,
 ) -> StreamingResponse:
-    """One message in the conversation about a room. Stateless: the client sends the
+    """One message in the conversation about a room. `intent`: a piece's button (JSON
+    {action, slot, instruction}), carried out exactly instead of read from the message. Stateless: the client sends the
     conversation and the basket it holds, so a server restart never loses a room."""
     try:
         state = loop.Turn(
             message=re.sub(r"\s+", " ", message).strip(), history=json.loads(history),
             basket=json.loads(basket), render_url=render_url or None, budget=budget,
-            city=city, wall_cm=wall_cm,
+            city=city, wall_cm=wall_cm, intent=json.loads(intent) if intent else None,
         )  # fmt: skip
     except (ValueError, ValidationError) as exc:
         raise HTTPException(
