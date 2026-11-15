@@ -123,3 +123,40 @@ async def test_a_view_only_turns_pictures_roomify_made() -> None:
     state = turn(basket=[DESK], render_url="https://evil.example.com/x.jpg")
     with pytest.raises(LLMError, match="isn't one Roomify made"):
         await loop._view(b"photo", state, Decision(action="view"), lambda e: None)
+
+
+def test_arranging_needs_pieces() -> None:
+    assert _sane(Decision(action="arrange"), turn(basket=[DESK])).action == "arrange"
+    assert _sane(Decision(action="arrange"), turn()).action == "design"
+
+
+async def test_arrange_moves_the_same_pieces_and_buys_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.test_offer import extract_listing, fixture
+
+    desk = extract_listing(*fixture("ikea_mittzon_desk"))
+    shop, picture = AsyncMock(), AsyncMock(return_value=True)
+    monkeypatch.setattr(loop, "_reread", AsyncMock(return_value={"Desk": desk}))
+    monkeypatch.setattr(loop, "_shop", shop)
+    monkeypatch.setattr(loop, "_picture", picture)
+    sent: list[tuple[str, dict[str, object]]] = []
+    decision = Decision(action="arrange", instruction="desk under the window")
+    await loop._arrange(b"photo", turn(basket=[DESK]), decision, sent.append)
+    shop.assert_not_awaited()
+    chosen, brief = picture.await_args.args[1], picture.await_args.args[2]
+    assert chosen == {"Desk": desk} and "desk under the window" in brief
+    assert sent[-1] == ("done", {"total_eur": desk.price_eur, "currency": desk.currency})
+
+
+def test_a_missing_piece_names_why_its_pages_failed_not_a_turned_away_name() -> None:
+    from app.tools.find_products import FindResult, Rejection
+
+    def r(reason: str, stage: str = "page") -> Rejection:
+        return Rejection(url="u", shop_name="IKEA", title="t", reason=reason, stage=stage)  # type: ignore[arg-type]
+
+    refused = "ikea.gr refused the request (HTTP 403)"
+    result = FindResult(candidates=[], searched=3, note=None,
+                        rejected=[r("Storage board, not wall art", "name"), r(refused), r(refused),
+                                  r("€90, over the €60 budget")])  # fmt: skip
+    assert loop._why_missing(result) == f"{refused} (2 of 3 pages)"

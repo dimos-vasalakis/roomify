@@ -180,6 +180,7 @@ The server keeps no conversation state, so a restart or a sleeping instance neve
 - `ask`: one question, only when it changes what is bought, never twice; for a wall width it proposes its own estimate from visible anchors (`suggestion`).
 - `design`: plan, shop, check, choose, render, check the picture (the `/offer` path).
 - `swap`: re-shop one slot within the budget left, keep the rest, render again.
+- `arrange`: keep every piece, render them placed as the person now asks ("bed against the wall"). Nothing is bought; the basket and total stay. Streams like `swap` (`step.started`, `render.ready`, `done`), with `message.action` `"arrange"`.
 - `view`: the same furnished room from another camera position, checked against the pieces.
 - `reply`: an answer from the basket (sizes, totals, fit), no shopping.
 

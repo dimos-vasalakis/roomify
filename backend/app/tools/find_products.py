@@ -6,6 +6,7 @@ for the live feed ("Width 160 cm, your space is 140 cm").
 """
 
 import asyncio
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -26,6 +27,7 @@ class Rejection(BaseModel):
     shop_name: str
     title: str  # page title if read, else the URL's words
     reason: str
+    stage: Literal["name", "page"] = "page"  # turned away by its name, or by its page
 
 
 class FindResult(BaseModel):
@@ -87,7 +89,13 @@ async def find_products(spec: ProductSpec, want: int = 8) -> FindResult:
     # Names the relevance check turned away come first: they show the agent telling a
     # bulletin board from a painting before it reads a single page.
     turned_away = [
-        Rejection(url=d.hit.url, shop_name=d.hit.shop_name, title=d.hit.words, reason=d.reason)
+        Rejection(
+            url=d.hit.url,
+            shop_name=d.hit.shop_name,
+            title=d.hit.words,
+            reason=d.reason,
+            stage="name",
+        )
         for d in search.dropped
     ]
     if not search.hits:
