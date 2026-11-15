@@ -62,6 +62,23 @@ const MODEL_FRONT_YAW = 0
 const HANGS = /painting|wall art|print|poster|mirror|wall clock|πίνακ|κάδρ|καθρέφτ|αφίσ/i
 const SITS_ON_TOP = /lamp|vase|plant|decor|clock|speaker|φωτιστ|βάζο|φυτό|λάμπα/i
 
+/** Usual heights (m) by kind of piece: a size read only from the picture stays within reach of them. */
+const TYPICAL_HEIGHT: [RegExp, number][] = [
+  [/office chair|καρέκλα γραφείου|gaming/i, 1.15],
+  [/armchair|πολυθρόνα|lounge/i, 0.9],
+  [/chair|καρέκλα|stool|σκαμπό/i, 0.85],
+  [/sofa|καναπ/i, 0.85],
+  [/floor lamp|δαπέδου|lampadater/i, 1.55],
+  [/lamp|φωτιστ/i, 0.45],
+  [/desk|γραφείο|table|τραπέζι/i, 0.75],
+  [/bed|κρεβ/i, 0.95],
+  [/bookcase|shelf|βιβλιοθήκη|ραφιέρα/i, 1.8],
+  [/wardrobe|ντουλάπα/i, 2],
+  [/sideboard|cabinet|συρταριέρα|μπουφές|κομοδίνο|nightstand/i, 0.75],
+  [/plant|φυτό/i, 1.1],
+]
+const typicalHeight = (label: string) => TYPICAL_HEIGHT.find(([re]) => re.test(label))?.[1] ?? null
+
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b)
@@ -231,7 +248,8 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
       const along = plane.normal.dot(dirs[k])
       if (along >= -1e-4) continue
       const t = -plane.d / along
-      if (t > dist * 0.82 && t < dist * 1.18 && t < nearest) nearest = t
+      // Wide band: for a room seen from inside, the first plane a ray meets is the true surface.
+      if (t > dist * 0.7 && t < dist * 1.35 && t < nearest) nearest = t
     }
     if (nearest < Infinity) raw[k] = dirs[k].clone().multiplyScalar(nearest)
   }
@@ -358,6 +376,25 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
   })
 
   // ---- The pieces ----
+  type Footprint = { x: number; z: number; yaw: number; halfW: number; halfD: number }
+  const footprints: Footprint[] = []
+  /** Do two footprints on the floor overlap? (Separating axes of two rectangles.) */
+  const overlap = (a: Footprint, b: Footprint) => {
+    const axes = [a.yaw, a.yaw + Math.PI / 2, b.yaw, b.yaw + Math.PI / 2].map((t) => [Math.sin(t), Math.cos(t)])
+    const corners = (f: Footprint) =>
+      [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sz]) => {
+        const lx = sx * f.halfW
+        const lz = sz * f.halfD
+        return [f.x + lx * Math.cos(f.yaw) + lz * Math.sin(f.yaw), f.z - lx * Math.sin(f.yaw) + lz * Math.cos(f.yaw)]
+      })
+    const ca = corners(a)
+    const cb = corners(b)
+    return axes.every(([ax, az]) => {
+      const pa = ca.map(([x, z]) => x * ax + z * az)
+      const pb = cb.map(([x, z]) => x * ax + z * az)
+      return Math.max(...pa) > Math.min(...pb) + 0.01 && Math.max(...pb) > Math.min(...pa) + 0.01
+    })
+  }
   type Placed = { id: string; group: THREE.Group; height: number; ready: boolean }
   const placed: Placed[] = []
   const loader = new GLTFLoader()
@@ -382,7 +419,11 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
   }
 
   // Floor pieces first, so a lamp knows the height of the desk it stands on.
-  const order = [...o.pieces].sort((a, b) => Number(HANGS.test(a.slot + a.title) || SITS_ON_TOP.test(a.slot)) - Number(HANGS.test(b.slot + b.title) || SITS_ON_TOP.test(b.slot)))
+  // Floor pieces first and biggest first (a desk keeps its place, a chair steps clear of it),
+  // then what stands on them and what hangs.
+  const later = (p: Piece) => Number(HANGS.test(p.slot + p.title) || SITS_ON_TOP.test(p.slot))
+  const area = (p: Piece) => (p.widthCm ?? p.box.w * 300) * (p.depthCm ?? p.box.h * 150)
+  const order = [...o.pieces].sort((a, b) => later(a) - later(b) || area(b) - area(a))
   for (const p of order) {
     const label = `${p.slot} ${p.title}`
     const cx = p.box.x + p.box.w / 2
@@ -433,6 +474,8 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
       if (!height) {
         const top = ray(cx, p.box.y)
         height = Math.max(0.1, top.multiplyScalar(base.dot(facing) / Math.max(1e-3, top.dot(facing))).y - standY)
+        const usual = typicalHeight(label)
+        if (usual) height = clamp(height, usual * 0.8, usual * 1.2)
       }
       depth ??= clamp(width * 0.55, 0.3, 1.1)
       // The box's foot is the front edge: its middle is half a depth further from the camera.
@@ -447,6 +490,21 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
         }
       }
       position.y = standY
+      if (!under) {
+        // Two pieces never stand in each other: this one steps clear of those already placed.
+        const mine: Footprint = { x: position.x, z: position.z, yaw, halfW: width / 2, halfD: depth / 2 }
+        for (let step = 0; step < 50 && footprints.some((f) => overlap(f, mine)); step++) {
+          const other = footprints.find((f) => overlap(f, mine))!
+          const away = new THREE.Vector2(mine.x - other.x, mine.z - other.z)
+          if (away.lengthSq() < 1e-6) away.set(facing.z, -facing.x)
+          away.normalize().multiplyScalar(0.03)
+          mine.x += away.x
+          mine.z += away.y
+        }
+        position.x = mine.x
+        position.z = mine.z
+        footprints.push(mine)
+      }
       pieceBoxes.set(p.id, { box: p.box, topY: standY + height, centre: position.clone().setY(standY + height), reach: Math.max(width, depth) * 0.6 })
     }
 
