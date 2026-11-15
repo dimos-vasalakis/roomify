@@ -6,8 +6,8 @@ import type { Session } from '../../types'
 
 /**
  * The agent's work, drawn on the photo: a scan while it reads the room, the wall it measured,
- * each piece it chose printed as a tag, and a band while it draws. What it turned down lives
- * in the live trace. Tags float in a stack: positions only appear once a render gives real boxes.
+ * each piece it chose printed as a tag, and a band while it draws. Tags show only while it
+ * works: on a finished or failed room they would sit on top of the picture. Tags float in a stack: positions only appear once a render gives real boxes.
  */
 export function StepLayer({ s }: { s: Session }) {
   const root = useRef<HTMLDivElement>(null)
@@ -54,7 +54,7 @@ export function StepLayer({ s }: { s: Session }) {
 
       {/* The wall the agent measured, drawn like an architect's dimension line. */}
       {s.wallCm && s.status !== 'done' && s.status !== 'failed' && (
-        <div className={`absolute inset-x-[8%] flex items-center ${isWorking(s) ? 'bottom-6 lg:bottom-[13.5rem]' : 'bottom-6'}`}>
+        <div className="absolute inset-x-[8%] bottom-6 flex items-center">
           <span className="h-3 w-0.5 bg-surface" />
           <span className="h-0.5 flex-1 bg-surface" />
           <span className="num mx-2 rounded-[6px] bg-surface px-2 py-0.5 text-chrome font-semibold text-ink">{s.wallCm} cm</span>
@@ -64,7 +64,7 @@ export function StepLayer({ s }: { s: Session }) {
       )}
 
       {/* What it chose so far, and the last thing it turned down. */}
-      {s.products.length > 0 && s.status !== 'done' && (
+      {s.products.length > 0 && isWorking(s) && (
         <ul className="absolute top-3 left-3 flex max-w-[min(22rem,70%)] flex-col items-start gap-1 sm:top-8 sm:left-8 sm:gap-1.5">
           {s.products.map((p) => (
             <li key={p.id} data-tag className="flex items-center gap-2 rounded-[8px] bg-surface py-1 pr-2.5 pl-2 text-small whitespace-nowrap sm:py-1.5 sm:pr-3 sm:text-chrome">

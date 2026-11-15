@@ -164,12 +164,3 @@ test('the rooms rail hides completely and comes back', async ({ page }) => {
   await page.getByRole('button', { name: 'Show rooms (Ctrl B)' }).click()
   await expect(page.getByRole('navigation', { name: 'Rooms' })).toBeInViewport()
 })
-
-test('the live trace shows the run as it happens, then folds away', async ({ page }) => {
-  await start(page)
-  const trace = page.getByRole('status', { name: 'What the agent is doing' })
-  await expect(trace).toBeVisible()
-  await expect(trace).toContainText('Chosen')
-  await done(page)
-  await expect(trace).toHaveCount(0, { timeout: 8000 })
-})

@@ -15,9 +15,8 @@
   --color-secondary: #e5e5e5;
   --color-chosen: #2d5a45;
   --color-chosen-soft: #e3ebe6;
-  /* On the ink of the live trace: the same pine, lifted to read on near-black. */
+  /* The same pine, lifted to read on near-black (the 3D view). */
   --color-chosen-bright: #8cc5a8;
-  --color-on-ink-muted: #a3a29f;
   --color-negative: #c4242a;
   --color-scrim: #171717;
 

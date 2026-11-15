@@ -159,3 +159,30 @@ async def test_robots_refused_now_uses_the_rules_read_before(monkeypatch) -> Non
     monkeypatch.setattr(web_fetch, "_download", refuse(403))
     robots = await web_fetch._robots(url)
     assert not robots.locked and robots.text == rules
+
+
+async def test_a_rejected_key_turns_firecrawl_off_instead_of_failing_every_page(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    """Live: "The page reading service failed (HTTP 401)" on 10 of 30 pages, and no credits
+    used, because Firecrawl charges nothing for a key it rejects."""
+    import httpx
+
+    from app.tools import firecrawl
+
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-wrong")
+    get_settings.cache_clear()
+    calls: list[str] = []
+
+    async def post(self, url, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(url)
+        return httpx.Response(
+            401, json={"error": "Unauthorized"}, request=httpx.Request("POST", url)
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", post)
+    assert firecrawl.firecrawl_enabled()
+    with pytest.raises(FirecrawlError, match="not set up"):
+        await firecrawl.firecrawl_html("https://www.ikea.gr/proioda/x/1/")
+    assert not firecrawl.firecrawl_enabled()
+    assert len(calls) == 1

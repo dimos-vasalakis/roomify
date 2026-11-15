@@ -21,6 +21,14 @@ def isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def firecrawl_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A test that saw a rejected Firecrawl key must not turn it off for the next one."""
+    from app.tools import firecrawl
+
+    monkeypatch.setattr(firecrawl, "_off_reason", None)
+
+
+@pytest.fixture(autouse=True)
 def fresh_settings() -> Iterator[None]:
     """Settings and engine are cached; reset them so each test sees its own env."""
     get_settings.cache_clear()

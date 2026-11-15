@@ -1,5 +1,5 @@
 import { RotateCcw } from 'lucide-react'
-import { useRef, useSyncExternalStore } from 'react'
+import { useRef } from 'react'
 import { DUR, enter, useGSAP } from '../../lib/motion'
 import { canView3D } from '../../lib/depth'
 import { pictureOf } from '../../lib/session'
@@ -14,15 +14,6 @@ import { Compare } from './Compare'
 import { EmptyDrop } from './EmptyDrop'
 import { PinCard } from './PinCard'
 import { StepLayer } from './StepLayer'
-import { Trace } from './Trace'
-
-const WIDE = '(min-width: 1024px)'
-const subscribe = (on: () => void) => {
-  const m = matchMedia(WIDE)
-  m.addEventListener('change', on)
-  return () => m.removeEventListener('change', on)
-}
-const useWide = () => useSyncExternalStore(subscribe, () => matchMedia(WIDE).matches)
 
 /** The room board: the photo or the render, the agent's work drawn on it, and one caption line. */
 export function Board() {
@@ -33,7 +24,6 @@ export function Board() {
   const done = s.status === 'done' && !!s.afterSrc
   const selected = done ? (s.products.find((p) => p.id === state.selectedProductId) ?? null) : null
   const playing = s.walkIns.find((w) => w.id === state.playingWalkInId) ?? null
-  const wide = useWide()
 
   useGSAP(() => void enter(frame.current?.querySelector('[data-picture]') ?? null, { duration: DUR.base }), { scope: frame, dependencies: [s.id] })
 
@@ -84,7 +74,6 @@ export function Board() {
 
         {picture && !done && <StepLayer s={s} />}
 
-        {wide && picture && <Trace key={s.id} s={s} />}
 
         {s.status === 'new' && picture && (
           <label className="press absolute top-4 right-4 z-10 inline-flex h-9 cursor-pointer items-center rounded-control bg-surface px-3 text-chrome font-medium text-ink hover:bg-raised focus-within:outline-2 focus-within:outline-ink">
@@ -132,7 +121,6 @@ export function Board() {
           </div>
         )}
       </div>
-      {!wide && picture && <Trace key={s.id} s={s} inline />}
       <Caption />
     </section>
   )
