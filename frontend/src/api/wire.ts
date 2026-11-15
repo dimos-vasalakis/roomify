@@ -79,7 +79,7 @@ export type RunEvent =
   | { type: 'step.started'; seq: number; data: { text: string; phase?: 'planning' | 'shopping' | 'rendering' | 'checking' } }
   | { type: 'plan.ready'; seq: number; data: { text: string; slots: string[]; currency?: string } }
   | { type: 'ask'; seq: number; data: { question: string; unit: string; suggestion?: number | null } }
-  | { type: 'message'; seq: number; data: { text: string; action: 'ask' | 'design' | 'swap' | 'view' | 'reply' } }
+  | { type: 'message'; seq: number; data: { text: string; action: 'ask' | 'design' | 'add' | 'drop' | 'swap' | 'arrange' | 'view' | 'reply' } }
   | { type: 'product.chosen'; seq: number; data: { slot: string; product: ProductOut; reason?: string } }
   | {
       type: 'candidate.rejected'
@@ -91,6 +91,7 @@ export type RunEvent =
         reason: string
       }
     }
+  | { type: 'product.removed'; seq: number; data: { slot: string; url: string } }
   | { type: 'product.swapped'; seq: number; data: { slot: string; old_product_id: string; product: ProductOut; reason: string } }
   | { type: 'render.ready'; seq: number; data: { render_id: string; kind: string; image_url: string; items: { product_id: string; box: BoxOut }[] } }
   | { type: 'verify.result'; seq: number; data: { product_id: string; match: boolean; note: string } }

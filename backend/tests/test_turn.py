@@ -187,6 +187,44 @@ async def test_an_added_piece_goes_into_the_latest_picture(monkeypatch: pytest.M
     assert any(k == "render.ready" for k, _ in sent)
 
 
+def test_dropping_needs_that_piece() -> None:
+    assert _sane(Decision(action="drop", slot="Desk"), turn(basket=[DESK])).action == "drop"
+    assert (
+        _sane(Decision(action="drop", slot="Rug", say="ok"), turn(basket=[DESK])).action == "reply"
+    )
+    # something of the photo, not a piece: every piece stays, only that is taken out
+    photo_thing = Decision(action="drop", slot="the plant", remove=["the plant in the corner"])
+    assert _sane(photo_thing, turn(basket=[DESK])) == photo_thing.model_copy(update={"slot": None})
+
+
+async def test_drop_takes_one_piece_out_and_keeps_the_rest(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_offer import extract_listing, fixture
+
+    desk = extract_listing(*fixture("ikea_mittzon_desk"))
+    lamp = BasketLine(slot="Lamp", url="https://www.ikea.gr/proioda/lamp/2/", title="NYMÅNE",
+                      price_eur=30)  # fmt: skip
+    reread = AsyncMock(return_value={"Desk": desk})
+    edited = AsyncMock(return_value=True)
+    monkeypatch.setattr(loop, "_reread", reread)
+    monkeypatch.setattr(loop, "_drop_in_place", edited)
+    sent: list[tuple[str, dict[str, object]]] = []
+    state = turn(basket=[DESK, lamp], render_url="https://v3.fal.media/old.jpg")
+    await loop._drop(b"photo", state, Decision(action="drop", slot="Lamp"), sent.append)
+    assert reread.await_args.args[0] == [DESK]  # the lamp's page is not read again
+    assert ("product.removed", {"slot": "Lamp", "url": lamp.url}) in sent
+    assert edited.await_args.args[2] == {"Desk": desk}
+    assert sent[-1] == ("done", {"total_eur": desk.price_eur, "currency": "EUR"})
+
+
+async def test_dropping_the_last_piece_empties_the_basket(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[tuple[str, dict[str, object]]] = []
+    await loop._drop(
+        b"photo", turn(basket=[DESK]), Decision(action="drop", slot="Desk"), sent.append
+    )
+    assert ("product.removed", {"slot": "Desk", "url": DESK.url}) in sent
+    assert sent[-1] == ("done", {"total_eur": 0.0, "currency": "EUR"})
+
+
 def test_arranging_needs_pieces() -> None:
     assert _sane(Decision(action="arrange"), turn(basket=[DESK])).action == "arrange"
     assert _sane(Decision(action="arrange"), turn()).action == "design"

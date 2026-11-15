@@ -141,6 +141,8 @@ export function applyEvent(s: Session, e: RunEvent): Session {
       const others = s.products.filter((p) => p.slot !== e.data.slot)
       return { ...s, products: [...others, { ...product(e.data.product, e.data.slot), reason: e.data.reason }] }
     }
+    case 'product.removed':
+      return { ...s, products: s.products.filter((p) => p.slot !== e.data.slot) }
     case 'candidate.rejected':
       return {
         ...s,

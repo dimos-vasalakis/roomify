@@ -99,11 +99,12 @@ The front end ignores types it does not know, so new ones never break it. Names 
 |---|---|---|
 | `run.status` | `{status}` (`running`, `waiting_for_user`, `done`, `failed`) | Room state |
 | `step.started` | `{text}`, one plain sentence: "Searching ikea.gr for a white sofa under €750" | The Now line |
-| `message` | `{text, action}`; `action` is `ask`, `design`, `add`, `swap`, `arrange`, `view` or `reply` | The agent's chat line. `design` starts from an empty basket; the others keep it. Mid-run lines (`reply`) say what was left out and why, or that no faithful picture could be made; they go back in `history`, so later answers rest on them |
+| `message` | `{text, action}`; `action` is `ask`, `design`, `add`, `drop`, `swap`, `arrange`, `view` or `reply` | The agent's chat line. `design` starts from an empty basket; the others keep it. Mid-run lines (`reply`) say what was left out and why, or that no faithful picture could be made; they go back in `history`, so later answers rest on them |
 | `ask` | `{question, unit, suggestion}`; `suggestion` is the agent's own estimate (e.g. a wall width from the photo) or null | The question card, pre-filled; run is `waiting_for_user` |
 | `fit.proof` | `{product_id, ok, lines}` | Only for pieces whose page gave a size, when the wall width is known: fit lines on the receipt and a tape measure on the room |
 | `product.chosen` | `{slot, product: ProductOut}` | A receipt line, a shelf card |
 | `candidate.rejected` | `{slot, product: {title, retailer, url, price_eur \| null}, rule, reason}` | A struck line with the reason. `rule`: `size`, `budget`, `page-check`, `style`, `trip` |
+| `product.removed` | `{slot, url}` | That slot's piece leaves the basket and the total (sent by `drop`) |
 | `product.swapped` | `{slot, old_product_id, product: ProductOut, reason}` | The line reprints; the old one is struck |
 | `render.ready` | `{render_id, kind (render or view), image_url, items: [{product_id, box: {x, y, w, h}}]}` | The room picture and its price dots. Boxes are 0 to 1 of the render |
 | `verify.result` | `{product_id, match, note}` | Reserved; shown later |
@@ -180,6 +181,7 @@ The server keeps no conversation state, so a restart or a sleeping instance neve
 - `ask`: one question, only when it changes what is bought, never twice; for a wall width it proposes its own estimate from visible anchors (`suggestion`).
 - `design`: plan, shop, check, choose, render, check the picture (the `/offer` path). Only for a first design or when the person asks to start over: it empties the basket.
 - `add`: more pieces on top of the basket ("add a lamp"). Every chosen piece stays; only the new ones are shopped, with the budget left, at most 5 pieces in all. The new pieces are edited into the latest picture (checked like a swap), else the whole room is drawn again. Streams `product.chosen` only for the new pieces (a new slot, e.g. `"Lamp 2"` beside a `"Lamp"`), then `render.ready` and `done`, with `message.action` `"add"`.
+- `drop`: take one chosen piece out ("remove the rug"). Nothing is bought; the other pieces stay. Streams `product.removed`, then the latest picture edited without it (checked like a swap, else the room drawn again), then `done`, with `message.action` `"drop"`.
 - `swap`: re-shop one slot within the budget left, keep the rest, render again.
 - `arrange`: keep every piece, render them placed as the person now asks ("bed against the wall"). Nothing is bought; the basket and total stay. Streams like `swap` (`step.started`, `render.ready`, `done`), with `message.action` `"arrange"`.
 - `view`: the same furnished room from another camera position, checked against the pieces.
