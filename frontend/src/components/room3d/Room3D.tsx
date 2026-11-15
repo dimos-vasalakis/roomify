@@ -262,7 +262,7 @@ export function Room3D({ s }: { s: Session }) {
         <>
           <div data-chrome className="pointer-events-none absolute top-3 left-3 rounded-[5px] bg-surface px-2.5 py-1.5 max-sm:hidden">
             <p className="text-chrome font-semibold text-ink">3D view · drag to look around</p>
-            <p className="text-small text-muted">Built from your preview's depth. Grey areas are what the camera never saw.</p>
+            <p className="text-small text-muted">Built from your preview's depth. Soft patches behind the pieces are filled in, not photographed.</p>
           </div>
           <div data-chrome role="group" aria-label="Camera angle" className="absolute inset-x-3 bottom-3 flex justify-center gap-1 sm:inset-x-auto sm:right-3">
             <div className="flex gap-1 rounded-control bg-surface p-1">
