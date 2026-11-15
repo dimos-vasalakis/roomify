@@ -39,6 +39,7 @@ export function Composer() {
     setHint(null)
     if (fresh) {
       if (!s.beforeSrc) return setHint('Add a photo of the room first.')
+      lastSent.current = said
       const b = budgetIn(said) ?? Number(budget)
       void actions.startRun(instructionOf(said), b >= 20 ? b : 500, s.city, s.wallCm)
       return
@@ -59,6 +60,13 @@ export function Composer() {
       dispatch({ type: 'setVoice', voice: { pending: instructionOf(said) } })
     }
   }
+
+  // A first message that never reached the agent comes back to the input, ready to send again.
+  const lastSent = useRef('')
+  const startError = state.errors.start?.sessionId === s.id ? state.errors.start.message : null
+  useEffect(() => {
+    if (startError && fresh && lastSent.current) setText((t) => t || lastSent.current)
+  }, [startError, fresh])
 
   const speech = useSpeech({ onFinal: send })
   const bars = useMicBars(speech.listening, BARS)

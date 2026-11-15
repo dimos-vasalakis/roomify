@@ -23,7 +23,7 @@ export function Board() {
   const selected = done ? (s.products.find((p) => p.id === state.selectedProductId) ?? null) : null
   const playing = s.walkIns.find((w) => w.id === state.playingWalkInId) ?? null
 
-  useGSAP(() => enter('[data-picture]', { duration: DUR.base }), { scope: frame, dependencies: [s.id] })
+  useGSAP(() => void enter(frame.current?.querySelector('[data-picture]') ?? null, { duration: DUR.base }), { scope: frame, dependencies: [s.id] })
 
   const onPin = (p: Product) => {
     // A sentence said without naming a piece waits for a tap on the room.
@@ -85,6 +85,12 @@ export function Board() {
               }}
             />
           </label>
+        )}
+
+        {s.status === 'new' && picture && state.errors.photo?.sessionId === s.id && (
+          <div className="absolute inset-x-4 bottom-4 z-20 rounded-card bg-surface px-4 py-3 sm:right-auto sm:max-w-md">
+            <BlockError block="photo" />
+          </div>
         )}
 
         {selected && <PinCard product={selected} picture={picture} currency={s.currency} onClose={() => dispatch({ type: 'selectProduct', id: null })} />}

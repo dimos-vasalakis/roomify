@@ -24,6 +24,8 @@ type Opts = { y?: number; x?: number; scale?: number; delay?: number; stagger?: 
  * interrupted animation can never leave content hidden. Reduced motion: opacity only, no travel.
  */
 export function enter(targets: Target, o: Opts = {}) {
+  // Nothing on screen to bring in (an empty room, a ref not attached yet): nothing to do.
+  if (!targets || (typeof targets === 'string' ? !document.querySelector(targets) : !gsap.utils.toArray(targets).length)) return
   if (reducedMotion()) {
     return gsap.fromTo(targets, { opacity: 0 }, { opacity: 1, duration: DUR.fast, clearProps: 'opacity' })
   }
