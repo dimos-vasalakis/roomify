@@ -16,11 +16,18 @@ export function Composer() {
   const { state, active: s, dispatch } = useStore()
   const actions = useActions()
   const [text, setText] = useState('')
-  const busy = !!state.swapping
+  const busy = !!state.swapping || s.status === 'shopping' || s.status === 'drawing'
 
   const change = (sentence: string) => {
+    if (busy || !sentence.trim()) return
+    if (s.offer) {
+      // A conversation: the agent decides whether this swaps a piece, turns the camera or is a question.
+      dispatch({ type: 'setVoice', voice: { caption: sentence.trim(), pending: null } })
+      void actions.talk(sentence)
+      return
+    }
     const instruction = instructionOf(sentence)
-    if (!instruction || busy) return
+    if (!instruction) return
     const product = productNamed(sentence, s.products)
     if (product) {
       dispatch({ type: 'setVoice', voice: { caption: instruction, pending: null } })
@@ -100,7 +107,7 @@ export function Composer() {
         value={speech.listening ? speech.interim : text}
         onChange={(e) => setText(e.target.value)}
         disabled={busy}
-        placeholder={speech.listening ? 'Listening…' : busy ? 'Changing it…' : 'Tell Roomify what to change, like “a warmer lamp”'}
+        placeholder={speech.listening ? 'Listening…' : busy ? 'Working on it…' : s.offer ? 'Ask or change anything, like “a warmer lamp” or “show it from the door”' : 'Tell Roomify what to change, like “a warmer lamp”'}
         className="h-10 min-w-0 flex-1 bg-transparent text-body placeholder:text-muted focus:outline-none"
       />
       {speech.supported && !speech.listening && !text && (

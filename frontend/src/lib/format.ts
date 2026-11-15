@@ -1,15 +1,22 @@
-const eur = new Intl.NumberFormat('en-IE', {
-  style: 'currency',
-  currency: 'EUR',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
+const formats = new Map<string, Intl.NumberFormat>()
+const formatOf = (currency: string) => {
+  let f = formats.get(currency)
+  if (!f) {
+    try {
+      f = new Intl.NumberFormat('en-IE', { style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    } catch {
+      f = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    }
+    formats.set(currency, f)
+  }
+  return f
+}
 
-/** €1,234.50, no space after the sign. */
-export const money = (v: number) => eur.format(v).replace(/\s/g, '')
+/** €1,234.50 or US$1,234.50, no space after the sign. Prices stay in the shop's own currency. */
+export const money = (v: number, currency = 'EUR') => formatOf(currency).format(v).replace(/\s/g, '').replace('US$', '$')
 
 /** +€12.00 / −€12.00 with a real minus sign. */
-export const signedMoney = (v: number) => (v < 0 ? `−${money(-v)}` : `+${money(v)}`)
+export const signedMoney = (v: number, currency = 'EUR') => (v < 0 ? `−${money(-v, currency)}` : `+${money(v, currency)}`)
 
 /** Sum of cents, so totals match the rounded figures on screen. */
 export const sumEur = (values: number[]) =>

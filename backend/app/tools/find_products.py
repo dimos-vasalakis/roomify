@@ -9,6 +9,7 @@ import asyncio
 
 from pydantic import BaseModel
 
+from app.tools.money import money
 from app.tools.read_product_page import PageRead, ProductListing, read_product_page, saved_page
 from app.tools.search_products import ProductSpec, SearchHit, search_products
 from app.tools.web_fetch import warm_robots
@@ -40,8 +41,14 @@ def _cm(value: float) -> str:
 
 def check_fit(listing: ProductListing, spec: ProductSpec) -> str | None:
     """None if it fits, else the reason in plain words."""
+    if listing.currency != spec.currency.upper():
+        return f"Priced in {listing.currency}, your budget is in {spec.currency.upper()}"
     if spec.max_price_eur is not None and listing.price_eur > spec.max_price_eur:
-        return f"€{listing.price_eur:g}, over the €{spec.max_price_eur:g} budget"
+        price, limit = (
+            money(listing.price_eur, spec.currency),
+            money(spec.max_price_eur, spec.currency),
+        )
+        return f"{price}, over the {limit} budget"
     width, depth = listing.width_cm, listing.depth_cm
     if (
         not listing.sizes_order_known
@@ -56,10 +63,8 @@ def check_fit(listing: ProductListing, spec: ProductSpec) -> str | None:
         ("Height", listing.height_cm, spec.max_height_cm),
     )
     for name, value, limit in limits:
-        if limit is None:
-            continue
-        if value is None:
-            return f"{name} is not on the shop's page, so we can't check it fits"
+        if limit is None or value is None:
+            continue  # a size the page doesn't give is not a reason to reject: it stays unchecked
         if value > limit:
             return f"{name} {_cm(value)}, your space allows {_cm(limit)}"
     if listing.in_stock is False:

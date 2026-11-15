@@ -88,8 +88,10 @@ function product(p: ProductOut, slot: string): Product {
     retailer: p.retailer,
     url: p.url,
     priceEur: p.price_eur,
+    currency: p.currency ?? 'EUR',
     widthCm: p.width_cm,
     depthCm: p.depth_cm,
+    heightCm: p.height_cm,
     deliveryText: p.delivery_text,
     box: { x: 0.45, y: 0.45, w: 0.1, h: 0.1 },
     thumb: { src: p.image_url },
@@ -123,12 +125,22 @@ export function applyEvent(s: Session, e: RunEvent): Session {
     case 'step.started':
       return { ...s, now: now(e.data.text), phase: e.data.phase ?? s.phase, status: e.data.phase === 'rendering' || e.data.phase === 'checking' ? 'drawing' : s.status === 'asking' || s.status === 'new' ? 'shopping' : s.status }
     case 'plan.ready':
-      return { ...s, direction: e.data.text }
+      return { ...s, direction: e.data.text, ...(e.data.currency ? { currency: e.data.currency } : {}) }
     case 'ask':
-      return { ...s, status: 'asking', ask: { question: e.data.question, unit: e.data.unit }, now: null }
-    case 'product.chosen':
+      return { ...s, status: 'asking', ask: { question: e.data.question, unit: e.data.unit, suggestion: e.data.suggestion ?? null }, now: null }
+    case 'message': {
+      const chat = e.data.text ? [...(s.chat ?? []), { role: 'agent' as const, text: e.data.text }] : s.chat
+      // A new design starts from an empty basket; a swap, a new view or a reply keep it.
+      const fresh = e.data.action === 'design' ? { products: [], rejections: [], afterSrc: null, direction: undefined } : {}
+      const working = e.data.action === 'reply' || e.data.action === 'ask' ? {} : { status: 'shopping' as const, error: undefined }
+      return { ...s, ...fresh, ...working, chat }
+    }
+    case 'product.chosen': {
       if (s.products.some((p) => p.id === e.data.product.id)) return s
-      return { ...s, products: [...s.products, { ...product(e.data.product, e.data.slot), reason: e.data.reason }] }
+      // A swapped piece takes its slot's place.
+      const others = s.products.filter((p) => p.slot !== e.data.slot)
+      return { ...s, products: [...others, { ...product(e.data.product, e.data.slot), reason: e.data.reason }] }
+    }
     case 'candidate.rejected':
       return {
         ...s,
@@ -184,8 +196,10 @@ export function applyEvent(s: Session, e: RunEvent): Session {
         now: null,
         error: { what: e.data.message, lastGood: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) },
       }
+    case 'fit.proof':
+      return { ...s, products: s.products.map((p) => (p.id === e.data.product_id ? { ...p, fit: e.data.lines, fitOk: e.data.ok } : p)) }
     case 'done':
-      return { ...s, status: 'done', now: null, ask: null }
+      return { ...s, status: 'done', now: null, ask: null, ...(e.data.currency ? { currency: e.data.currency } : {}) }
     default:
       return s
   }

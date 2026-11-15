@@ -77,11 +77,11 @@ export function Totals() {
     <div ref={root} className="border-t border-rule px-5 pt-4 pb-5">
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-chrome text-muted">In the basket</p>
-        {delta && <p className="num text-chrome font-medium text-ink">{signedMoney(delta.eur)} after your swap</p>}
+        {delta && <p className="num text-chrome font-medium text-ink">{signedMoney(delta.eur, s.currency)} after your swap</p>}
       </div>
       <p className="mt-0.5 flex items-baseline gap-2">
-        <span className="num text-total font-bold tracking-[-0.02em] text-ink">{money(tweening ? shown : total)}</span>
-        <span className="num text-body text-muted">of {money(s.budgetEur)}</span>
+        <span className="num text-total font-bold tracking-[-0.02em] text-ink">{money(tweening ? shown : total, s.currency)}</span>
+        <span className="num text-body text-muted">of {money(s.budgetEur, s.currency)}</span>
       </p>
       <span className="mt-3 block h-1.5 overflow-hidden rounded-full bg-raised" role="img" aria-label={`${Math.round(ratio * 100)}% of the budget used`}>
         <span data-fill className="block h-full origin-left rounded-full bg-chosen" style={{ transform: `scaleX(${ratio})` }} />
@@ -90,7 +90,7 @@ export function Totals() {
         <span>
           {s.products.length} {s.products.length === 1 ? 'item' : 'items'} · {shops} {shops === 1 ? 'shop' : 'shops'}
         </span>
-        <span className={left < 0 ? 'font-medium text-negative' : 'text-ink'}>{left < 0 ? `${money(-left)} over` : `${money(left)} left`}</span>
+        <span className={left < 0 ? 'font-medium text-negative' : 'text-ink'}>{left < 0 ? `${money(-left, s.currency)} over` : `${money(left, s.currency)} left`}</span>
       </p>
     </div>
   )

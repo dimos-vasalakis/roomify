@@ -15,6 +15,7 @@ Shared between the front end (`frontend/src/api/`) and the back end (`backend/ap
 | `GET /me`, `PATCH /me`, `POST /me/avatar` | Built |
 | `GET /conversations`, `POST /conversations`, `GET/PATCH/DELETE /conversations/{id}` | Built |
 | `POST /conversations/{id}/photo` | Built |
+| `POST /turn` (stream) | Built: the conversation the front end uses |
 | `POST /conversations/{id}/runs` | **Needed** |
 | `GET /runs/{run_id}/events` (stream) | **Needed** |
 | `POST /runs/{run_id}/answer` | **Needed** |
@@ -98,17 +99,19 @@ The front end ignores types it does not know, so new ones never break it. Names 
 |---|---|---|
 | `run.status` | `{status}` (`running`, `waiting_for_user`, `done`, `failed`) | Room state |
 | `step.started` | `{text}`, one plain sentence: "Searching ikea.gr for a white sofa under €750" | The Now line |
-| `ask` | `{question, unit}` | The question card; run is `waiting_for_user` |
+| `message` | `{text, action}`; `action` is `ask`, `design`, `swap`, `view` or `reply` | The agent's chat line. `design` starts from an empty basket; the others keep it |
+| `ask` | `{question, unit, suggestion}`; `suggestion` is the agent's own estimate (e.g. a wall width from the photo) or null | The question card, pre-filled; run is `waiting_for_user` |
+| `fit.proof` | `{product_id, ok, lines}` | Only for pieces whose page gave a size, when the wall width is known: fit lines on the receipt and a tape measure on the room |
 | `product.chosen` | `{slot, product: ProductOut}` | A receipt line, a shelf card |
 | `candidate.rejected` | `{slot, product: {title, retailer, url, price_eur \| null}, rule, reason}` | A struck line with the reason. `rule`: `size`, `budget`, `page-check`, `style`, `trip` |
 | `product.swapped` | `{slot, old_product_id, product: ProductOut, reason}` | The line reprints; the old one is struck |
-| `render.ready` | `{render_id, kind, image_url, items: [{product_id, box: {x, y, w, h}}]}` | The room picture and its price dots. Boxes are 0 to 1 of the render |
+| `render.ready` | `{render_id, kind (render or view), image_url, items: [{product_id, box: {x, y, w, h}}]}` | The room picture and its price dots. Boxes are 0 to 1 of the render |
 | `verify.result` | `{product_id, match, note}` | Reserved; shown later |
 | `walkin.queued` | `{walkin: WalkinOut}` | A walk-in card appears. Sent when `POST /walkins` creates one, so reopening a room replays its walk-ins too |
 | `video.ready` | `{walkin_id, video_url, poster_url}` | Walk-in becomes playable |
 | `walkin.failed` | `{walkin_id, error}` | Walk-in card says why |
 | `error` | `{message, retryable}` | The block-level error. Run becomes `failed` |
-| `done` | `{total_eur}` | Run finished |
+| `done` | `{total_eur, currency}` | Run finished. Every price is in its shop's own currency (`currency` on each product; `plan.ready` also carries the budget's currency) |
 
 Reason sentences are for people and carry their numbers: "160 cm wide, your wall is 140 cm", "€619.00 would leave €171.00 for 4 items".
 
@@ -168,3 +171,16 @@ Answers with the run's events as a stream: `run.status`, `step.started`, `plan.r
 
 ### `POST /offer/swap`
 Deprecated: returns 409 with instructions to refresh and adjust the brief. The client submits a new complete `/offer` so the preview and shopping list always update together.
+
+
+## `POST /turn` (the conversation)
+Multipart: `photo` (file), `message`, `budget`, `city`, optional `wall_cm`, `history` (JSON `[{role: "user"|"agent", text}]`), `basket` (JSON: the chosen pieces as the front end holds them, `{slot, url, title, price_eur, currency, width_cm, depth_cm, height_cm}`), optional `render_url` (the latest room picture; only fal-hosted links are accepted). Answers with the run's events as a stream.
+
+The server keeps no conversation state, so a restart or a sleeping instance never loses a room. Each turn the agent decides one action from the photo, the conversation and the basket:
+- `ask`: one question, only when it changes what is bought, never twice; for a wall width it proposes its own estimate from visible anchors (`suggestion`).
+- `design`: plan, shop, check, choose, render, check the picture (the `/offer` path).
+- `swap`: re-shop one slot within the budget left, keep the rest, render again.
+- `view`: the same furnished room from another camera position, checked against the pieces.
+- `reply`: an answer from the basket (sizes, totals, fit), no shopping.
+
+Basket pages are read again before a swap or a view, so nothing reaches a picture that was not read from a shop page. Outside Greece, products come from Google Shopping results through Serper (`SERPER_API_KEY`) and are read from any shop's own page; in Greece the shop catalogues come first.

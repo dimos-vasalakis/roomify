@@ -10,7 +10,7 @@ export function StatusLine({ session: s }: { session: Session }) {
     case 'done':
       return (
         <span className="num text-muted">
-          {money(totalOf(s))} of {money(s.budgetEur)}
+          {money(totalOf(s), s.currency)} of {money(s.budgetEur, s.currency)}
         </span>
       )
     case 'shopping':

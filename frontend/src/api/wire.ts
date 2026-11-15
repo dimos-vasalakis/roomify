@@ -56,6 +56,7 @@ export type ProductOut = {
   height_cm: number | null
   delivery_text: string | null
   in_stock: boolean | null
+  currency?: string
 }
 
 export type BoxOut = { x: number; y: number; w: number; h: number }
@@ -76,8 +77,9 @@ export type WalkinOut = {
 export type RunEvent =
   | { type: 'run.status'; seq: number; data: { status: RunStatus } }
   | { type: 'step.started'; seq: number; data: { text: string; phase?: 'planning' | 'shopping' | 'rendering' | 'checking' } }
-  | { type: 'plan.ready'; seq: number; data: { text: string; slots: string[] } }
-  | { type: 'ask'; seq: number; data: { question: string; unit: string } }
+  | { type: 'plan.ready'; seq: number; data: { text: string; slots: string[]; currency?: string } }
+  | { type: 'ask'; seq: number; data: { question: string; unit: string; suggestion?: number | null } }
+  | { type: 'message'; seq: number; data: { text: string; action: 'ask' | 'design' | 'swap' | 'view' | 'reply' } }
   | { type: 'product.chosen'; seq: number; data: { slot: string; product: ProductOut; reason?: string } }
   | {
       type: 'candidate.rejected'
@@ -96,4 +98,5 @@ export type RunEvent =
   | { type: 'video.ready'; seq: number; data: { walkin_id: string; video_url: string; poster_url: string | null } }
   | { type: 'walkin.failed'; seq: number; data: { walkin_id: string; error: string } }
   | { type: 'error'; seq: number; data: { message: string; retryable?: boolean; code?: string } }
-  | { type: 'done'; seq: number; data: { total_eur: number } }
+  | { type: 'fit.proof'; seq: number; data: { product_id: string; ok: boolean; lines: string[] } }
+  | { type: 'done'; seq: number; data: { total_eur: number; currency?: string } }

@@ -13,13 +13,13 @@ export function TitleRow() {
   const finding = (() => {
     switch (s.status) {
       case 'done':
-        return s.direction ?? `${money(total)} of ${money(s.budgetEur)} · ${s.products.length} items from ${shops} ${shops === 1 ? 'shop' : 'shops'} · ${s.city}`
+        return s.direction ?? `${money(total, s.currency)} of ${money(s.budgetEur, s.currency)} · ${s.products.length} items from ${shops} ${shops === 1 ? 'shop' : 'shops'} · ${s.city}`
       case 'shopping':
         return 'Reading your space and finding pieces that belong together'
       case 'drawing':
         return s.phase === 'checking' ? 'Checking your preview against the chosen pieces' : 'Bringing your room together'
       case 'asking':
-        return `${money(s.budgetEur)} budget · ${s.city} · the agent is waiting for one answer`
+        return `${money(s.budgetEur, s.currency)} budget · ${s.city} · the agent is waiting for one answer`
       case 'failed':
         return 'Your brief and photo are here. Adjust them or try creating the room again.'
       case 'new':

@@ -1,10 +1,10 @@
 import { ApiError, api } from '../api/client'
 import { LIVE, OFFERS } from '../api/config'
-import { followOffer } from '../api/stream'
+import { followTurn } from '../api/stream'
 import { fromDetail, fromSummary, walkIn } from '../api/map'
 import { roomName } from '../lib/format'
 import { toRoomPhoto } from '../lib/photo'
-import type { WalkMove } from '../types'
+import type { Session, WalkMove } from '../types'
 import { DRAFT_ID, useStore, type Block } from './store'
 
 /** The prepared photo of each room, kept for sending with the offer. */
@@ -37,6 +37,63 @@ export function useActions() {
     const created = await api.createRoom(active.name || 'New room')
     dispatch({ type: 'upsertRoom', session: { ...active, ...fromSummary(created, active), loaded: true }, select: true })
     return created.id
+  }
+
+  /**
+   * One message to the agent (POST /turn): the first brief, an answer, a change or a question.
+   * The room's conversation and basket go with it, so the server keeps no state.
+   */
+  const talk = async (text: string, room: Partial<Session> = {}, block: Block = 'start') => {
+    const said = text.trim()
+    if (!said) return
+    await guard(block, active.id, async () => {
+      const photo = photos.get(active.id) ?? (active.beforeSrc ? await (await fetch(active.beforeSrc)).blob() : null)
+      if (!photo) throw new Error('Add a photo of the room first.')
+      const id = LIVE ? await ensureRoom() : active.id
+      const s = { ...active, ...room }
+      const name = s.name === 'New room' ? roomName(said) : s.name
+      const history = s.chat ?? []
+      dispatch({
+        type: 'patchRoom',
+        id,
+        patch: { ...room, name, prompt: s.prompt || said, offer: true, ask: null, status: 'shopping', error: undefined,
+                 chat: [...history, { role: 'user', text: said }], now: { text: 'Thinking about what you said', startedAt: Date.now() } },
+      })
+      if (LIVE && name !== active.name) void api.renameRoom(id, name).catch(() => undefined)
+      const form = new FormData()
+      form.append('photo', photo, 'room.jpg')
+      form.append('message', said)
+      form.append('budget', String(s.budgetEur))
+      form.append('city', s.city)
+      if (s.wallCm) form.append('wall_cm', String(s.wallCm))
+      form.append('history', JSON.stringify(history.slice(-20)))
+      form.append('basket', JSON.stringify(s.products.map((p) => ({
+        slot: p.slot, url: p.url, title: p.title, price_eur: p.priceEur, currency: p.currency ?? 'EUR',
+        width_cm: p.widthCm, depth_cm: p.depthCm, height_cm: p.heightCm ?? null,
+      }))))
+      if (s.afterSrc?.startsWith('https://')) form.append('render_url', s.afterSrc)
+      let got = 0
+      let completed = false
+      followTurn(form, {
+        onEvent: (event) => {
+          got += 1
+          if (event.type === 'done' || event.type === 'error' || event.type === 'ask') completed = true
+          dispatch({ type: 'runEvent', id, event })
+        },
+        onEnd: () => {
+          if (!completed) dispatch({ type: 'patchRoom', id, patch: { status: 'failed', now: null, error: { what: 'The connection ended before the agent finished. Try again.', lastGood: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) } } })
+        },
+        onTrouble: (problem) => {
+          // Nothing arrived: back where we were, with the reason. Mid-way: keep what was found.
+          if (!got) {
+            dispatch({ type: 'patchRoom', id, patch: { status: s.products.length ? 'done' : 'new', now: null, chat: history } })
+            dispatch({ type: 'setError', block, sessionId: id, message: problem })
+          } else {
+            dispatch({ type: 'patchRoom', id, patch: { status: 'failed', now: null, error: { what: problem, lastGood: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) } } })
+          }
+        },
+      })
+    })
   }
 
   return {
@@ -87,49 +144,21 @@ export function useActions() {
       })
     },
 
+    talk,
+
+    /** "Try again" in a conversation: send the last message again, keeping the room as it was. */
+    async retry() {
+      const chat = active.chat ?? []
+      const last = chat.map((line) => line.role).lastIndexOf('user')
+      if (last === -1) return talk(active.prompt, { chat: [] })
+      return talk(chat[last].text, { chat: chat.slice(0, last) })
+    },
+
     async startRun(prompt: string, budgetEur: number, city: string, wallCm: number | null = null) {
       if (OFFERS) {
-        // A real offer from POST /offer, streamed into this room like a run.
-        await guard('start', active.id, async () => {
-          const photo = photos.get(active.id) ?? (active.beforeSrc ? await (await fetch(active.beforeSrc)).blob() : null)
-          if (!photo) throw new Error('Add a photo of the room first.')
-          const id = LIVE ? await ensureRoom() : active.id
-          const name = active.name === 'New room' ? roomName(prompt) : active.name
-          dispatch({ type: 'resetRun', id })
-          dispatch({
-            type: 'patchRoom',
-            id,
-            patch: { name, prompt, budgetEur, city, wallCm, offer: true, status: 'shopping', error: undefined, now: { text: 'Reading your photo and your brief', startedAt: Date.now() } },
-          })
-          if (LIVE && name !== active.name) void api.renameRoom(id, name).catch(() => undefined)
-          const form = new FormData()
-          form.append('photo', photo, 'room.jpg')
-          form.append('brief', prompt)
-          form.append('budget_eur', String(budgetEur))
-          form.append('city', city)
-          if (wallCm) form.append('wall_cm', String(wallCm))
-          let got = 0
-          let completed = false
-          followOffer(form, {
-            onEvent: (event) => {
-              got += 1
-              if (event.type === 'done' || event.type === 'error') completed = true
-              dispatch({ type: 'runEvent', id, event })
-            },
-            onEnd: () => {
-              if (!completed) dispatch({ type: 'patchRoom', id, patch: { status: 'failed', now: null, error: { what: 'The connection ended before the design was ready. Try again.', lastGood: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) } } })
-            },
-            onTrouble: (text) => {
-              // Nothing arrived: back to the brief, with the reason. Mid-way: keep what was found.
-              if (!got) {
-                dispatch({ type: 'patchRoom', id, patch: { status: 'new', now: null } })
-                dispatch({ type: 'setError', block: 'start', sessionId: id, message: text })
-              } else {
-                dispatch({ type: 'patchRoom', id, patch: { status: 'failed', now: null, error: { what: text, lastGood: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) } } })
-              }
-            },
-          })
-        })
+        // The first message of the conversation: a fresh room, then the brief.
+        dispatch({ type: 'resetRun', id: active.id })
+        await talk(prompt, { budgetEur, city, wallCm, chat: [], products: [], afterSrc: null, prompt })
         return
       }
       if (!LIVE) return void dispatch({ type: 'startRun', prompt, budgetEur, city })
@@ -148,6 +177,8 @@ export function useActions() {
     },
 
     async answer(value: number) {
+      // In a conversation the answer is simply the next message, with the width remembered.
+      if (active.offer) return talk(`${value} ${active.ask?.unit ?? 'cm'}`, { wallCm: value }, 'ask')
       if (!LIVE) return void dispatch({ type: 'answer', value })
       const runId = active.runId
       if (!runId) return
@@ -161,10 +192,8 @@ export function useActions() {
       dispatch({ type: 'startSwap', productId, instruction })
       if (active.offer) {
         const p = active.products.find((x) => x.id === productId)
-        if (!p) return void dispatch({ type: 'cancelSwap' })
         dispatch({ type: 'cancelSwap' })
-        dispatch({ type: 'editBrief' })
-        dispatch({ type: 'patchRoom', id: active.id, patch: { prompt: `${active.prompt}\nFor the ${p.slot.toLowerCase()}: ${instruction}`.slice(0, 2000) } })
+        if (p) await talk(`Change the ${p.slot.toLowerCase()}: ${instruction}`, {}, 'swap')
         return
       }
       if (!LIVE) return

@@ -142,7 +142,6 @@ def test_price_from_og_tags_when_no_structured_data() -> None:
     ("product", "message"),
     [
         ('{"@type":"Product","name":"X","image":"https://i/x.jpg"}', "No price"),
-        ('{"@type":"Product","name":"X","image":"https://i/x.jpg","offers":{"price":"10","priceCurrency":"USD"}}', "not in euros"),
         ('{"@type":"Product","name":"X","offers":{"price":"10","priceCurrency":"EUR"}}', "No product photo"),
         ('{"@type":"Organization","name":"Shop"}', "No product found"),
     ],
@@ -168,11 +167,35 @@ def test_broken_json_ld_is_skipped() -> None:
     assert extract_listing(IKEA_URL, html).price_eur == 3.0
 
 
-async def test_unknown_shop_is_refused_without_a_request(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_any_shop_is_read_in_its_own_currency() -> None:
+    product = '{"@type":"Product","name":"Lamp","image":"https://i/x.jpg","offers":{"price":"89.99","priceCurrency":"USD"}}'
+    metas = '<meta property="og:site_name" content="CB2">'
+    listing = extract_listing("https://www.cb2.com/lamp/s123", _page(product, metas=metas))
+    assert (listing.retailer, listing.shop_name) == ("cb2.com", "CB2")
+    assert (listing.price_eur, listing.currency) == (89.99, "USD")
+
+
+def test_a_price_without_a_currency_is_refused_outside_our_shops() -> None:
+    product = '{"@type":"Product","name":"Lamp","image":"https://i/x.jpg","offers":{"price":"89"}}'
+    with pytest.raises(NotAProduct, match="which currency"):
+        extract_listing("https://shop.example.com/lamp", _page(product))
+
+
+def test_inch_sizes_become_centimetres() -> None:
+    dims, _ = labelled_dimensions('Width: 30" Depth: 32 in Height: 36 inches')
+    assert dims == {"width": 76.2, "depth": 81.3, "height": 91.4}
+
+
+@pytest.mark.parametrize(
+    "url", ["http://localhost:8000/x", "http://127.0.0.1/x", "http://169.254.169.254/latest",
+            "http://10.0.0.5/p", "http://intranet/p"],
+)  # fmt: skip
+async def test_private_addresses_are_never_requested(
+    monkeypatch: pytest.MonkeyPatch, url: str
+) -> None:
     requests = mock_http(monkeypatch, lambda r: httpx.Response(200))
-    result = await read_product_page("https://www.amazon.de/dp/123")
-    assert result.listing is None
-    assert result.error and "Not one of the shops we use" in result.error
+    result = await read_product_page(url)
+    assert result.listing is None and result.error == "Not a valid web address"
     assert requests == []
 
 
@@ -240,7 +263,7 @@ def test_variant_that_cannot_be_told_apart_is_refused() -> None:
 
 async def test_malformed_address_never_raises() -> None:
     result = await read_product_page("https://[broken/x")
-    assert result.listing is None and result.error and "Not one of the shops" in result.error
+    assert result.listing is None and result.error == "Not a valid web address"
 
 
 def test_meta_values_keep_apostrophes() -> None:

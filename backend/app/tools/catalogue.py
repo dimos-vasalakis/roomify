@@ -1,11 +1,17 @@
 """Each shop's product list, built from its public sitemaps and cached for a week.
 
 Run `python -m app.tools.catalogue` once to download all of them ahead of a demo.
+A seed of every shop's product links ships in `seeds/` (about 0.5 MB): a fresh server
+(Render wipes its disk on every deploy and wake-up) searches it at once instead of
+waiting a minute or more for sitemaps. `python -m app.tools.catalogue --seed` refreshes it.
 """
 
 import asyncio
+import functools
+import gzip
 import logging
 import re
+from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
@@ -21,6 +27,7 @@ MAX_SITEMAP_FILES = 200  # largest shop today: 15
 # A refresh that lost more than this share of sitemap files is refused, so a
 # rate-limited run cannot replace a full catalogue with a sliver of one.
 MAX_FAILED_SHARE = 0.1
+SEED_DIR = Path(__file__).with_name("seeds")
 LOC = re.compile(r"<loc>\s*(?:<!\[CDATA\[)?\s*([^<\s\]]+)", re.IGNORECASE)
 
 
@@ -129,6 +136,29 @@ def saved_catalogue(shop: Shop) -> ShopCatalogue | None:
     return load_saved(cache_path("catalogue", _inputs(shop)), ShopCatalogue)
 
 
+def seed_catalogue(shop: Shop) -> ShopCatalogue | None:
+    """The product links shipped with the code, for when nothing is downloaded yet."""
+    return _seed(shop.domain, shop.product_url)
+
+
+@functools.cache  # read once per process: the seed never changes while running
+def _seed(domain: str, product_url: str) -> ShopCatalogue | None:
+    path = SEED_DIR / f"{domain}.txt.gz"
+    if not path.exists():
+        return None
+    urls = gzip.decompress(path.read_bytes()).decode().split()
+    entries = [_entry(u) for u in urls if re.search(product_url, u)]
+    return ShopCatalogue(domain=domain, entries=entries, sitemap_errors=[]) if entries else None
+
+
+def write_seed(catalogue: ShopCatalogue) -> Path:
+    SEED_DIR.mkdir(exist_ok=True)
+    path = SEED_DIR / f"{catalogue.domain}.txt.gz"
+    links = "\n".join(sorted(e.url for e in catalogue.entries))
+    path.write_bytes(gzip.compress(links.encode(), 9, mtime=0))
+    return path
+
+
 async def refresh_catalogues(max_age_s: float = WEEK) -> list[ShopCatalogue | str]:
     """Download catalogues older than max_age_s. Errors come back as plain words."""
 
@@ -147,6 +177,7 @@ async def refresh_catalogues(max_age_s: float = WEEK) -> list[ShopCatalogue | st
 if __name__ == "__main__":
     # python -m app.tools.catalogue          refresh copies older than a week
     # python -m app.tools.catalogue --force  download everything again
+    # python -m app.tools.catalogue --seed   also write the seed shipped with the code
     import sys
 
     async def _main() -> None:
@@ -157,6 +188,8 @@ if __name__ == "__main__":
                 continue
             errors = len(result.sitemap_errors)
             note = f"  ({errors} sitemap errors)" if errors else ""
+            if "--seed" in sys.argv:
+                note += f"  -> {write_seed(result).name}"
             print(f"{result.domain:16} {len(result.entries):6} products{note}")
 
     asyncio.run(_main())

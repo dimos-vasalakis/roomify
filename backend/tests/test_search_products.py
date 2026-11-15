@@ -169,6 +169,7 @@ async def test_replay_without_recordings_is_a_note_not_a_crash(
 
     get_settings.cache_clear()
     monkeypatch.setattr(search_module, "saved_catalogue", lambda shop: None)
+    monkeypatch.setattr(search_module, "seed_catalogue", lambda shop: None)
     result = await search_products(ProductSpec(item=["γραφείο"]), limit=10)
     assert result.hits == []
     assert result.note and "IKEA was not recorded for replay" in result.note
@@ -178,6 +179,7 @@ async def test_a_catalogue_not_downloaded_yet_is_skipped_at_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(search_module, "saved_catalogue", lambda shop: None)
+    monkeypatch.setattr(search_module, "seed_catalogue", lambda shop: None)
     result = await search_products(ProductSpec(item=["γραφείο"], shops=["jysk.gr"]), limit=10)
     assert result.note and "JYSK is not searchable right now" in result.note
 
@@ -187,6 +189,7 @@ async def test_one_missing_catalogue_does_not_stop_the_others(
 ) -> None:
     by_domain = {c.domain: c for c in _catalogues() if c.domain != "jysk.gr"}
     monkeypatch.setattr(search_module, "saved_catalogue", lambda shop: by_domain.get(shop.domain))
+    monkeypatch.setattr(search_module, "seed_catalogue", lambda shop: None)
     result = await search_products(ProductSpec(item=["γραφείο"]), limit=4)
     assert {h.retailer for h in result.hits} == {"ikea.gr", "praktiker.gr"}
     assert (
@@ -288,3 +291,10 @@ async def test_relevance_check_failing_keeps_word_matching(
     monkeypatch.setattr(relevance, "llm", broken)
     result = await search_products(ProductSpec(item=["κάδρο"], shops=["praktiker.gr"]), limit=10)
     assert len(result.hits) == 4 and result.dropped == []  # the hook is excluded by its word
+
+
+async def test_a_fresh_server_searches_the_shipped_seed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Render wipes its disk on deploy and wake-up: search must not wait for sitemaps."""
+    monkeypatch.setattr(search_module, "saved_catalogue", lambda shop: None)
+    result = await search_products(ProductSpec(item=["συρταριέρα"], shops=["jysk.gr"]), limit=5)
+    assert len(result.hits) == 5 and result.note is None

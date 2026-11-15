@@ -9,8 +9,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from app.llm import LLMError, llm
+from app.llm import llm
 from app.tools.image_data import image_data
+from app.tools.money import money
 from app.tools.read_product_page import ProductListing
 
 
@@ -47,6 +48,7 @@ async def judge_basket(
     brief: str,
     budget: float,
     candidates: dict[str, list[ProductListing]],
+    currency: str = "EUR",
 ) -> Basket:
     flat = [(slot, p) for slot, products in candidates.items() for p in products]
     downloads = await asyncio.gather(
@@ -65,8 +67,9 @@ async def judge_basket(
         Path(__file__).with_suffix(".yaml").read_text()
         + "\nImage 1 is the room.\nUser brief: "
         + json.dumps(brief)
-        + f"\nHard budget limit: €{budget:g}. Target basket total: "
-        + f"€{budget * 0.5:.2f}–€{budget * 0.8:.2f}; ideally about €{budget * 0.7:.2f}.\nCandidates:\n"
+        + f"\nHard budget limit: {money(budget, currency)}. Target basket total: "
+        + f"{money(budget * 0.5, currency)}–{money(budget * 0.8, currency)}; "
+        + f"ideally about {money(budget * 0.7, currency)}. Prices are in {currency}.\nCandidates:\n"
         + json.dumps(descriptions, ensure_ascii=False)
         + (
             "\nFeasible complete baskets in the target range (zero-based indices):\n"
@@ -82,11 +85,15 @@ async def judge_basket(
         vision=True,
     )
     basket = Basket.model_validate(raw)
-    if options:
-        index = basket.budget_option
-        chosen = {pick.slot: pick.product_id for pick in basket.picks}
-        if index is None or not 0 <= index < len(options) or chosen != options[index]:
-            raise LLMError(
-                "The designer couldn't assemble the room within the target budget. Please try again."
-            )
+    index = basket.budget_option
+    if options and index is not None and 0 <= index < len(options):
+        # The basket index is the decision; picks that drift from it follow the index,
+        # so one slip in the answer never costs the whole room. Without a valid index the
+        # picks stand and the loop still enforces the hard budget.
+        reasons = {pick.slot: pick.reason for pick in basket.picks}
+        basket.picks = [
+            Pick(slot=slot, product_id=pid, passed=True,
+                 reason=reasons.get(slot) or "Fits the room and keeps the basket in budget")
+            for slot, pid in options[index].items()
+        ]  # fmt: skip
     return basket

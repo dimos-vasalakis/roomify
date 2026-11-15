@@ -60,7 +60,7 @@ export function ProductCard({ product, picture }: { product: Product; picture: s
         <div className="min-w-0 flex-1">
           <p className="text-small text-muted">{product.slot}</p>
           <h3 className="mt-0.5 text-chrome leading-5 font-medium text-ink">{product.title}</h3>
-          <p className="num mt-1 text-body font-bold">{money(product.priceEur)}</p>
+          <p className="num mt-1 text-body font-bold">{money(product.priceEur, product.currency)}</p>
         </div>
         <button
           type="button"

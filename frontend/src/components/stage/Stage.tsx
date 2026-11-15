@@ -10,15 +10,16 @@ import { VoiceCaption } from '../talk/VoiceCaption'
 import { WalkInLayer } from '../walkin/WalkInLayer'
 import { WalkInPlayer } from '../walkin/WalkInPlayer'
 import { WalkInStrip } from '../walkin/WalkInStrip'
+import { ChatThread } from '../talk/ChatThread'
 import { Composer } from '../talk/Composer'
 import { Reveal } from './Reveal'
 import { CompareHandle } from './CompareHandle'
 import { DimensionLine } from './DimensionLine'
 import { PhotoDrop } from './PhotoDrop'
 import { PriceDot } from './PriceDot'
+import { TapeMeasure } from './TapeMeasure'
 import { ProductCard } from './ProductCard'
 import { DesignProgress } from './DesignProgress'
-import { RefineRoom } from './RefineRoom'
 
 /** The room: the user's photo or the render, with everything the agent chose on it. */
 export function Stage() {
@@ -105,6 +106,8 @@ export function Stage() {
             />
           ))}
 
+        {showDots && !revealing && s.products.filter((p) => p.placed).map((p) => <TapeMeasure key={`tape-${p.id}`} product={p} />)}
+
         {showDots && selected && !revealing && <ProductCard product={selected} picture={picture} />}
 
         {showDots && <VoiceCaption />}
@@ -139,7 +142,7 @@ export function Stage() {
               </p>
               <p className="text-small text-muted">Your photo and brief are saved for another try.</p>
             </div>
-            <button type="button" onClick={() => s.offer ? void actions.startRun(s.prompt, s.budgetEur, s.city, s.wallCm) : void actions.reloadRoom(s.id)} className="press inline-flex h-row items-center gap-1.5 rounded-control bg-primary px-3 text-chrome font-medium text-surface">
+            <button type="button" onClick={() => s.offer ? void actions.retry() : void actions.reloadRoom(s.id)} className="press inline-flex h-row items-center gap-1.5 rounded-control bg-primary px-3 text-chrome font-medium text-surface">
               <RotateCcw size={14} strokeWidth={2} /> Try again
             </button>
           </div>
@@ -151,7 +154,8 @@ export function Stage() {
       {s.status !== 'new' && <DimensionLine cm={s.wallCm} />}
       <WalkInStrip />
     </div>
-    {done && (s.offer ? <RefineRoom /> : <Composer />)}
+    {s.offer && s.status !== 'new' && <ChatThread />}
+    {(done || (s.offer && s.status === 'failed')) && <Composer />}
     </div>
   )
 }

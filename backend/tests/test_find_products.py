@@ -28,7 +28,7 @@ SPEC = ProductSpec(item=["γραφείο"], max_price_eur=150, max_width_cm=140)
         ({}, None),
         ({"price_eur": 199.0}, "€199, over the €150 budget"),
         ({"width_cm": 160.0}, "Width 160 cm, your space allows 140 cm"),
-        ({"width_cm": None}, "Width is not on the shop's page, so we can't check it fits"),
+        ({"width_cm": None}, None),  # no size on the page: kept, the fit is just unchecked
         ({"in_stock": False}, "Out of stock online"),
         ({"in_stock": None}, None),  # unknown stock is not a reason to reject
         ({"depth_cm": None}, None),  # depth has no limit in this spec

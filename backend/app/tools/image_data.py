@@ -8,6 +8,7 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel
 
 from app.cache import cached
+from app.tools.web_fetch import is_public_url
 
 
 class ImageData(BaseModel):
@@ -38,6 +39,9 @@ def room_jpeg(data: bytes) -> bytes:
 
 
 async def image_data(url: str) -> bytes:
+    if not is_public_url(url):  # image links come from shop pages: untrusted
+        raise ValueError("Not a public image address")
+
     async def call() -> ImageData:
         async with (
             httpx.AsyncClient(timeout=15, follow_redirects=True) as client,

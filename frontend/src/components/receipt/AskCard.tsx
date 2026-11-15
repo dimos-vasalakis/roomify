@@ -10,7 +10,7 @@ import { MicButton } from '../common/MicButton'
 export function AskCard() {
   const { active: s } = useStore()
   const actions = useActions()
-  const [value, setValue] = useState('')
+  const [value, setValue] = useState(s.ask?.suggestion ? String(Math.round(s.ask.suggestion)) : '')
   const speech = useSpeech({ onFinal: (said) => setValue(said.replace(/[^\d]/g, '').slice(0, 4)) })
   if (!s.ask) return null
   const n = Number(value)
@@ -28,7 +28,9 @@ export function AskCard() {
       <label htmlFor="ask" className="mt-1 block text-body font-medium text-ink">
         {s.ask.question}
       </label>
-      <p className="mt-1 text-chrome text-muted">So nothing it picks is too big for the space. A tape measure or a guess both work.</p>
+      <p className="mt-1 text-chrome text-muted">
+        {s.ask.suggestion ? 'That is its estimate from the photo. Send it if it looks right, or correct it.' : 'So nothing it picks is too big for the space. A tape measure or a guess both work.'}
+      </p>
       <div className="mt-3 flex gap-1.5">
         <div className="flex h-10 flex-1 items-center rounded-control border border-control bg-surface pr-3 focus-within:border-ink">
           <input
@@ -52,6 +54,11 @@ export function AskCard() {
           <ArrowUp size={16} strokeWidth={2} />
         </button>
       </div>
+      {s.offer && (
+        <button type="button" onClick={() => void actions.talk("Skip, I don't know the size")} className="press mt-3 text-chrome text-muted underline underline-offset-4 hover:text-ink">
+          Skip, design without it
+        </button>
+      )}
       <BlockError block="ask" className="mt-3" />
     </form>
   )

@@ -119,7 +119,7 @@ def test_finish_streams_basket_checked_preview_and_total(pipeline):
         next(data for kind, data in stream if kind == "render.ready")["items"][0]["product_id"]
         == pipeline.id
     )
-    assert stream[-1] == ("done", {"total_eur": pipeline.price_eur})
+    assert stream[-1] == ("done", {"total_eur": pipeline.price_eur, "currency": "EUR"})
     assert loop._specs.await_args.args[-1] == 160.0
     assert [data.get("phase") for kind, data in stream if kind == "step.started"] == [
         "planning",

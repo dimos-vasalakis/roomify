@@ -3,13 +3,13 @@
 import asyncio
 import json
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from PIL import Image, UnidentifiedImageError
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.agent import loop
 from app.llm import llm_available
@@ -25,14 +25,7 @@ def _event(seq: int, kind: str, data: dict[str, Any]) -> str:
     return f"id: {seq}\nevent: {kind}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-@router.post("/offer")
-async def offer(
-    photo: Annotated[UploadFile, File()],
-    brief: Annotated[str, Form(min_length=3, max_length=2000)],
-    budget_eur: Annotated[float, Form(gt=0, le=100_000, allow_inf_nan=False)],
-    city: Annotated[str, Form(max_length=80)] = "Athens",
-    wall_cm: Annotated[float | None, Form(gt=0, le=5000, allow_inf_nan=False)] = None,
-) -> StreamingResponse:
+async def _room_photo(photo: UploadFile) -> bytes:
     if photo.content_type not in PHOTO_TYPES:
         raise HTTPException(415, "Use a JPEG, PNG or WebP photo.")
     data = await photo.read(PHOTO_MAX_BYTES + 1)
@@ -46,17 +39,19 @@ async def offer(
         raise HTTPException(
             415, "This photo couldn't be opened. Choose another JPEG, PNG or WebP."
         ) from exc
-    brief = re.sub(r"\s+", " ", brief).strip()
-    if len(brief) < 3:
-        raise HTTPException(422, "Tell us what you want to change in the room.")
     if not llm_available():
         raise HTTPException(503, "The room designer is unavailable. Please try again shortly.")
+    return data
+
+
+def _stream(
+    job: Callable[[asyncio.Queue[tuple[str, dict[str, Any]] | None]], Any],
+) -> StreamingResponse:
+    """Run one agent job and stream its events, with keepalives while it thinks."""
 
     async def stream() -> AsyncIterator[str]:
         queue: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
-        task = asyncio.create_task(
-            loop._run(data, "image/jpeg", brief, budget_eur, city, wall_cm, queue)
-        )
+        task = asyncio.create_task(job(queue))
         seq = 0
         try:
             while True:
@@ -78,6 +73,48 @@ async def offer(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/offer")
+async def offer(
+    photo: Annotated[UploadFile, File()],
+    brief: Annotated[str, Form(min_length=3, max_length=2000)],
+    budget_eur: Annotated[float, Form(gt=0, le=100_000, allow_inf_nan=False)],
+    city: Annotated[str, Form(max_length=80)] = "Athens",
+    wall_cm: Annotated[float | None, Form(gt=0, le=5000, allow_inf_nan=False)] = None,
+) -> StreamingResponse:
+    data = await _room_photo(photo)
+    brief = re.sub(r"\s+", " ", brief).strip()
+    if len(brief) < 3:
+        raise HTTPException(422, "Tell us what you want to change in the room.")
+    return _stream(lambda q: loop._run(data, "image/jpeg", brief, budget_eur, city, wall_cm, q))
+
+
+@router.post("/turn")
+async def turn(
+    photo: Annotated[UploadFile, File()],
+    message: Annotated[str, Form(min_length=1, max_length=2000)],
+    budget: Annotated[float, Form(gt=0, le=1_000_000, allow_inf_nan=False)],
+    city: Annotated[str, Form(max_length=80)] = "Athens",
+    wall_cm: Annotated[float | None, Form(gt=0, le=5000, allow_inf_nan=False)] = None,
+    history: Annotated[str, Form(max_length=100_000)] = "[]",
+    basket: Annotated[str, Form(max_length=50_000)] = "[]",
+    render_url: Annotated[str | None, Form(max_length=2000)] = None,
+) -> StreamingResponse:
+    """One message in the conversation about a room. Stateless: the client sends the
+    conversation and the basket it holds, so a server restart never loses a room."""
+    try:
+        state = loop.Turn(
+            message=re.sub(r"\s+", " ", message).strip(), history=json.loads(history),
+            basket=json.loads(basket), render_url=render_url or None, budget=budget,
+            city=city, wall_cm=wall_cm,
+        )  # fmt: skip
+    except (ValueError, ValidationError) as exc:
+        raise HTTPException(
+            422, "The conversation sent with this message couldn't be read."
+        ) from exc
+    data = await _room_photo(photo)
+    return _stream(lambda q: loop.run_turn(data, state, q))
 
 
 class SwapIn(BaseModel):

@@ -14,9 +14,10 @@ from pydantic import BaseModel, Field
 
 from app.cache import ReplayMiss
 from app.config import get_settings
-from app.tools.catalogue import ShopCatalogue, saved_catalogue
+from app.tools.catalogue import ShopCatalogue, saved_catalogue, seed_catalogue
 from app.tools.greeklish import Word, index_words, split_words, word_keys
 from app.tools.relevance import describe, relevant
+from app.tools.shopping_search import shopping_search
 from app.tools.shops import Shop, enabled_shops
 from app.tools.web_search import WebSearchError, web_search
 
@@ -60,6 +61,9 @@ class ProductSpec(BaseModel):
     max_depth_cm: float | None = None
     max_height_cm: float | None = None
     shops: list[str] | None = Field(default=None, description="Domains; None means all")
+    country: str = Field(default="GR", description="ISO code of where the person lives")
+    language: str = Field(default="el", description="Language shops there write in")
+    currency: str = Field(default="EUR", description="Currency of the budget")
 
 
 class SearchHit(BaseModel):
@@ -203,7 +207,7 @@ def _wanted_shops(spec: ProductSpec) -> tuple[list[Shop], str | None]:
 
 
 def _catalogue_or_reason(shop: Shop) -> ShopCatalogue | str:
-    catalogue = saved_catalogue(shop)
+    catalogue = saved_catalogue(shop) or seed_catalogue(shop)  # seed: before the first download
     if catalogue is not None:
         return catalogue
     if get_settings().replay:
@@ -261,9 +265,37 @@ async def _only_the_item(
     return kept, dropped
 
 
+async def _anywhere(spec: ProductSpec, limit: int) -> SearchResult:
+    """Outside Greece: Google Shopping leads, then the same relevance check."""
+    query = _prepare(spec.item, spec.keywords, spec.exclude)
+    hits: dict[str, SearchHit] = {}
+    try:
+        for option in spec.item[:2]:  # the main name, and one alternative
+            text = " ".join([option, *spec.keywords])
+            for lead in await shopping_search(text, spec.country, spec.language):
+                words = index_words(lead.title)
+                if lead.url in hits or any(_all_in(p, words, True) for p in query.exclude):
+                    continue
+                hits[lead.url] = SearchHit(
+                    url=lead.url, retailer=lead.retailer, shop_name=lead.shop_name,
+                    words=lead.title, score=1.0, source="web",
+                )  # fmt: skip
+    except WebSearchError as exc:
+        if not hits:
+            return SearchResult(hits=[], note=str(exc))
+    except ReplayMiss:
+        if not hits:
+            return SearchResult(hits=[], note="Shopping search was not recorded for replay")
+    pool = list(hits.values())[: limit * POOL_FACTOR]
+    kept, dropped = await _only_the_item(spec, pool, [], limit)
+    return SearchResult(hits=kept, note=None, dropped=dropped)
+
+
 async def search_products(spec: ProductSpec, limit: int = 12) -> SearchResult:
     """Never raises and never downloads catalogues: a shop that cannot be searched
     becomes part of `note`."""
+    if spec.country.upper() != "GR":
+        return await _anywhere(spec, limit)
     shops, shop_note = _wanted_shops(spec)
     query = _prepare(spec.item, spec.keywords, spec.exclude)
     hits, notes = await asyncio.to_thread(_scan, query, shops)

@@ -63,6 +63,16 @@ loop._check = AsyncMock(
 )
 
 
+async def _decide(photo: bytes, turn: loop.Turn) -> loop.Decision:
+    """Scripted conversation: a question is answered from the basket, anything else designs."""
+    if turn.message.rstrip().endswith("?") and turn.basket:
+        return loop.Decision(action="reply", say=f"The desk is {product.width_cm:g} cm wide.")
+    return loop.Decision(action="design", say="Let me find pieces for that.")
+
+
+loop.decide = _decide
+
+
 @app.get("/test-room.jpg")
 async def room_image() -> Response:
     image = BytesIO()

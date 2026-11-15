@@ -24,10 +24,16 @@ export function ReceiptLines() {
             <div className="min-w-0 flex-1">
               <p className="text-small text-muted">{p.slot}</p>
               <a href={p.url} target="_blank" rel="noreferrer" className="mt-1 block text-chrome leading-5 font-medium text-ink underline-offset-4 hover:underline">{p.title}</a>
-              <p className="num mt-1 text-body font-bold text-ink">{money(p.priceEur)}</p>
+              <p className="num mt-1 text-body font-bold text-ink">{money(p.priceEur, p.currency)}</p>
             </div>
           </div>
           {p.reason && <p className="mt-2 text-chrome leading-5 text-muted">{p.reason}</p>}
+          {p.fit?.map((line) => (
+            <p key={line} className="mt-2 flex gap-2 text-chrome leading-5 font-medium text-ink">
+              <span aria-hidden="true" className={`mt-[0.45rem] size-1.5 shrink-0 rounded-full ${p.fitOk ? 'bg-chosen' : 'bg-negative'}`} />
+              {line}
+            </p>
+          ))}
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-small">
             <a href={p.url} target="_blank" rel="noreferrer" className="inline-flex min-h-control items-center gap-1 font-medium text-ink underline underline-offset-4">View at {shopName(p.retailer)} <ArrowUpRight size={14} strokeWidth={1.75} /></a>
             {p.placed !== false && s.afterSrc && <button type="button" onClick={() => dispatch({ type: 'selectProduct', id: state.selectedProductId === p.id ? null : p.id })} className="press min-h-control text-muted underline-offset-4 hover:text-ink hover:underline max-sm:hidden">See in room</button>}

@@ -110,11 +110,20 @@ function parse(block: string): RunEvent | null {
  * Returns a function that stops listening.
  */
 export function followOffer(form: FormData, handlers: Handlers): () => void {
+  return follow('/offer', form, handlers)
+}
+
+/** POST /turn: one message in the conversation about a room, streamed back the same way. */
+export function followTurn(form: FormData, handlers: Handlers): () => void {
+  return follow('/turn', form, handlers)
+}
+
+function follow(path: string, form: FormData, handlers: Handlers): () => void {
   const controller = new AbortController()
   void (async () => {
     let response: Response
     try {
-      response = await fetch(`${API_URL}/offer`, { method: 'POST', body: form, signal: controller.signal })
+      response = await fetch(`${API_URL}${path}`, { method: 'POST', body: form, signal: controller.signal })
     } catch {
       if (!controller.signal.aborted) handlers.onTrouble?.("Can't reach the server. Check that the back end is running.")
       return

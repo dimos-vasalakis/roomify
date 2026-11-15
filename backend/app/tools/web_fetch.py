@@ -1,6 +1,7 @@
 """Fetch shop pages politely: robots.txt respected, hard timeouts, readable errors."""
 
 import asyncio
+import ipaddress
 import re
 from typing import NamedTuple
 from urllib.parse import urlsplit
@@ -164,10 +165,30 @@ async def warm_robots(urls: list[str]) -> None:
     await asyncio.gather(*(one(u) for u in sites.values()))
 
 
+def _public_host(host: str) -> bool:
+    """Search results are untrusted: never let one point us at a private address."""
+    if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+        return False
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return "." in host  # a public name, not a bare intranet name
+    return ip.is_global
+
+
+def is_public_url(url: str) -> bool:
+    try:
+        _check_address(url)
+    except FetchError:
+        return False
+    return True
+
+
 def _check_address(url: str) -> None:
     try:
         parts = urlsplit(url)
         valid = parts.scheme in ("http", "https") and bool(parts.hostname)
+        valid = valid and _public_host((parts.hostname or "").lower())
     except ValueError:
         valid = False
     if not valid:

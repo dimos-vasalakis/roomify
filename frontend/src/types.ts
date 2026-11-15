@@ -12,9 +12,12 @@ export type Product = {
   title: string
   retailer: string
   url: string
+  /** In `currency`, the shop's own (the name predates shops outside the euro). */
   priceEur: number
+  currency?: string
   widthCm: number | null
   depthCm: number | null
+  heightCm?: number | null
   deliveryText: string | null
   /** Where the product sits in the rendered room. */
   box: Box
@@ -22,6 +25,9 @@ export type Product = {
   thumb?: { src: string; box?: Box }
   reason?: string
   placed?: boolean
+  /** The fit check's lines, only when the page gave the size and the wall width is known. */
+  fit?: string[]
+  fitOk?: boolean
 }
 
 export type RejectRule = 'size' | 'budget' | 'page-check' | 'style' | 'trip'
@@ -53,6 +59,8 @@ export type WalkIn = {
   error?: string
 }
 
+export type ChatLine = { role: 'user' | 'agent'; text: string }
+
 export type SessionStatus = 'new' | 'asking' | 'shopping' | 'drawing' | 'done' | 'failed'
 
 /** One step of a live run, used by the recorded sample run. */
@@ -80,7 +88,11 @@ export type Session = {
   alternatives: Record<string, Product>
   walkIns: WalkIn[]
   /** The question the agent is waiting on, when status is 'asking'. */
-  ask: { question: string; unit: string } | null
+  ask: { question: string; unit: string; suggestion?: number | null } | null
+  /** The conversation with the agent about this room, oldest first. */
+  chat?: ChatLine[]
+  /** The budget's currency, from the city ("EUR", "USD"). */
+  currency?: string
   /** The agent's current step, when it is working. */
   now: { text: string; startedAt: number } | null
   /** Recorded run for the live sample. */

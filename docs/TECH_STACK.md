@@ -104,7 +104,7 @@ class Product(BaseModel):
 ```
 
 SSE events, all JSON with `type`, `run_id`, `t`:
-`step.started`, `step.result`, `ask`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `budget.update`, `render.ready`, `verify.result`, `video.ready`, `error`, `done`.
+`message`, `step.started`, `step.result`, `ask`, `fit.proof`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `budget.update`, `render.ready`, `verify.result`, `video.ready`, `error`, `done`.
 
 ## Shops and the scraper (`backend/app/tools/`)
 Flow: the LLM turns the photo and the user's words into a `ProductSpec` (item names as shops print them, keywords, exclude, an English `meaning`, max price and size) → `find_products(spec)` searches the catalogues (word matching, minus built-in other senses such as whiteboards for πίνακας), lets one text-only LLM pass (`tools/relevance.py`) keep only names that are the item, best first, with a reason for the ones it turns away, reads the top 20 pages 4 at a time, and returns verified `candidates` plus `rejected` with a plain reason each ("Width 160 cm, your space allows 140 cm") → oumi ranks the candidates → fal renders the top 3.
@@ -115,6 +115,8 @@ Flow: the LLM turns the photo and the user's words into a `ProductSpec` (item na
 | 2 | Praktiker (praktiker.gr) | Many items marked OutOfStock online in their own data; those are rejected |
 | 2 | Plaisio (plaisio.gr) | Office chairs and desks; sizes are not in the page HTML |
 | 3 | Pepco (pepco.gr) | Cheap decor; price and photo only |
+
+Catalogues: a seed of every shop's product links ships in `backend/app/tools/seeds/` (about 0.5 MB), so a fresh Render instance (its disk is wiped on deploy and wake-up) searches at once; the hourly download replaces it with fresher lists. Refresh the seed with `python -m app.tools.catalogue --force --seed`. A slot with no passing product is searched once more without style words, at the whole budget.
 
 Checked and not usable on 2026-11-14: Leroy Merlin, e-Jumbo, Public, Woodwell (block plain requests), Pakoworld (no public prices), Notos (no product images in page data).
 

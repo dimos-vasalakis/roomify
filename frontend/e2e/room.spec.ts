@@ -53,14 +53,16 @@ test('multipart API and real agent stream; compare, refine, restore', async ({ p
   await expect(page.getByLabel('What does the room need?')).toHaveValue('A desk for focused work')
   await page.getByLabel('What does the room need?').fill('A desk with warmer wood')
   await page.getByRole('button', { name: 'Create updated room' }).click()
-  await expect(page.getByLabel('Make it more you')).toBeVisible()
-  await page.getByLabel('Make it more you').fill('Less clutter')
-  await page.getByRole('button', { name: 'Update the room' }).click()
-  await expect(page.getByLabel('Make it more you')).toBeVisible()
+  const say = page.getByLabel('Tell Roomify what to change')
+  await expect(say).toBeVisible()
+  await say.fill('How wide is the desk?')
+  await page.getByRole('button', { name: 'Change it' }).click()
+  const chat = page.getByLabel('Conversation with Roomify')
+  await expect(chat).toContainText('How wide is the desk?')
+  await expect(chat).toContainText('The desk is 140 cm wide.')
+  await expect(page.getByLabel('Receipt')).toContainText('€219.00')  // a reply keeps the basket
   await page.reload()
   await expect(page.getByRole('button', { name: 'Compare', exact: true })).toBeVisible()
-  await page.getByText('Design brief', { exact: true }).click()
-  await expect(page.getByLabel('Receipt')).toContainText('Less clutter')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await expect(page.locator('[data-after]')).toHaveCount(0, { timeout: 8000 })
   await page.screenshot({ path: `test-results/result-${page.viewportSize()!.width}.png`, fullPage: true })
@@ -88,26 +90,26 @@ test('bad replacement photo keeps the previous photo and shows an error', async 
 })
 
 test('HTTP failure preserves brief and allows retry', async ({ page }) => {
-  await page.route('**/offer', route => route.fulfill({ status: 503, json: { detail: 'Designer temporarily unavailable.' } }))
+  await page.route('**/turn', route => route.fulfill({ status: 503, json: { detail: 'Designer temporarily unavailable.' } }))
   await start(page)
   await expect(page.getByRole('alert')).toContainText('Designer temporarily unavailable.')
   await expect(page.getByLabel('What does the room need?')).toHaveValue('A desk for focused work')
-  await page.unroute('**/offer')
+  await page.unroute('**/turn')
   await page.getByRole('button', { name: 'Create my room', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Adjust the brief', exact: true })).toBeVisible()
 })
 
 test('truncated stream fails with a working retry', async ({ page }) => {
-  await page.route('**/offer', route => route.fulfill({ contentType: 'text/event-stream', body: 'id: 1\nevent: run.status\ndata: {"status":"running"}\n\n' }))
+  await page.route('**/turn', route => route.fulfill({ contentType: 'text/event-stream', body: 'id: 1\nevent: run.status\ndata: {"status":"running"}\n\n' }))
   await start(page)
-  await expect(page.getByText('The connection ended before the design was ready. Try again.')).toBeVisible()
-  await page.unroute('**/offer')
+  await expect(page.getByText('The connection ended before the agent finished. Try again.')).toBeVisible()
+  await page.unroute('**/turn')
   await page.getByRole('button', { name: 'Try again', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Adjust the brief', exact: true })).toBeVisible()
 })
 
 test('CRLF and unknown future events preserve stream parsing', async ({ page }) => {
-  await page.route('**/offer', route => route.fulfill({ contentType: 'text/event-stream', body: [
+  await page.route('**/turn', route => route.fulfill({ contentType: 'text/event-stream', body: [
     'id: 1\r\nevent: run.status\r\ndata: {"status":"running"}',
     'id: 2\r\nevent: future.event\r\ndata: {}',
     'id: 3\r\nevent: error\r\ndata: {"message":"No suitable products found.","retryable":true}',
@@ -119,7 +121,7 @@ test('CRLF and unknown future events preserve stream parsing', async ({ page }) 
 
 test('replay never calls the configured offer API', async ({ page }) => {
   let offers = 0
-  page.on('request', request => { if (request.url().endsWith('/offer')) offers++ })
+  page.on('request', request => { if (/\/(offer|turn)$/.test(request.url())) offers++ })
   await page.goto('/?replay=1&demo=1')
   await upload(page)
   await page.getByLabel('What does the room need?').fill('A desk for focused work')
