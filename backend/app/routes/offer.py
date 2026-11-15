@@ -13,7 +13,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.agent import loop
 from app.llm import llm_available
-from app.tools.image_data import room_jpeg
+from app.tools.image_data import PhotoTooLarge, room_jpeg
 
 router = APIRouter(tags=["offer"])
 PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
@@ -34,7 +34,11 @@ async def _room_photo(photo: UploadFile) -> bytes:
     if len(data) > PHOTO_MAX_BYTES:
         raise HTTPException(413, "The photo must be under 8 MB.")
     try:
-        data = room_jpeg(data)
+        data = await asyncio.to_thread(room_jpeg, data)  # keeps other live streams flowing
+    except PhotoTooLarge as exc:
+        raise HTTPException(
+            413, "This photo is too large. Use a JPEG, or one under 12 megapixels."
+        ) from exc
     except (OSError, ValueError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
         raise HTTPException(
             415, "This photo couldn't be opened. Choose another JPEG, PNG or WebP."

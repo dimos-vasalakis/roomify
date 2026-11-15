@@ -385,3 +385,60 @@ def test_a_piece_the_shops_lack_does_not_cost_the_whole_room(pipeline, monkeypat
         "No suitable roller blinds" in d.get("text", "") for k, d in stream if k == "step.started"
     )
     assert list(loop._render.await_args.args[1]) == ["Desk"]
+
+
+def test_huge_jpeg_is_shrunk_cheaply_and_huge_webp_is_refused():
+    from app.tools.image_data import room_jpeg
+
+    jpeg = BytesIO()
+    Image.new("RGB", (6000, 4000)).save(jpeg, "JPEG")
+    with Image.open(BytesIO(room_jpeg(jpeg.getvalue()))) as out:
+        assert out.size == (1536, 1024)
+    webp = BytesIO()
+    Image.new("RGB", (4000, 3500)).save(webp, "WEBP", quality=1)
+    with pytest.raises(ValueError):
+        room_jpeg(webp.getvalue())
+
+
+def test_portrait_exif_photo_still_comes_out_3_by_2():
+    from app.tools.image_data import room_jpeg
+
+    image, exif = BytesIO(), Image.Exif()
+    exif[0x0112] = 6  # stored sideways: turn 90° when shown
+    Image.new("RGB", (4000, 3000)).save(image, "JPEG", exif=exif)
+    with Image.open(BytesIO(room_jpeg(image.getvalue()))) as out:
+        assert abs(out.width / out.height - 1.5) < 0.01
+
+
+async def test_plan_keeps_four_pieces_and_skips_a_broken_one(monkeypatch):
+    item = {"slot": "Desk", "item": ["γραφείο"]}
+    raw = {"direction": "Calm", "items": [{"slot": "Bad"}, *[item] * 4]}
+    monkeypatch.setattr(loop, "llm", AsyncMock(return_value=raw))
+    _, specs = await loop._specs(b"", "a desk", 300, "Athens", None)
+    assert len(specs) == 3  # four kept, the one without an item skipped
+    monkeypatch.setattr(loop, "llm", AsyncMock(return_value={"direction": "x", "items": []}))
+    with pytest.raises(LLMError):
+        await loop._specs(b"", "a desk", 300, "Athens", None)
+
+
+async def test_check_that_cannot_download_is_a_readable_retryable_error(monkeypatch):
+    import httpx
+
+    product = extract_listing(*fixture("ikea_mittzon_desk"))
+    monkeypatch.setattr(loop, "image_data", AsyncMock(side_effect=httpx.ConnectError("down")))
+    with pytest.raises(LLMError):
+        await loop._check(b"", "https://example.com/r.jpg", {"Desk": product})
+    monkeypatch.setattr(loop, "image_data", AsyncMock(return_value=b""))
+    monkeypatch.setattr(loop, "llm", AsyncMock(return_value={"products": "nonsense"}))
+    with pytest.raises(LLMError):
+        await loop._check(b"", "https://example.com/r.jpg", {"Desk": product})
+
+
+def test_fit_lines_only_for_pieces_along_the_measured_wall():
+    desk = extract_listing(*fixture("ikea_mittzon_desk"))
+    vase = desk.model_copy(update={"id": "vase"})
+    sent = []
+    loop._prove_fit({"Desk": desk, "Vase": vase}, 320, {"Desk"}, sent.append)
+    proofs = [data for kind, data in sent if kind == "fit.proof"]
+    assert [p["product_id"] for p in proofs] == [desk.id]
+    assert not any(kind == "step.started" for kind, _ in sent)  # no "side by side" with a vase

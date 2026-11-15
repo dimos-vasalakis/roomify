@@ -10,7 +10,8 @@ from collections.abc import Awaitable, Callable
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+import httpx
+from pydantic import BaseModel, Field, ValidationError
 
 from app.cache import ReplayMiss
 from app.judges.basket import Basket, judge_basket
@@ -36,7 +37,9 @@ to replace it. Choose 1 to 4 useful pieces, no extra accessories unless requeste
 the furniture categories into the language shops in that country write in (Greek in
 Greece, English in the US, UK or Ireland). Style is important, but use broad
 item searches and short keywords so real products can be found. Never infer measurements
-from pixels. Only constrain width if the user gave a wall measurement.
+from pixels. Only constrain width if the user gave a wall measurement, and then only for
+pieces that stand along that wall (sofa, desk, bed, bookcase, wardrobe, sideboard); keep
+max_width_cm null for rugs, lamps, art, mirrors, decor and coffee tables.
 Use concrete catalogue words for keywords (δρυς, φυσικό, μπεζ, λευκό), not abstract
 adjectives such as minimal, comfortable or neutral. Respect explicit materials and colours.
 "item" lists 1 to 4 alternative nouns exactly as local shops print them on the product; any
@@ -59,6 +62,7 @@ In Greece use these names (elsewhere, the plain local shop words, e.g. "framed w
   wardrobe ["ντουλάπα"]; desk ["γραφείο"], exclude ["καρέκλα"]; office chair ["καρέκλα γραφείου"]
 Never invent compounds such as ρολοκουρτίνα. Keywords are optional single words that shops put
 in product names (colour, material); leave out placement words such as τοίχου or σαλονιού.
+"slot" is the piece's short English name ("Painting", "Floor lamp"), never where it goes.
 "meaning" says in plain English exactly what the person wants, e.g. "framed wall art for above
 the sofa", so a shop's whiteboard is never mistaken for a painting.
 "country" is the ISO 3166 code of the city, "language" the ISO 639 code its shops use, and
@@ -161,20 +165,31 @@ def product_out(p: ProductListing) -> dict[str, Any]:
 async def _specs(
     photo: bytes, brief: str, budget: float, city: str, wall: float | None
 ) -> tuple[str, list[Spec]]:
-    plan = Plan.model_validate(
-        await llm(
-            SPEC_PROMPT
-            + "\n"
-            + json.dumps({"brief": brief, "budget": budget, "city": city, "wall_cm": wall}),
-            images=[(photo, "image/jpeg")],
-            json_out=True,
-        )
+    raw = await llm(
+        SPEC_PROMPT
+        + "\n"
+        + json.dumps({"brief": brief, "budget": budget, "city": city, "wall_cm": wall}),
+        images=[(photo, "image/jpeg")],
+        json_out=True,
     )
+    if isinstance(raw, dict) and isinstance(raw.get("items"), list):
+        raw["items"] = raw["items"][:MAX_ITEMS]  # a fifth piece should not cost the room
+    try:
+        plan = Plan.model_validate(raw)
+    except ValidationError as exc:
+        raise LLMError(
+            "I couldn't turn that brief into a plan. Try saying it another way."
+        ) from exc
     specs = []
-    for raw in plan.items:
-        values = dict(raw)
-        slot = str(values.pop("slot"))[:40]
-        spec = ProductSpec.model_validate(values)
+    for item in plan.items:
+        values = dict(item)
+        slot = str(values.pop("slot", "") or "").strip()[:40]
+        try:
+            spec = ProductSpec.model_validate(values)
+        except ValidationError:
+            spec = None
+        if not slot or spec is None:  # skip one malformed piece, keep the rest
+            continue
         spec.country, spec.language = plan.country.upper(), plan.language.lower()
         spec.currency = plan.currency.upper()
         spec.max_price_eur = min(spec.max_price_eur or budget, budget)
@@ -183,6 +198,8 @@ async def _specs(
         if not wall:  # sizes guessed from a photo reject every page that lacks them
             spec.max_depth_cm = spec.max_height_cm = None
         specs.append(Spec(slot=slot, spec=spec))
+    if not specs:
+        raise LLMError("I couldn't turn that brief into a plan. Try saying it another way.")
     return plan.direction, specs
 
 
@@ -339,38 +356,47 @@ async def _render(
 
 
 async def _check(photo: bytes, url: str, chosen: dict[str, ProductListing]) -> RenderCheck:
-    refs = await asyncio.gather(*(image_data(p.image_url) for p in chosen.values()))
-    products = [product_out(p) | {"size": _size(p)} for p in chosen.values()]
-    return RenderCheck.model_validate(
-        await llm(
-            "Compare image 1 (original room), image 2 (furnished preview), then the exact product references "
-            "in order. Does the preview preserve the original room's architecture, perspective and existing "
-            "features? Kept furniture must keep its size, shape and position; if any was resized, narrowed, "
-            "moved or removed without the brief asking, room_preserved is false. Does each selected product "
-            "actually appear and match its reference design, shape and colour? Judge shape and design from the "
-            "reference PHOTOS only: a size in a title such as 60x100 is the bounding box, and oval or round "
-            "pieces have one too. "
-            "Are there no invented extra products? A plain mattress and bedding on a bed, and anything already "
-            "in the original photo, are not extra. Be practical about lighting, not about missing or wrong "
-            "furniture.\nThen check each product's SCALE against its listed real size, using the room's own "
-            "anchors (doors about 200 cm, sockets, windows, existing furniture): scale_ok is false only when "
-            "it looks clearly wrong, about 30% or more too big or too small. placement_ok is false when it "
-            "floats, clips into a wall, overlaps or intersects existing furniture or another product, "
-            "blocks a door or window, or ignores the floor perspective. "
-            'Return JSON {"room_preserved":true,"no_extra_products":true,"products":['
-            '{"product_id":"supplied id","match":true,"scale_ok":true,"placement_ok":true,'
-            '"note":"short plain reason, at most 12 words",'
-            '"box_2d":[ymin,xmin,ymax,xmax]}]}. Boxes in render coordinates 0..1000; null if uncertain. '
-            "Use only these IDs, in reference order:\n" + json.dumps(products, ensure_ascii=False),
-            images=[
-                (photo, "image/jpeg"),
-                (await image_data(url), "image/jpeg"),
-                *[(r, "image/jpeg") for r in refs],
-            ],
-            json_out=True,
-            vision=True,
+    """Raises only LLMError, so a failed download or an unreadable verdict gets the
+    corrective attempt instead of ending the run as an unexpected crash."""
+    try:
+        preview, *refs = await asyncio.gather(
+            image_data(url), *(image_data(p.image_url) for p in chosen.values())
         )
+    except (httpx.HTTPError, OSError, ValueError) as exc:
+        raise LLMError("Couldn't download the pictures to check the preview.") from exc
+    products = [product_out(p) | {"size": _size(p)} for p in chosen.values()]
+    raw = await llm(
+        "Compare image 1 (original room), image 2 (furnished preview), then the exact product references "
+        "in order. Does the preview preserve the original room's architecture, perspective and existing "
+        "features? Kept furniture must keep its size, shape and position; if any was resized, narrowed, "
+        "moved or removed without the brief asking, room_preserved is false. Does each selected product "
+        "actually appear and match its reference design, shape and colour? Judge shape and design from the "
+        "reference PHOTOS only: a size in a title such as 60x100 is the bounding box, and oval or round "
+        "pieces have one too. "
+        "Are there no invented extra products? A plain mattress and bedding on a bed, and anything already "
+        "in the original photo, are not extra. Be practical about lighting, not about missing or wrong "
+        "furniture.\nThen check each product's SCALE against its listed real size, using the room's own "
+        "anchors (doors about 200 cm, sockets, windows, existing furniture): scale_ok is false only when "
+        "it looks clearly wrong, about 30% or more too big or too small. placement_ok is false when it "
+        "floats, clips into a wall, overlaps or intersects existing furniture or another product, "
+        "blocks a door or window, or ignores the floor perspective. "
+        'Return JSON {"room_preserved":true,"no_extra_products":true,"products":['
+        '{"product_id":"supplied id","match":true,"scale_ok":true,"placement_ok":true,'
+        '"note":"short plain reason, at most 12 words",'
+        '"box_2d":[ymin,xmin,ymax,xmax]}]}. Boxes in render coordinates 0..1000; null if uncertain. '
+        "Use only these IDs, in reference order:\n" + json.dumps(products, ensure_ascii=False),
+        images=[
+            (photo, "image/jpeg"),
+            (preview, "image/jpeg"),
+            *[(r, "image/jpeg") for r in refs],
+        ],
+        json_out=True,
+        vision=True,
     )
+    try:
+        return RenderCheck.model_validate(raw)
+    except ValidationError as exc:
+        raise LLMError("The preview check answered in a shape we couldn't read.") from exc
 
 
 def fit_problems(check: RenderCheck, chosen: dict[str, ProductListing]) -> list[str]:
@@ -633,13 +659,18 @@ async def _design(
         _step(send, f"No suitable {missing} in the shops right now, so I'm designing the room "
               "without it.")  # fmt: skip
     send(("plan.ready", {"text": basket.text, "slots": list(chosen)}))
-    _prove_fit(chosen, wall_cm, send)
+    _prove_fit(chosen, wall_cm, {s.slot for s in specs if s.spec.max_width_cm}, send)
     await _picture(photo, chosen, brief, basket.text, deadline, send)
     send(("done", {"total_eur": _total(chosen), "currency": currency}))
 
 
-def _prove_fit(chosen: dict[str, ProductListing], wall_cm: float | None, send: Send) -> None:
-    """Optional: only pieces with a listed size, and only when the wall width is known."""
+def _prove_fit(
+    chosen: dict[str, ProductListing], wall_cm: float | None, along: set[str], send: Send
+) -> None:
+    """Optional: only pieces with a listed size, and only when the wall width is known.
+    `along`: the slots the plan sized to that wall. A rug, a vase or a coffee table does
+    not stand along it, so it gets no "on your 320 cm wall" line."""
+    chosen = {slot: p for slot, p in chosen.items() if slot in along}
     for proof in fit_proofs(chosen, wall_cm):
         send(("fit.proof", proof.model_dump()))
     if line := together(chosen, wall_cm):
@@ -812,7 +843,8 @@ async def _swap(photo: bytes, turn: Turn, decision: Decision, send: Send) -> Non
         raise LLMError(f"None of the {decision.slot.lower()}s I found suits the room. "
                        "Try describing it differently.")  # fmt: skip
     chosen[decision.slot] = picked[decision.slot]
-    _prove_fit(chosen, turn.wall_cm, send)
+    along = {decision.slot} if spec.spec.max_width_cm else set()  # the rest keep theirs
+    _prove_fit(chosen, turn.wall_cm, along, send)
     await _picture(photo, chosen, _whole_brief(turn), basket.text, deadline, send)
     send(("done", {"total_eur": _total(chosen), "currency": currency}))
 
@@ -847,7 +879,13 @@ async def _view(photo: bytes, turn: Turn, decision: Decision, send: Send) -> Non
     )  # fmt: skip
     url = result.data["images"][0]["url"]
     _step(send, "Checking every piece is still the one you're buying.", "checking")
-    check = await _check(await image_data(turn.render_url), url, chosen)
+    try:
+        before = await image_data(turn.render_url)
+    except (httpx.HTTPError, OSError, ValueError) as exc:
+        raise LLMError(
+            "Your last room picture has expired. Ask me to design the room again."
+        ) from exc
+    check = await _check(before, url, chosen)
     items = render_items(check, chosen, final=True)
     send(("render.ready", {"render_id": hashlib.sha256(url.encode()).hexdigest()[:12],
                            "kind": "view", "image_url": url, "items": items}))  # fmt: skip

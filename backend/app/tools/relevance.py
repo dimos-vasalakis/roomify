@@ -22,6 +22,7 @@ PROMPT = """You shortlist products for an interior designer. The person wants ON
 {want}
 Below are product names from Greek furniture and decor shops, mostly Greek written in Latin
 letters ("pinakas" = πίνακας, "kadro" = κάδρο, "koyrtina" = κουρτίνα, "fotistiko" = φωτιστικό).
+Links drop the decimal comma: "25 atomon" is 2,5 seats (a 2.5-seater), "15 atomon" 1,5.
 Brand words such as BLODFLADER, PJATTERYD, MOSEBY or GOOMBY are product names, not meanings.
 Decide for each name whether it IS that item, as a person furnishing a room means it.
 Reject: a different item that shares a word (a whiteboard, cork, bulletin, magnetic or drawing

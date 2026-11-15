@@ -23,10 +23,25 @@ def jpeg_image(data: bytes) -> bytes:
         return out.getvalue()
 
 
+# PNG and WebP can only decode at full size, and WebP takes ~15 MB per megapixel to do it.
+# JPEGs (every phone photo, and every photo the front end sends) decode shrunk instead.
+ROOM_MAX_PIXELS = 12_000_000
+
+
+class PhotoTooLarge(ValueError):
+    pass
+
+
 def room_jpeg(data: bytes) -> bytes:
     """Centre-crop to 3:2 landscape and cap at 1536 × 1024, the geometry the render, the
     before/after reveal and the price dots share (docs/API.md), whatever the client sent."""
     with Image.open(BytesIO(data)) as image:
+        if image.format != "JPEG" and image.width * image.height > ROOM_MAX_PIXELS:
+            raise PhotoTooLarge(f"{image.width} × {image.height} pixels")
+        # Shrink first: a 20 MP photo worked on at full size took ~470 MB and crashed the
+        # 512 MB server. JPEGs decode straight at the smaller size. 3072 keeps the final
+        # 1536 × 1024 crop sharp whichever way the photo is turned.
+        image.thumbnail((3072, 3072))
         image = ImageOps.exif_transpose(image).convert("RGB")
         w, h = image.size
         cw, ch = (round(h * 1.5), h) if w / h > 1.5 else (w, round(w / 1.5))
