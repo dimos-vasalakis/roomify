@@ -451,8 +451,13 @@ async def test_price_dots_come_from_the_locator(monkeypatch: pytest.MonkeyPatch)
 
 async def test_a_rug_removed_on_purpose_is_not_lost(monkeypatch: pytest.MonkeyPatch) -> None:
     """The live failure: the checker asked to put back the rug the plan took out."""
-    raw = {"lost": ["green rug", "yellow ottoman corner"], "extras": [], "room_preserved": False,
-           "no_extra_products": True, "products": []}  # fmt: skip
+    raw = {
+        "lost": ["green rug", "yellow ottoman corner"],
+        "extras": [],
+        "room_preserved": False,
+        "no_extra_products": True,
+        "products": [],
+    }
     monkeypatch.setattr(loop, "image_data", AsyncMock(return_value=b"x"))
     monkeypatch.setattr(loop, "llm", AsyncMock(return_value=dict(raw)))
     gone = ["the large green rug under the seating area"]
@@ -460,3 +465,34 @@ async def test_a_rug_removed_on_purpose_is_not_lost(monkeypatch: pytest.MonkeyPa
     assert check.lost == ["yellow ottoman corner"] and not check.room_preserved
     monkeypatch.setattr(loop, "llm", AsyncMock(return_value=raw | {"lost": ["green rug"]}))
     assert (await loop._check(b"before", "u", {}, gone)).room_preserved
+
+
+def test_small_loose_things_are_said_not_a_reason_to_hide_the_room() -> None:
+    """ "grey bowl" and "green velvet pillows" moved, and three rooms in a row had no picture."""
+    check = loop.RenderCheck.model_validate(
+        {
+            "lost": ["green velvet pillows", "grey bowl"],
+            "extras": ["stack of books"],
+            "room_preserved": False,
+            "no_extra_products": False,
+            "products": [],
+        }
+    )
+    assert check.room_preserved and check.no_extra_products
+    assert check.minor == ["green velvet pillows", "grey bowl", "stack of books"]
+    assert "grey bowl" in loop.caveats(check, {})[0]
+
+
+def test_a_rug_or_furniture_is_never_small() -> None:
+    check = loop.RenderCheck.model_validate(
+        {
+            "lost": ["green rug", "yellow armchair"],
+            "extras": ["potted plant"],
+            "room_preserved": False,
+            "no_extra_products": False,
+            "products": [],
+        }
+    )
+    assert not check.room_preserved and not check.no_extra_products
+    assert check.lost == ["green rug", "yellow armchair"]
+    assert check.extras == ["potted plant"]

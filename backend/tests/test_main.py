@@ -19,6 +19,7 @@ def test_startup_refresh_runs_in_the_background_and_logs_failures(
         return ["Could not get JYSK's product list (jysk.gr refused the request)"]
 
     monkeypatch.setattr(main, "refresh_catalogues", refresh)
+    monkeypatch.setattr(main, "STARTUP_DELAY_S", 0.01)
     with caplog.at_level(logging.WARNING, logger="roomify"), TestClient(main.app) as client:
         assert client.get("/health").json() == {"status": "ok"}
         deadline = time.time() + 5

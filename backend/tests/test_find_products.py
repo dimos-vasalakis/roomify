@@ -301,3 +301,26 @@ async def test_when_every_shop_refuses_the_pages_still_say_why(
     monkeypatch.setattr(finder, "is_refusing", lambda url: True)
     result = await find_products(SPEC)
     assert [r.reason for r in result.rejected] == ["jysk.gr is refusing requests right now"]
+
+
+async def test_stops_reading_once_enough_pages_passed(
+    shop: dict[str, PageRead], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A slow shop no longer holds up a slot that already has good options: shopping took two
+    minutes per room while every one of twenty pages was waited for."""
+    for i in range(4):
+        shop[f"https://jysk.gr/a/b/good{i}"] = ok(f"https://jysk.gr/a/b/good{i}", title=f"desk {i}")
+    shop["https://jysk.gr/a/b/slow"] = ok("https://jysk.gr/a/b/slow", title="slow desk")
+
+    async def read(url: str) -> PageRead:
+        if url.endswith("slow"):
+            await asyncio.sleep(5)
+        return shop[url]
+
+    monkeypatch.setattr(finder, "read_product_page", read)
+    started = asyncio.get_running_loop().time()
+    result = await find_products(SPEC, want=6)
+    assert asyncio.get_running_loop().time() - started < 1
+    assert len(result.candidates) == 4
+    assert result.note is None  # stopping early is not "ran out of time"
+    assert not result.rejected  # the unread page is not a rejection

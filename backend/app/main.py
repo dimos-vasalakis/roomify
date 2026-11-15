@@ -21,11 +21,16 @@ log = logging.getLogger("roomify")
 logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log.setLevel(logging.INFO)
 REFRESH_EVERY_S = 3600
+STARTUP_DELAY_S = 300
 
 
 def _keep_catalogues_fresh(stop: threading.Event) -> None:
     """Hourly: download missing or week-old shop catalogues. Runs in its own thread with
     its own event loop, so parsing megabytes of sitemaps never stalls live requests."""
+    # Not at boot: a deploy restarts the server just as people use it, and searches work from
+    # the catalogues shipped with the code until the downloads are in.
+    if stop.wait(STARTUP_DELAY_S):
+        return
     while not stop.is_set():
         try:
             for result in asyncio.run(refresh_catalogues()):

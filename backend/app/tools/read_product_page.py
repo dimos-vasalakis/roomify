@@ -1,6 +1,7 @@
 """Read one shop page into a listing: only facts printed on the page, each with the
 snippet it came from (`evidence`), so the oumi extraction judge can check them."""
 
+import asyncio
 import hashlib
 import html as htmllib
 import json
@@ -480,7 +481,8 @@ async def _read(url: str) -> PageRead:
     """FetchError propagates so a network hiccup is not cached; 'not a product' is."""
     html = await fetch_text(url)
     try:
-        listing = extract_listing(url, html)
+        # Parsing a megabyte of HTML is CPU work: off the event loop, so streams keep flowing.
+        listing = await asyncio.to_thread(extract_listing, url, html)
     except NotAProduct as exc:
         if not (_bot_wall(html) and firecrawl_enabled()):
             return PageRead(url=url, listing=None, error=str(exc))

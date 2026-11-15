@@ -19,16 +19,19 @@ from app.tools.web_fetch import is_refusing, reads_through_service, warm_robots
 MAX_PAGES = 20
 # Ranked pages kept in reserve: when a shop turns us away, the next best from other shops are read.
 SPARE_PAGES = 12
-PARALLEL_READS = 4
+# Pages of one slot read at once. Hits are spread across shops, so no shop sees many.
+PARALLEL_READS = 6
 READ_TIMEOUT_S = 20.0
 # Firecrawl itself allows 45 s for a page; cutting it at 20 s threw away most IKEA reads.
 SERVICE_READ_TIMEOUT_S = 50.0
 # The whole step on stage: whatever is not read by then is dropped, and the feed says so.
-FIND_DEADLINE_S = 55.0
+FIND_DEADLINE_S = 40.0
 # Fewer good pages than this, and the slot gets a second round beyond the shops that failed.
 ENOUGH = 2
+# Good pages that end a slot's reading early: the basket judge needs a few options, not all.
+ENOUGH_TO_STOP = 4
 MORE_PAGES = 10
-MORE_DEADLINE_S = 35.0
+MORE_DEADLINE_S = 25.0
 
 
 class Rejection(BaseModel):
@@ -109,20 +112,43 @@ class _Collected:
         self.good_hosts: set[str] = set()
 
 
+def _passes(hit: SearchHit, task: "asyncio.Task[PageRead]", spec: ProductSpec) -> bool:
+    if task.cancelled() or task.exception() is not None:
+        return False
+    return _verdict(hit, task.result(), spec)[0] is None
+
+
 async def _read_round(
     hits: list[SearchHit], spec: ProductSpec, got: _Collected, deadline: float
 ) -> None:
-    """Read these pages in parallel until the deadline and fold the verdicts in."""
+    """Read these pages in parallel until the deadline and fold the verdicts in. Once enough
+    pages have passed the checks, the rest are left unread: the basket judge only needs a few
+    good options per piece, and waiting on slow shops cost a minute per room."""
     await warm_robots([h.url for h in hits])
     limiter = asyncio.Semaphore(PARALLEL_READS)
     tasks = [asyncio.create_task(_read_with_timeout(h.url, limiter)) for h in hits]
-    _, late = await asyncio.wait(tasks, timeout=deadline)
-    for task in late:
+    of = dict(zip(tasks, hits, strict=True))
+    clock = asyncio.get_running_loop()
+    end = clock.time() + deadline
+    pending: set[asyncio.Task[PageRead]] = set(tasks)
+    passed = 0
+    need = min(got.want, ENOUGH_TO_STOP) - len(got.candidates)
+    while pending and passed < need:
+        done, pending = await asyncio.wait(
+            pending, timeout=max(0.0, end - clock.time()), return_when=asyncio.FIRST_COMPLETED
+        )
+        if not done:
+            break  # the deadline
+        passed += sum(_passes(of[t], t, spec) for t in done)
+    for task in pending:
         task.cancel()
-    reads = [_outcome(hit.url, task, late) for hit, task in zip(hits, tasks, strict=True)]
-    if late:
-        got.notes.append(f"Stopped after {deadline:g} s; {len(late)} pages were not read")
-    for hit, read in zip(hits, reads, strict=True):
+    timed_out = pending if passed < need else set()
+    if timed_out:
+        got.notes.append(f"Stopped after {deadline:g} s; {len(timed_out)} pages were not read")
+    # Enough found: the pages still loading are simply not part of this search.
+    pairs = [(h, t) for h, t in zip(hits, tasks, strict=True) if t not in pending or t in timed_out]
+    reads = [(hit, task, _outcome(hit.url, task, timed_out)) for hit, task in pairs]
+    for hit, _, read in reads:
         if read.listing is None:
             got.failed_hosts[hit.retailer] = got.failed_hosts.get(hit.retailer, 0) + 1
         else:
@@ -146,8 +172,7 @@ async def _read_round(
         if len(got.candidates) < got.want:
             got.candidates.append(listing)
     got.searched += sum(
-        task not in late or read.listing is not None
-        for task, read in zip(tasks, reads, strict=True)
+        task not in timed_out or read.listing is not None for _, task, read in reads
     )
 
 

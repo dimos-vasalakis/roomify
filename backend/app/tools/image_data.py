@@ -1,5 +1,6 @@
 """Read and normalize images for vision, with bounded downloads and replay cache."""
 
+import asyncio
 import base64
 from io import BytesIO
 
@@ -17,6 +18,9 @@ class ImageData(BaseModel):
 
 def jpeg_image(data: bytes) -> bytes:
     with Image.open(BytesIO(data)) as image:
+        # A huge PNG decodes at full size (4 bytes a pixel): a few at once filled the server.
+        if image.format != "JPEG" and image.width * image.height > ROOM_MAX_PIXELS:
+            raise ValueError("Image is too large")
         image.thumbnail((1280, 1024))
         out = BytesIO()
         image.convert("RGB").save(out, "JPEG", quality=85)
@@ -68,6 +72,8 @@ async def image_data(url: str) -> bytes:
                 data.extend(chunk)
                 if len(data) > 10 * 1024 * 1024:
                     raise ValueError("Image is too large")
-        return ImageData(jpeg=base64.b64encode(jpeg_image(bytes(data))).decode())
+        # Decoding is CPU work: off the event loop, so live streams keep flowing meanwhile.
+        jpeg = await asyncio.to_thread(jpeg_image, bytes(data))
+        return ImageData(jpeg=base64.b64encode(jpeg).decode())
 
     return base64.b64decode((await cached("images", {"url": url}, call, ImageData)).jpeg)

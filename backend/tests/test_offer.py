@@ -125,6 +125,7 @@ def test_finish_streams_basket_checked_preview_and_total(pipeline):
     assert [data.get("phase") for kind, data in stream if kind == "step.started"] == [
         "planning",
         "shopping",
+        "shopping",  # the slot's own result, as soon as it is shopped
         "rendering",
         "rendering",
         "checking",
@@ -462,3 +463,30 @@ def test_a_bed_frame_is_still_a_footprint():
                 "height_cm": None, "sizes_order_known": False}
     )  # fmt: skip
     assert loop._size(bed).startswith("footprint 200 × 90 cm")
+
+
+def test_an_old_piece_the_layout_replaces_leaves_the_picture_and_is_said() -> None:
+    """Asked for "a sofa" in a room with a green sofa, the layout put the new one in its place
+    while the render and check kept the old one: no picture passed, three times running."""
+    sofa = extract_listing(*fixture("ikea_mittzon_desk"))
+    layout = loop.Layout(
+        scale_anchors="door",
+        placements=[
+            loop.Placement(
+                product_id=sofa.id,
+                where="against the back wall",
+                facing="into the room",
+                apparent_size="40%",
+                replaces="green sectional sofa",
+            )
+        ],
+    )
+    sent: list[tuple[str, dict[str, object]]] = []
+    remove = loop._replaced(layout, {"Sofa": sofa}, ["the plant"], sent.append)
+    assert remove == ["the plant", "green sectional sofa"]
+    assert sent[0][0] == "message" and "green sectional sofa" in str(sent[0][1]["text"])
+    # Already being removed: said once, not twice.
+    assert loop._replaced(layout, {"Sofa": sofa}, ["the green sectional sofa"], sent.append) == [
+        "the green sectional sofa"
+    ]
+    assert len(sent) == 1

@@ -171,7 +171,9 @@ async def refresh_catalogues(max_age_s: float = WEEK) -> list[ShopCatalogue | st
             log.exception("Refreshing %s failed", shop.name)
             return f"Could not refresh {shop.name}'s product list (unexpected error, see the log)"
 
-    return list(await asyncio.gather(*(one(s) for s in enabled_shops())))
+    # One shop at a time: all at once took 250 MB beside live runs on a 512 MB server, and a
+    # run killed with the server ended in "the connection ended before the agent finished".
+    return [await one(s) for s in enabled_shops()]
 
 
 if __name__ == "__main__":
