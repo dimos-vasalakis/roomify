@@ -203,10 +203,10 @@ export function useActions() {
       else dispatch({ type: 'refollow' })
     },
 
-    async makeWalkIn(move: WalkMove, seconds: 5 | 8) {
-      if (!LIVE) return void dispatch({ type: 'createWalkIn', move, seconds })
+    async makeWalkIn(move: WalkMove, seconds: 5 | 8, view?: { from: { x: number; y: number }; aimDeg: number }) {
+      if (!LIVE) return void dispatch({ type: 'createWalkIn', move, seconds, view })
       const runId = active.runId
-      const draft = state.draft
+      const draft = view ?? state.draft
       if (!runId || !draft) return
       await guard('walkin', active.id, async () => {
         const made = await api.walkIn(runId, { from: draft.from, aim_deg: Math.round(draft.aimDeg), move, seconds })

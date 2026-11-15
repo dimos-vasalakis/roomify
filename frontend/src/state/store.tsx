@@ -54,7 +54,7 @@ export type Action =
   | { type: 'liveTick' }
   | { type: 'setWalkMode'; on: boolean }
   | { type: 'setDraft'; draft: State['draft'] }
-  | { type: 'createWalkIn'; move: WalkMove; seconds: 5 | 8 }
+  | { type: 'createWalkIn'; move: WalkMove; seconds: 5 | 8; view?: { from: Point; aimDeg: number } }
   | { type: 'walkInReady'; id: string }
   | { type: 'play'; id: string | null }
   | { type: 'toggleCompare' }
@@ -221,11 +221,12 @@ function reducer(state: State, action: Action): State {
       return { ...state, draft: action.draft }
 
     case 'createWalkIn': {
-      if (!state.draft) return state
+      const view = action.view ?? state.draft
+      if (!view) return state
       const walk: WalkIn = {
         id: `w-${Date.now()}`,
-        from: state.draft.from,
-        aimDeg: state.draft.aimDeg,
+        from: view.from,
+        aimDeg: view.aimDeg,
         move: action.move,
         seconds: action.seconds,
         status: 'making',
