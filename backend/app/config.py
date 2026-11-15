@@ -34,6 +34,11 @@ class Settings(BaseModel):
         return bool(self.supabase_url and self.supabase_secret_key) and not self.replay
 
 
+def _key(name: str) -> str | None:
+    """A pasted key often carries spaces, a newline or quotes; the provider then says 401."""
+    return (os.getenv(name) or "").strip().strip("'\"").strip() or None
+
+
 def _csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
@@ -61,8 +66,8 @@ def get_settings() -> Settings:
             )
         ),
         retailers=[d.removeprefix("www.") for d in _csv(os.getenv("RETAILERS", ""))],
-        serper_api_key=os.getenv("SERPER_API_KEY") or None,
-        firecrawl_api_key=os.getenv("FIRECRAWL_API_KEY") or None,
+        serper_api_key=_key("SERPER_API_KEY"),
+        firecrawl_api_key=_key("FIRECRAWL_API_KEY"),
         cache_dir=Path(os.getenv("CACHE_DIR") or _default_cache(os.getenv("REPLAY", "0") == "1")),
         refresh_catalogues=(os.getenv("REFRESH_CATALOGUES") or "1") == "1",
     )

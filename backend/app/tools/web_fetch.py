@@ -2,6 +2,7 @@
 
 import asyncio
 import ipaddress
+import logging
 import re
 from typing import NamedTuple
 from urllib.parse import urlsplit
@@ -12,6 +13,8 @@ from pydantic import BaseModel
 from app.cache import HOUR, WEEK, cached
 from app.tools.firecrawl import FirecrawlError, firecrawl_enabled, firecrawl_html, plain_text
 from app.tools.shops import host_of, shop_for_url
+
+log = logging.getLogger("roomify")
 
 # Shops block obvious bots; a normal browser identity with low volume is what we send.
 HEADERS = {
@@ -141,10 +144,8 @@ async def _robots(url: str) -> Robots:
         if _through_service(url):
             try:
                 return Robots(text=plain_text(await firecrawl_html(robots_url)))
-            except FirecrawlError as exc:
-                raise FetchError(
-                    f"Could not check what {host_of(url)} allows ({exc})", transient=True
-                ) from exc
+            except FirecrawlError as exc:  # never worse than no service: read it directly
+                log.warning("Firecrawl robots for %s failed: %s", host_of(url), exc)
         try:
             return Robots(text=await _download(robots_url))
         except FetchError as exc:
@@ -222,7 +223,10 @@ async def fetch_text(url: str) -> str:
     if not robots_allow(robots_rules(robots.text), url):
         raise FetchError(f"{host_of(url)} does not allow reading this page")
     if _through_service(url):
-        return await fetch_through_service(url)
+        try:
+            return await fetch_through_service(url)
+        except FetchError as exc:  # never worse than no service: read it directly
+            log.warning("Firecrawl read for %s failed: %s", host_of(url), exc)
     try:
         return await _download(url)
     except FetchError as exc:

@@ -98,3 +98,25 @@ async def test_ikea_goes_straight_through_firecrawl_without_waiting_for_a_hang(
     url = "https://www.ikea.gr/proioda/mittzon-grafeio/12345/"
     assert "MITTZON" in (await web_fetch.fetch_text(url)).upper()
     assert firecrawl == ["https://www.ikea.gr/robots.txt", url]
+
+
+async def test_a_rejected_firecrawl_key_falls_back_to_reading_directly(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(web_fetch, "firecrawl_enabled", lambda: True)
+
+    async def unauthorized(url: str) -> str:
+        raise FirecrawlError("The page reading service failed (HTTP 401)")
+
+    async def direct(url: str) -> str:
+        return (
+            "User-agent: *\nDisallow: /cart" if url.endswith("robots.txt") else "<html>page</html>"
+        )
+
+    monkeypatch.setattr(web_fetch, "firecrawl_html", unauthorized)
+    monkeypatch.setattr(web_fetch, "_download", direct)
+    assert await web_fetch.fetch_text("https://www.ikea.gr/proioda/x/1/") == "<html>page</html>"
+
+
+def test_pasted_keys_lose_spaces_and_quotes(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("FIRECRAWL_API_KEY", ' "fc-abc123"\n')
+    get_settings.cache_clear()
+    assert get_settings().firecrawl_api_key == "fc-abc123"
