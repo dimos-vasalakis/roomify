@@ -138,7 +138,10 @@ async def test_add_keeps_the_basket_and_shops_only_the_new_piece(
     from tests.test_offer import extract_listing, fixture
 
     desk = extract_listing(*fixture("ikea_mittzon_desk"))
-    lamp = desk.model_copy(update={"id": "lamp", "title": "Floor lamp", "price_eur": 40.0})
+    lamp = desk.model_copy(
+        update={"id": "lamp", "url": "https://www.ikea.gr/p/lamp/", "title": "Floor lamp",
+                "price_eur": 40.0}
+    )  # fmt: skip
     spec = loop.Spec(
         slot="Desk", spec=loop.ProductSpec(item=["lamp"])
     )  # same slot name as the desk
@@ -496,3 +499,78 @@ def test_a_rug_or_furniture_is_never_small() -> None:
     assert not check.room_preserved and not check.no_extra_products
     assert check.lost == ["green rug", "yellow armchair"]
     assert check.extras == ["potted plant"]
+
+
+def _piece(url: str, price: float, pid: str):  # type: ignore[no-untyped-def]
+    from tests.test_offer import extract_listing, fixture
+
+    return extract_listing(*fixture("ikea_mittzon_desk")).model_copy(
+        update={"id": pid, "url": url, "image_url": url + ".jpg", "price_eur": price}
+    )
+
+
+def test_three_tables_are_three_pieces_with_their_own_ids() -> None:
+    """ "3 tables, 2 chairs each" gave one table and one chair; a second identical chair had the
+    first one's id and the front end dropped it."""
+    from app.judges.basket import Basket, Pick
+
+    table, chair = _piece("https://s/t", 200, "t"), _piece("https://s/c", 50, "c")
+    sent: list[tuple[str, dict[str, object]]] = []
+    basket = Basket(text="ok", picks=[Pick(slot="Table", product_id="t", passed=True, reason="r"),
+                                      Pick(slot="Chair", product_id="c", passed=True, reason="r")])  # fmt: skip
+    chosen = loop._choose(basket, {"Table": [table], "Chair": [chair]}, 2000, sent.append,
+                          {"Table": 3, "Chair": 6})  # fmt: skip
+    assert list(chosen) == [
+        "Table",
+        "Table 2",
+        "Table 3",
+        "Chair",
+        *[f"Chair {n}" for n in range(2, 7)],
+    ]
+    assert [p.id for p in chosen.values()][:3] == ["t", "t-2", "t-3"]
+    assert loop._total(chosen) == 900
+    ids = [e[1]["product"]["id"] for e in sent if e[0] == "product.chosen"]  # type: ignore[index]
+    assert len(ids) == 9 and len(set(ids)) == 9
+    urls, at = loop._refs(chosen)
+    assert urls == ["https://s/t.jpg", "https://s/c.jpg"] and at["Chair 6"] == 3
+    assert "3 identical tables, each a copy of reference 2" in loop._counts(chosen, at)
+
+
+def test_the_budget_caps_how_many_copies_and_says_so() -> None:
+    from app.judges.basket import Basket, Pick
+
+    chair = _piece("https://s/c", 50, "c")
+    sent: list[tuple[str, dict[str, object]]] = []
+    basket = Basket(text="ok", picks=[Pick(slot="Chair", product_id="c", passed=True, reason="r")])
+    chosen = loop._choose(basket, {"Chair": [chair]}, 120, sent.append, {"Chair": 6})
+    assert list(chosen) == ["Chair", "Chair 2"]
+    assert any("Only 2 of the 6 chairs fit the budget" in str(e[1].get("text")) for e in sent)
+
+
+async def test_reading_the_basket_again_keeps_each_copy_its_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.tools.read_product_page import PageRead
+
+    chair = _piece("https://s/c", 50, "c")
+    monkeypatch.setattr(
+        loop,
+        "read_product_page",
+        AsyncMock(return_value=PageRead(url=chair.url, listing=chair, error=None)),
+    )
+    lines = [loop.BasketLine(slot=s, url=chair.url) for s in ("Chair", "Chair 2", "Chair 3")]
+    chosen = await loop._reread(lines, lambda _: None)
+    assert [p.id for p in chosen.values()] == ["c", "c-2", "c-3"]
+
+
+def test_a_swap_keeps_the_basket_order() -> None:
+    a, b, c = (
+        _piece("https://s/a", 1, "a"),
+        _piece("https://s/b", 1, "b"),
+        _piece("https://s/c", 1, "c"),
+    )
+    new = {"Chair": c, "Chair 2": c}
+    out = loop._replaced_in_order(
+        {"Table": a, "Chair": b, "Chair 2": b, "Lamp": a}, ["Chair", "Chair 2"], new
+    )
+    assert list(out) == ["Table", "Chair", "Chair 2", "Lamp"] and out["Chair"] is c

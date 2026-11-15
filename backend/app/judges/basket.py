@@ -7,9 +7,9 @@ from decimal import Decimal
 from itertools import product as combinations
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from app.llm import llm
+from app.llm import LLMError, llm
 from app.tools.image_data import image_data
 from app.tools.money import money
 from app.tools.read_product_page import ProductListing
@@ -24,20 +24,24 @@ class Pick(BaseModel):
 
 class Basket(BaseModel):
     text: str
-    picks: list[Pick] = Field(max_length=5)
+    picks: list[Pick] = Field(max_length=8)
     budget_option: int | None = None
 
 
 def budget_options(
     candidates: dict[str, list[ProductListing]],
     budget: float,
+    counts: dict[str, int] | None = None,
 ) -> list[dict[str, str]]:
-    """Feasible whole baskets in the requested spend range; the model chooses the style."""
+    """Feasible whole baskets in the requested spend range; the model chooses the style.
+    `counts`: copies of a piece ("3 tables"), each paid for."""
     low, high = Decimal(str(budget)) * Decimal("0.5"), Decimal(str(budget)) * Decimal("0.8")
     slots = list(candidates)
+    many = [Decimal((counts or {}).get(slot, 1)) for slot in slots]
     options = []
     for pieces in combinations(*(candidates[slot] for slot in slots)):
-        total = sum((Decimal(str(p.price_eur)) for p in pieces), Decimal(0))
+        total = sum((Decimal(str(p.price_eur)) * n for p, n in zip(pieces, many, strict=True)),
+                    Decimal(0))  # fmt: skip
         if low <= total <= high and len({p.id for p in pieces}) == len(slots):
             options.append({slot: p.id for slot, p in zip(slots, pieces, strict=True)})
     return options[:: max(1, math.ceil(len(options) / 48))]
@@ -49,16 +53,22 @@ async def judge_basket(
     budget: float,
     candidates: dict[str, list[ProductListing]],
     currency: str = "EUR",
+    counts: dict[str, int] | None = None,
 ) -> Basket:
+    """One pick per slot. `counts`: how many identical copies of a slot's piece are bought;
+    the budget counts every copy."""
+    counts = counts or {}
     flat = [(slot, p) for slot, products in candidates.items() for p in products]
     downloads = await asyncio.gather(
         *(image_data(p.image_url) for _, p in flat), return_exceptions=True
     )
     images = [(photo, "image/jpeg")]
     descriptions = []
-    options = budget_options(candidates, budget)
+    options = budget_options(candidates, budget, counts)
     for (slot, product), picture in zip(flat, downloads, strict=True):
         entry = product.model_dump(exclude={"image_urls", "page_text"}) | {"slot": slot}
+        if counts.get(slot, 1) > 1:
+            entry["quantity_bought"] = counts[slot]
         if isinstance(picture, bytes):
             images.append((picture, "image/jpeg"))
             entry["reference_image"] = len(images)
@@ -84,7 +94,18 @@ async def judge_basket(
         json_out=True,
         vision=True,
     )
-    basket = Basket.model_validate(raw)
+    if isinstance(raw, dict) and isinstance(raw.get("picks"), list):
+        # One pick per slot: asked for "3 tables", it answered once per table, and a ninth
+        # pick crashed the whole run.
+        firsts: dict[object, object] = {}
+        for pick in raw["picks"]:
+            if isinstance(pick, dict):
+                firsts.setdefault(pick.get("slot"), pick)
+        raw["picks"] = list(firsts.values())
+    try:
+        basket = Basket.model_validate(raw)
+    except ValidationError as exc:
+        raise LLMError("The basket check answered in a shape we couldn't read. Try again.") from exc
     index = basket.budget_option
     if options and index is not None and 0 <= index < len(options):
         # The basket index is the decision; picks that drift from it follow the index,

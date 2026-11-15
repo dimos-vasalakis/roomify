@@ -420,7 +420,8 @@ async def test_plan_keeps_four_pieces_and_skips_a_broken_one(monkeypatch):
     raw = {"direction": "Calm", "items": [{"slot": "Bad"}, *[item] * 4]}
     monkeypatch.setattr(loop, "llm", AsyncMock(return_value=raw))
     _, specs = await loop._specs(b"", "a desk", 300, "Athens", None)
-    assert len(specs) == 3  # four kept, the one without an item skipped
+    # Four kept, the one without an item skipped; the same desk listed three times is 3 desks.
+    assert [(s.slot, s.quantity) for s in specs] == [("Desk", 3)]
     monkeypatch.setattr(loop, "llm", AsyncMock(return_value={"direction": "x", "items": []}))
     with pytest.raises(LLMError):
         await loop._specs(b"", "a desk", 300, "Athens", None)

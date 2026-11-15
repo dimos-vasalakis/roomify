@@ -33,8 +33,9 @@ from app.tools.read_product_page import ProductListing, read_product_page
 from app.tools.search_products import ProductSpec
 from app.tools.shops import host_of
 
-MAX_ITEMS = 4
-MAX_BASKET = MAX_ITEMS + 1  # what one picture can hold after adding pieces
+MAX_ITEMS = 4  # different kinds of piece in one plan
+MAX_COPIES = 8  # of one piece: "3 tables, 2 chairs each" is 3 tables and 6 chairs
+MAX_BASKET = 12  # pieces in one room, copies counted
 RUN_TIMEOUT_S = 360
 # A story reads the room (and maybe a website) before the design's own clock starts.
 STORY_EXTRA_S = 90
@@ -76,6 +77,9 @@ In Greece use these names (elsewhere, the plain local shop words, e.g. "framed w
 - cushion ["διακοσμητικό μαξιλάρι","μαξιλάρι"], exclude ["ύπνου","καρέκλας"];
   throw ["ριχτάρι","κουβέρτα"]; rug ["χαλί"], exclude ["μπάνιου","ποντικιού"]
 - mirror ["καθρέφτης"]; plant ["τεχνητό φυτό","φυτό"]; vase ["βάζο"], exclude ["αποθήκευσης"]
+- dining table ["τραπέζι τραπεζαρίας","τραπέζι"], exclude ["σαλονιού","βοηθητικό","νησίδα",
+  "κονσόλα","μπαρ","κήπου","μπαρμπεκιού","παιδικό"]; dining chair ["καρέκλα τραπεζαρίας",
+  "καρέκλα"], exclude ["γραφείου","gaming","παιδική","κήπου","μπαρ"]
 - sofa ["καναπές"]; armchair ["πολυθρόνα"]; coffee table ["τραπεζάκι σαλονιού"];
   side table ["βοηθητικό τραπέζι","τραπεζάκι"]; bookcase ["βιβλιοθήκη"]; shelf ["ράφι"];
   wall shelf ["ράφι τοίχου"]; nightstand ["κομοδίνο"]; dresser ["συρταριέρα"];
@@ -83,6 +87,10 @@ In Greece use these names (elsewhere, the plain local shop words, e.g. "framed w
 Never invent compounds such as ρολοκουρτίνα. Keywords are optional single words that shops put
 in product names (colour, material); leave out placement words such as τοίχου or σαλονιού.
 "slot" is the piece's short English name ("Painting", "Floor lamp"), never where it goes.
+QUANTITY: "quantity" is how many identical copies of the piece they want, default 1. Never list
+the same piece twice: "3 tables with 2 chairs each" is two items, Dining table with quantity 3
+and Dining chair with quantity 6; "a pair of armchairs" is quantity 2. "max_price_eur" is the
+price of ONE copy; the sum of max_price_eur × quantity stays within the budget.
 "meaning" says in plain English exactly what the person wants, e.g. "framed wall art for above
 the sofa", so a shop's whiteboard is never mistaken for a painting.
 "country" is the ISO 3166 code of the city, "language" the ISO 639 code its shops use, and
@@ -90,7 +98,7 @@ the sofa", so a shop's whiteboard is never mistaken for a painting.
 Return JSON: {"direction":"A short English design direction","country":"GR","language":"el",
 "currency":"EUR",
 "items":[{"slot":"Desk","meaning":"a simple wooden work desk","item":["γραφείο"],
-"keywords":[],"exclude":["παιδικό"],"max_price_eur":150,"max_width_cm":null}]}.
+"keywords":[],"exclude":["παιδικό"],"max_price_eur":150,"max_width_cm":null,"quantity":1}]}.
 The budget is a furnishing allowance, not a request for the cheapest possible basket.
 Aim to spend 50–80% of it in total, with about 70% as the design target. Allocate item
 budgets to find better suited, well-made pieces in that range, rather than tiny shares.
@@ -200,6 +208,7 @@ class Moves(BaseModel):
 class Spec(BaseModel):
     slot: str
     spec: ProductSpec
+    quantity: int = Field(default=1, ge=1, le=MAX_COPIES)  # identical copies of this piece
 
 
 class Plan(BaseModel):
@@ -308,11 +317,17 @@ async def _specs(
     for item in plan.items:
         values = dict(item)
         slot = str(values.pop("slot", "") or "").strip()[:40]
+        quantity = _quantity(values.pop("quantity", 1))
         try:
             spec = ProductSpec.model_validate(values)
         except ValidationError:
             spec = None
         if not slot or spec is None:  # skip one malformed piece, keep the rest
+            continue
+        if same := next((s for s in specs if s.slot.lower() == slot.lower()), None):
+            # The same piece listed twice is more copies of it: two entries named "Dining
+            # table" overwrote each other and the room got one table.
+            same.quantity = min(MAX_COPIES, same.quantity + quantity)
             continue
         spec.country, spec.language = plan.country.upper(), plan.language.lower()
         spec.currency = plan.currency.upper()
@@ -321,10 +336,17 @@ async def _specs(
             spec.max_width_cm = min(spec.max_width_cm, wall) if wall else None
         if not wall:  # sizes guessed from a photo reject every page that lacks them
             spec.max_depth_cm = spec.max_height_cm = None
-        specs.append(Spec(slot=slot, spec=spec))
+        specs.append(Spec(slot=slot, spec=spec, quantity=quantity))
     if not specs:
         raise LLMError("I couldn't turn that brief into a plan. Try saying it another way.")
     return plan.direction, specs
+
+
+def _quantity(value: object) -> int:
+    try:
+        return max(1, min(MAX_COPIES, int(value)))  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return 1
 
 
 def _wider(spec: ProductSpec, budget: float) -> ProductSpec | None:
@@ -385,6 +407,32 @@ def _removals(remove: list[str]) -> str:
     return "; ".join(r.strip().rstrip(".") for r in remove if r.strip())
 
 
+def _refs(pieces: dict[str, ProductListing], first: int = 2) -> tuple[list[str], dict[str, int]]:
+    """Each different product photo once, and the reference number of every piece: three
+    copies of one table are three pieces in the room but one photo to copy."""
+    urls: list[str] = []
+    at: dict[str, int] = {}
+    for slot, p in pieces.items():
+        if p.image_url not in urls:
+            urls.append(p.image_url)
+        at[slot] = first + urls.index(p.image_url)
+    return urls, at
+
+
+def _counts(pieces: dict[str, ProductListing], at: dict[str, int]) -> str:
+    """How many of each piece the picture must show, in words the image model can count."""
+    by_ref: dict[int, list[str]] = {}
+    for slot in pieces:
+        by_ref.setdefault(at[slot], []).append(slot)
+    parts = [
+        f"{len(slots)} identical {_kind(slots[0])}s, each a copy of reference {ref}"
+        if len(slots) > 1
+        else f"1 {_kind(slots[0])} (reference {ref})"
+        for ref, slots in by_ref.items()
+    ]
+    return f"Exactly {len(pieces)} new pieces in total: {'; '.join(parts)}."
+
+
 async def _layout(
     photo: bytes,
     chosen: dict[str, ProductListing],
@@ -395,13 +443,13 @@ async def _layout(
     """Where each piece goes and how big it must look, worked out from the shop's real
     sizes and the room's own anchors (doors, sockets, sills). None if it can't be planned:
     the render still runs, only with less guidance."""
-    refs = await asyncio.gather(
-        *(image_data(p.image_url) for p in chosen.values()), return_exceptions=True
-    )
+    urls, at = _refs(chosen)
+    refs = await asyncio.gather(*(image_data(u) for u in urls), return_exceptions=True)
     products = [
-        {"product_id": p.id, "slot": slot, "title": p.title, "size": _size(p)}
+        {"product_id": p.id, "slot": slot, "title": p.title, "size": _size(p),
+         "reference_image": at[slot]}
         for slot, p in chosen.items()
-    ]
+    ]  # fmt: skip
     try:
         layout = Layout.model_validate(
             await llm(
@@ -412,8 +460,8 @@ async def _layout(
                     if remove and _removals(remove)
                     else ""
                 )
-                + "Products in reference "
-                "order (images 2 onwards):\n" + json.dumps(products, ensure_ascii=False),
+                + "Products (each names its reference image; identical copies share one, and "
+                "each copy needs its own spot):\n" + json.dumps(products, ensure_ascii=False),
                 images=[
                     (photo, "image/jpeg"),
                     *[(r, "image/jpeg") for r in refs if isinstance(r, bytes)],
@@ -497,9 +545,10 @@ async def _render(
     remove: list[str] | None = None,
 ) -> str:
     where = {pl.product_id: pl for pl in layout.placements} if layout else {}
-    lines = []
-    for i, (slot, p) in enumerate(chosen.items()):
-        line = f"Reference {i + 2}: {slot}: {p.title}. Real size {_size(p)}.{_proportion(p)}"
+    urls, at = _refs(chosen)
+    lines = [_counts(chosen, at)]
+    for slot, p in chosen.items():
+        line = f"{slot}: the product in reference {at[slot]}: {p.title}. Real size {_size(p)}.{_proportion(p)}"
         if pl := where.get(p.id):
             line += f" Place it {pl.where}, facing {pl.facing}. In this photo it must look {pl.apparent_size}."
         lines.append(line)
@@ -532,7 +581,7 @@ async def _render(
         )
     )
     room = "data:image/jpeg;base64," + base64.b64encode(photo).decode()
-    return await _fal_edit(prompt, [room, *[p.image_url for p in chosen.values()]])
+    return await _fal_edit(prompt, [room, *urls])
 
 
 async def _fal_edit(prompt: str, image_urls: list[str]) -> str:
@@ -579,17 +628,18 @@ async def _check(
     """Raises only LLMError, so a failed download or an unreadable verdict gets the
     corrective attempt instead of ending the run as an unexpected crash.
     `asked`: a move the picture had to make; the supplied products may then have moved."""
+    urls, at = _refs(chosen, first=3)
     try:
-        preview, *refs = await asyncio.gather(
-            image_data(url), *(image_data(p.image_url) for p in chosen.values())
-        )
+        preview, *refs = await asyncio.gather(image_data(url), *(image_data(u) for u in urls))
     except (httpx.HTTPError, OSError, ValueError) as exc:
         raise LLMError("Couldn't download the pictures to check the preview.") from exc
-    products = [product_out(p) | {"size": _size(p)} for p in chosen.values()]
+    products = [product_out(p) | {"slot": slot, "size": _size(p), "reference_image": at[slot]}
+                for slot, p in chosen.items()]  # fmt: skip
     gone = _removals(remove or [])
     raw = await llm(
         "Compare image 1 (the room before), image 2 (the edited picture), then the exact product "
-        "references in order.\n"
+        "photos from image 3 on. Each product names its reference_image; identical copies of one "
+        "product share a photo, and each copy is its own piece in image 2 with its own box.\n"
         "LOST: go through image 1 object by object, small ones too (furniture, bins, plants, lamps, "
         'appliances, bottles, artwork, rugs, decor). In "lost" name, as it looks, each one that is '
         "missing from image 2, or was clearly moved, resized, reshaped or hidden behind something new"
@@ -692,10 +742,9 @@ async def _locate(url: str, chosen: dict[str, ProductListing]) -> dict[str, list
     rooms at once, put the price dots on the wrong piece. Empty when it can't tell; the
     checker's boxes are used then."""
     try:
-        picture, *refs = await asyncio.gather(
-            image_data(url), *(image_data(p.image_url) for p in chosen.values())
-        )
-        items = [{"product_id": p.id, "slot": slot, "title": p.title}
+        urls, at = _refs(chosen)
+        picture, *refs = await asyncio.gather(image_data(url), *(image_data(u) for u in urls))
+        items = [{"product_id": p.id, "slot": slot, "title": p.title, "reference_image": at[slot]}
                  for slot, p in chosen.items()]  # fmt: skip
         raw = await llm(
             LOCATE_PROMPT + json.dumps(items, ensure_ascii=False),
@@ -890,8 +939,8 @@ async def _guarded(
     except TimeoutError:
         message = "This design took too long. Your brief is saved—try creating it again."
         send(("error", {"message": message, "retryable": True}))
-    except Exception as exc:  # noqa: BLE001 - final stream boundary; keep failures readable
-        log.error("Room design failed (%s)", type(exc).__name__)
+    except Exception as exc:  # the final stream boundary: every failure stays readable
+        log.exception("Room design failed (%s)", type(exc).__name__)
         message = "The design couldn't be completed. Your brief is saved—please try again."
         send(("error", {"message": message, "retryable": True}))
     finally:
@@ -1021,9 +1070,18 @@ async def _picture(
 
 
 def _choose(
-    basket: Basket, candidates: dict[str, list[ProductListing]], budget: float, send: Send
+    basket: Basket,
+    candidates: dict[str, list[ProductListing]],
+    budget: float,
+    send: Send,
+    counts: dict[str, int] | None = None,
+    taken: dict[str, ProductListing] | None = None,
 ) -> dict[str, ProductListing]:
+    """The judge's picks within the budget, each in as many copies as asked ("Dining table",
+    "Dining table 2", ...). `taken`: pieces already in the room, whose slots and ids stay theirs."""
     chosen: dict[str, ProductListing] = {}
+    taken = taken or {}
+    room = MAX_BASKET - len(taken)
     total = Decimal(0)
     seen: set[str] = set()
     for pick in basket.picks:
@@ -1034,11 +1092,40 @@ def _choose(
         if price <= 0 or total + price > Decimal(str(budget)):
             continue
         seen.add(product.id)
-        total += price
-        chosen[pick.slot] = product
-        send(("product.chosen", {"slot": pick.slot, "product": product_out(product),
-                                 "reason": pick.reason}))  # fmt: skip
+        wanted = (counts or {}).get(pick.slot, 1)
+        fits = int((Decimal(str(budget)) - total) // price)
+        many = max(1, min(wanted, fits, room - len(chosen)))
+        if many < wanted:
+            _say(send, f"Only {many} of the {wanted} {_kind(pick.slot)}s fit "
+                 + ("the room's picture." if fits >= wanted else "the budget."))  # fmt: skip
+        for n in range(1, many + 1):
+            slot = _free_slot(pick.slot, n, set(taken) | set(chosen))
+            piece = _copy_of(product, slot, [*taken.values(), *chosen.values()])
+            total += price
+            chosen[slot] = piece
+            send(("product.chosen", {"slot": slot, "product": product_out(piece),
+                                     "reason": pick.reason}))  # fmt: skip
     return chosen
+
+
+def _free_slot(slot: str, n: int, used: set[str]) -> str:
+    """ "Dining chair" for the first copy, then "Dining chair 2", "Dining chair 3", ..."""
+    name = slot if n == 1 else f"{slot[:36]} {n}"
+    while name in used:
+        n += 1
+        name = f"{slot[:36]} {n}"
+    return name
+
+
+def _copy_of(p: ProductListing, slot: str, earlier: list[ProductListing]) -> ProductListing:
+    """A second copy of a product gets its own id: the front end keeps one piece per id, and
+    dropped the second chair of a pair. The id follows the slot's number, so reading the basket
+    again on the next message gives every copy the same id it had."""
+    if not any(o.url == p.url for o in earlier):
+        return p
+    number = re.search(r"\s(\d+)$", slot)
+    n = number.group(1) if number else str(1 + sum(o.url == p.url for o in earlier))
+    return p.model_copy(update={"id": f"{p.id}-{n}"})
 
 
 def _total(chosen: dict[str, ProductListing]) -> float:
@@ -1072,8 +1159,9 @@ async def _design(
     if not any(candidates.values()):
         raise _nothing_passed(results)
     with _timed("Basket judge"):
-        basket = await judge_basket(photo, brief, budget, candidates, currency)
-    chosen = _choose(basket, candidates, budget, send)
+        counts = {s.slot: s.quantity for s in specs}
+        basket = await judge_basket(photo, brief, budget, candidates, currency, counts)
+    chosen = _choose(basket, candidates, budget, send, counts)
     missing = ", ".join(s.slot.lower() for s in specs if s.slot not in chosen)
     if not chosen:
         raise LLMError(f"I couldn't find anything suitable in the shops for {missing}. "
@@ -1197,10 +1285,17 @@ Rules:
   paragraph, in their words.
 - "add": "instruction" names only the new pieces and where they go, in their words, including
   "next to the existing chair" style placements.
+- COUNTS: keep every number the person gives in "brief" and "instruction", worked out: "3
+  tables with 2 chairs each" is "3 black tables and 6 white chairs". The basket lists each copy
+  as its own line ("Chair", "Chair 2"). When they say pieces are missing ("I only see 1 chair, I
+  said 3 tables"), "add" exactly the missing ones, counted: what they asked for minus what the
+  basket holds, e.g. "2 more black dining tables and 5 more white dining chairs".
 - "drop" when they want one chosen piece gone ("remove the rug", "no lamp"): "slot" exactly as
   in the basket. When pieces are chosen and they want something of the photo taken out ("remove
   the plant in the corner"): "slot" null, and "remove" names it. Everything else stays.
 - "swap": "slot" exactly as in the basket, and "instruction" (e.g. "warmer wood and cheaper").
+  A swap changes every copy of that piece at once ("make the chairs red" changes all six), so
+  never say you'll do one copy first.
 - BUDGET. "budget" is the person's new total budget in euros whenever they change it, else
   null. Work it out from the current budget: "raise it to 800" is 800; "€200 more" is current +
   200; "lower it by 100" is current - 100; "double it" is current × 2; "half" is current / 2.
@@ -1487,7 +1582,7 @@ async def _reread(basket: list[BasketLine], send: Send) -> dict[str, ProductList
         if read.listing is None:
             _step(send, f"Couldn't read the {line.slot.lower()}'s page again ({read.error}).")
         else:
-            chosen[line.slot] = read.listing
+            chosen[line.slot] = _copy_of(read.listing, line.slot, list(chosen.values()))
     if not chosen:
         raise LLMError("Couldn't read the shop pages of your pieces again. Try again in a minute.")
     return chosen
@@ -1514,7 +1609,11 @@ async def _swap(photo: bytes, turn: Turn, decision: Decision, send: Send) -> Non
     send(("run.status", {"status": "running"}))
     chosen = await _reread(turn.basket, send)
     old = chosen.get(decision.slot)
-    left = turn.budget - _total({k: v for k, v in chosen.items() if k != decision.slot})
+    # Every copy of the piece changes together: "red chairs instead" means all six of them.
+    line = next(b for b in turn.basket if b.slot == decision.slot)
+    copies = [b.slot for b in turn.basket if b.url == line.url]
+    rest = {k: v for k, v in chosen.items() if k not in copies}
+    left = turn.budget - _total(rest)
     if left <= 0:
         raise LLMError("The rest of the basket already uses the whole budget.")
     request = (f"Replace only the {decision.slot}: {decision.instruction or turn.message}. "
@@ -1525,30 +1624,48 @@ async def _swap(photo: bytes, turn: Turn, decision: Decision, send: Send) -> Non
     slot = _swapped_slot(decision.slot, specs[0].slot, set(chosen))
     spec = specs[0].model_copy(update={"slot": slot})
     result = await _shop(spec, left, send, set())
-    candidates = [p for p in result.candidates if not old or p.id != old.id]
+    candidates = [p for p in result.candidates if p.url != line.url]
     if not candidates:
         raise _nothing_passed([(spec, result)])
     currency = spec.spec.currency
-    basket = await judge_basket(photo, request, left, {slot: candidates}, currency)
-    picked = _choose(basket, {slot: candidates}, left, send)
+    basket = await judge_basket(photo, request, left, {slot: candidates}, currency,
+                                {slot: len(copies)})  # fmt: skip
+    picked = _choose(basket, {slot: candidates}, left, send, {slot: len(copies)}, taken=rest)
     if not picked:
         raise LLMError(f"None of the {slot.lower()}s I found suits the room. "
                        "Try describing it differently.")  # fmt: skip
-    if slot != decision.slot:  # a sofa in place of a coat stand is a sofa, not a coat stand
-        line = next(b for b in turn.basket if b.slot == decision.slot)
-        send(("product.removed", {"slot": decision.slot, "url": line.url}))
-    # Same position in the basket, under the new piece's own name.
-    chosen = {(slot if k == decision.slot else k): (picked[slot] if k == decision.slot else v)
-              for k, v in chosen.items()} if decision.slot in chosen else chosen | picked  # fmt: skip
+    for gone in copies:  # a sofa in place of a coat stand is a sofa, not a coat stand
+        if gone not in picked:
+            send(("product.removed", {"slot": gone, "url": line.url}))
+    chosen = _replaced_in_order(chosen, copies, picked)
     along = {slot} if spec.spec.max_width_cm else set()  # the rest keep theirs
     _prove_fit(chosen, turn.wall_cm, along, send)
-    if await _swap_in_place(turn, decision.slot, old, chosen, send, into=slot, deadline=deadline):
+    if (
+        len(copies) == 1
+        and len(picked) == 1
+        and await _swap_in_place(
+            turn, decision.slot, old, chosen, send, into=slot, deadline=deadline
+        )
+    ):
         pass
     elif not await _picture(
         photo, chosen, _whole_brief(turn), basket.text, deadline, send, decision.remove
     ):
         _say(send, f"The picture still shows your old {decision.slot.lower()}.")
     send(("done", {"total_eur": _total(chosen), "currency": currency}))
+
+
+def _replaced_in_order(
+    chosen: dict[str, ProductListing], gone: list[str], new: dict[str, ProductListing]
+) -> dict[str, ProductListing]:
+    """The basket with the pieces `gone` swapped for `new`, in the same position."""
+    out: dict[str, ProductListing] = {}
+    for slot, p in chosen.items():
+        if slot not in gone:
+            out[slot] = p
+        elif not any(k in out for k in new):
+            out |= new
+    return out if any(k in out for k in new) else out | new
 
 
 async def _add(photo: bytes, turn: Turn, decision: Decision, send: Send) -> None:
@@ -1589,8 +1706,9 @@ async def _add(photo: bytes, turn: Turn, decision: Decision, send: Send) -> None
         raise _nothing_passed(results)
     currency = specs[0].spec.currency
     brief = f"{_whole_brief(turn)}\nAlready in the room and staying: {have}."
-    basket = await judge_basket(photo, brief, left, candidates, currency)
-    added = _choose(basket, candidates, left, send)
+    counts = {s.slot: s.quantity for s in specs}
+    basket = await judge_basket(photo, brief, left, candidates, currency, counts)
+    added = _choose(basket, candidates, left, send, counts, chosen)
     if not added:
         raise LLMError(f"None of the pieces I found for {wish} suits the room within what's left "
                        "of the budget. Try other words or a higher budget.")  # fmt: skip
@@ -1598,6 +1716,12 @@ async def _add(photo: bytes, turn: Turn, decision: Decision, send: Send) -> None
         if spec.slot not in added:
             _say(send, f"No {spec.slot.lower()} made it into your basket ({_why_missing(result)}), "
                  "so there's none in the picture either.")  # fmt: skip
+    if len(added) > 3:  # one edit can't place that many pieces well: draw the room again
+        chosen |= added
+        if not await _picture(photo, chosen, brief, basket.text, deadline, send, decision.remove):
+            _say(send, "The picture doesn't show the new pieces yet. Your basket has them.")
+        send(("done", {"total_eur": _total(chosen), "currency": currency}))
+        return
     chosen |= added
     along = {s.slot for s in specs if s.slot in added and s.spec.max_width_cm}
     _prove_fit(chosen, turn.wall_cm, along, send)
@@ -1734,10 +1858,11 @@ async def _arrange_in_place(
         asked = "; ".join(f"the {m.slot.lower()}: {m.to.rstrip('.')}" for m in plan.moves)
     else:
         moving, how, asked = chosen, {}, wish
+    urls, at = _refs(moving)
     pieces = " ".join(
-        f"The {slot.lower()} is the exact product in reference {i}: {p.title}, real size "
+        f"The {slot.lower()} is the exact product in reference {at[slot]}: {p.title}, real size "
         f"{_size(p)}.{_proportion(p)}{how.get(slot, '')}"
-        for i, (slot, p) in enumerate(moving.items(), start=2)
+        for slot, p in moving.items()
     )
     prompt = (
         "Reference 1 is a photo of a furnished room. Rearrange only the pieces named here, "
@@ -1752,7 +1877,7 @@ async def _arrange_in_place(
         + " Add nothing. Photorealistic, natural contact shadows, no text. Landscape 3:2."
     )
     return await _edit_in_place(
-        turn, before, chosen, prompt, [p.image_url for p in moving.values()], remove,
+        turn, before, chosen, prompt, urls, remove,
         f"Moving your pieces in the picture: {wish}. Everything else stays.", send,
         asked=asked, deadline=deadline,
     )  # fmt: skip
@@ -1838,10 +1963,15 @@ async def _add_in_place(
         return False
     layout = await _layout(before, added, f"Add: {where}. Everything already in the room stays.",
                            "Keep the room as it is; only add these pieces.", remove)  # fmt: skip
-    pieces = " ".join(
-        f"The {slot.lower()} is the exact product in reference {i}: {p.title}, real size "
-        f"{_size(p)}.{_proportion(p)}{_placed(layout, p)}"
-        for i, (slot, p) in enumerate(added.items(), start=2)
+    urls, at = _refs(added)
+    pieces = (
+        _counts(added, at)
+        + " "
+        + " ".join(
+            f"The {slot.lower()} is the exact product in reference {at[slot]}: {p.title}, real size "
+            f"{_size(p)}.{_proportion(p)}{_placed(layout, p)}"
+            for slot, p in added.items()
+        )
     )
     gone = f" Take out {_removals(remove)} if still there." if remove else ""
     prompt = (
@@ -1857,7 +1987,7 @@ async def _add_in_place(
     )
     names = ", ".join(slot.lower() for slot in added)
     return await _edit_in_place(
-        turn, before, chosen, prompt, [p.image_url for p in added.values()], remove,
+        turn, before, chosen, prompt, urls, remove,
         f"Adding the {names} to your room; everything else stays.", send, deadline=deadline,
     )  # fmt: skip
 
@@ -1969,7 +2099,7 @@ async def _view(photo: bytes, turn: Turn, decision: Decision, send: Send) -> Non
     model = os.getenv("FAL_RENDER_MODEL") or "fal-ai/nano-banana-2/edit"
     result = await fal(
         model,
-        {"prompt": prompt, "image_urls": [turn.render_url, *[p.image_url for p in chosen.values()]],
+        {"prompt": prompt, "image_urls": [turn.render_url, *_refs(chosen)[0]],
          "num_images": 1, "aspect_ratio": "3:2", "output_format": "jpeg"},
         timeout=RENDER_TIMEOUT_S,
     )  # fmt: skip
