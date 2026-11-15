@@ -1,7 +1,7 @@
 import { Footprints, Play, Rotate3d, RotateCcw, Undo2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { gsap, reducedMotion, useGSAP } from '../../lib/motion'
-import { canView3D, depthOf } from '../../lib/depth'
+import { canView3D, prepare3D } from '../../lib/depth'
 import { PHASES, isWorking, phaseOf, statusText } from '../../lib/session'
 import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
@@ -24,11 +24,14 @@ export function Caption() {
   // A failed room has its own "Back to the last room" on the photo.
   const canUndo = !!s.past?.length && !isWorking(s) && s.status !== 'new' && s.status !== 'failed'
 
-  // The depth map is asked for as soon as the room is drawn, so the 3D view opens at once.
-  const in3d = done && canView3D(s.afterSrc) ? s.afterSrc : null
+  // The room's depth and every piece's 3D model are made as soon as the room is drawn, so the
+  // 3D view has them ready (a model takes a minute or two the first time).
+  const in3d = done && canView3D(s)
+  const ready3d = in3d ? `${s.beforeSrc.slice(-40)}|${s.products.map((p) => p.thumb?.src).join('|')}` : ''
   useEffect(() => {
-    if (in3d) depthOf(in3d).catch(() => {})
-  }, [in3d])
+    if (ready3d) prepare3D(s)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per set of pieces
+  }, [ready3d])
 
   // A walk-in that just finished plays at once.
   const was = useRef(walk?.status)

@@ -64,6 +64,12 @@ export type BoxOut = { x: number; y: number; w: number; h: number }
 /** POST /depth: the render's depth map, white near and black far. */
 export type DepthOut = { depth_url: string; width: number; height: number }
 
+/** POST /depth/photo: the depth of the person's own photo, and that photo on fal storage. */
+export type PhotoDepthOut = DepthOut & { image_url: string }
+
+/** POST /model3d: a product's 3D model, made from its shop photo. */
+export type Model3DOut = { glb_url: string }
+
 /** POST /transcribe: what was said into the mic. */
 export type TranscriptOut = { text: string }
 

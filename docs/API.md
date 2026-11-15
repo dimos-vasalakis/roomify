@@ -174,8 +174,12 @@ Answers with the run's events as a stream: `run.status`, `step.started`, `plan.r
 Deprecated: returns 409 with instructions to refresh and adjust the brief. The client submits a new complete `/offer` so the preview and shopping list always update together.
 
 
-## `POST /depth` (the 3D view)
-JSON `{"image_url": "<a render's fal link>"}` → `{"depth_url", "width", "height"}`: a grayscale map the size of the render, white near and black far (Depth Anything v2 on fal, about 3 s). Only fal-hosted renders are accepted (`422` otherwise); a failed call is `502` with a readable `detail`. Saved forever per render, so a second open and `REPLAY=1` are instant. The front end builds the room as a mesh from it and lets the person look around the furnished room.
+## The 3D room (`/depth/photo`, `/model3d`)
+- `POST /depth/photo`, multipart `photo` (the person's own empty room photo, JPEG/PNG/WebP under 8 MB) → `{"depth_url", "width", "height", "image_url"}`: its depth map (Depth Anything v2 on fal), white near and black far. Saved for good by the photo's hash, so a second open and `REPLAY=1` are instant (`503` when not recorded).
+- `POST /model3d`, JSON `{"image_url": "<a product's shop photo>"}` → `{"glb_url"}`: a textured 3D model of that product made from its shop photo (TRELLIS-2 on fal, older TRELLIS as a stand-in, fixed seed), saved for good per photo. The first time takes a minute or two; the front end asks as soon as a room is finished. Only public `https` photos (`422`); new models are capped per hour (`429`); a failure is `502` with a readable `detail`.
+- `POST /depth` (a render's depth) stays for older clients.
+
+The front end builds the room in three.js: the empty photo pushed back by its depth, calibrated so floor and walls come out flat (the depth offset that makes them flattest, then every point onto the nearest plane its ray meets), levelled on the floor and scaled to metres from the pieces' listed heights. Each piece's model stands where the render put it (on the floor, on the piece under it, or on the wall), backed onto the nearest wall or facing the room, at its listed size, with soft shadows. A piece without a model stands in as a flat card cut from the render.
 
 ## `POST /transcribe` (the mic)
 Multipart: `audio` (a short recording: `audio/webm`, `audio/mp4`, `audio/ogg`, `audio/wav` or `audio/mpeg`, under 6 MB) → `{"text"}`. Whisper on fal, any language, never cached. Used when the browser's own speech recognition is missing or fails (Firefox, Brave, Safari, in-app browsers, phones); Chrome and Edge still caption live and send without it. `415` for another format, `400` for an empty recording, `413` for a long one, `502` with a readable `detail` when the call fails.

@@ -1,5 +1,5 @@
 import { RotateCcw, Undo2 } from 'lucide-react'
-import { useRef } from 'react'
+import { Suspense, lazy, useRef } from 'react'
 import { DUR, enter, useGSAP } from '../../lib/motion'
 import { canView3D } from '../../lib/depth'
 import { pictureOf } from '../../lib/session'
@@ -7,7 +7,6 @@ import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
 import type { Product } from '../../types'
 import { BlockError } from '../common/BlockError'
-import { Room3D } from '../room3d/Room3D'
 import { PhoneHandoff } from './PhoneHandoff'
 import { WalkInPlayer } from '../walkin/WalkInPlayer'
 import { Caption } from './Caption'
@@ -15,6 +14,9 @@ import { Compare } from './Compare'
 import { EmptyDrop } from './EmptyDrop'
 import { PinCard } from './PinCard'
 import { StepLayer } from './StepLayer'
+
+// three.js only loads for the 3D room (fetched in the background once a room is finished).
+const Room3D = lazy(() => import('../room3d/Room3D').then((m) => ({ default: m.Room3D })))
 
 /** The room board: the photo or the render, the agent's work drawn on it, and one caption line. */
 export function Board() {
@@ -104,7 +106,11 @@ export function Board() {
 
         {playing && s.afterSrc && <WalkInPlayer walk={playing} src={s.afterSrc} />}
 
-        {done && state.view3d && canView3D(s.afterSrc) && <Room3D key={`3d-${s.id}`} s={s} />}
+        {done && state.view3d && canView3D(s) && (
+          <Suspense fallback={<div className="absolute inset-0 z-30 bg-scrim" />}>
+            <Room3D key={`3d-${s.id}`} s={s} />
+          </Suspense>
+        )}
 
         {s.status === 'failed' && s.error && (
           <div className="absolute inset-x-4 bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-card bg-surface px-4 py-3 sm:right-auto sm:max-w-xl">

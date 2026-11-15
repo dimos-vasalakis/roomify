@@ -377,3 +377,29 @@ test('a budget said in words changes the budget, with the sums done right', asyn
   await expect(chat).toContainText('€69 over. Want me to make it fit?')
   await expect(page.getByRole('button', { name: /Bring it under €150.00/ })).toBeVisible()
 })
+
+/** A depth map for the fake empty room: a floor rising toward the camera, a back wall. */
+function fakeDepth(): Buffer {
+  // 2×2 grey PNG is enough for the pipeline to run; the shell is flat but complete.
+  return Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAAAAABX3VL4AAAAEklEQVR4nGNgYPj/n4GBgYEBAA0GAgEtnHhTAAAAAElFTkSuQmCC', 'base64')
+}
+
+test('the 3D room builds from the empty photo, and a piece without a model stands in flat', async ({ page }) => {
+  test.skip(phone(page), 'Same scene on phones')
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await page.route(/\/depth\/photo$/, (r) => r.fulfill({ json: { depth_url: 'http://127.0.0.1:4173/fake-depth.png', image_url: '', width: 2, height: 2 } }))
+  await page.route('http://127.0.0.1:4173/fake-depth.png', (r) => r.fulfill({ contentType: 'image/png', body: fakeDepth() }))
+  await page.route(/\/model3d$/, (r) => r.fulfill({ status: 502, json: { detail: "Couldn't make a 3D model of this piece." } }))
+  await start(page)
+  await done(page)
+  await page.getByRole('button', { name: 'Look around in 3D' }).click()
+  const room = page.getByRole('region', { name: /in 3D$/ })
+  await expect(room.getByText('3D view · drag to walk round, scroll to come closer')).toBeVisible({ timeout: 15_000 })
+  await expect(room.getByText(/Shown flat: desk/)).toBeVisible({ timeout: 15_000 })
+  await expect(room.getByRole('link', { name: /Desk, €219.00/ })).toBeAttached()
+  await page.getByRole('button', { name: 'Above', exact: true }).click()
+  await page.keyboard.press('Escape')
+  await expect(room).toHaveCount(0)
+  expect(errors).toEqual([])
+})

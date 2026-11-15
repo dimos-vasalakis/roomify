@@ -65,6 +65,13 @@ Every mistake and every failure has a way back. Keep it that way when adding any
 - **Reloads:** rooms with a photo survive a reload. A room that was mid-run comes back as "The page was reloaded before Roomify finished", with Back and Try again; the browser asks before leaving while Roomify works.
 - **Input:** drafts are kept per room; a wall width reads "160", "160 cm", "1.6 m" or "3,2m"; a file that isn't a photo is named in the error; a pin's Swap goes in front of what you typed, never over it; the same message can't be sent twice by a double press.
 
+## The 3D room
+"Look around in 3D" once a room is done. It is a real 3D scene, not a warped picture:
+- **Your room** is your own empty photo, pushed back by its depth with straight walls and a flat floor; its edges fade into the dark once the camera moves, so nothing is invented beyond what the photo saw.
+- **Every piece** is a 3D model made from its shop photo, at its listed size, where the preview put it; soft shadows on the floor. While a model is being made its real-size outline shows in pine and the caption says "Modelling the desk in 3D…"; a piece without a model stands in flat, and the caption says so.
+- **Opening:** the preview you just saw dissolves into the 3D room from the same viewpoint, then the camera swings round and sways until you drag. Front / Left / Right / Above, drag to walk round (about 50° each way), scroll to come closer; Escape closes. Price pins stay on their pieces.
+- Never call the walk-in video 3D; this view is the 3D room.
+
 ## Walk-in
 One "Walk in" button in the caption row once the room is done. It makes a 5 s push-in from the middle of the near edge and plays inside the room frame, labelled "Walk-in preview" (never 3D). While it is being made the button reads "Making walk-in…". Real conversations (offers) don't have walk-ins yet; asking "show it from the door" in words changes the view instead.
 

@@ -5,6 +5,8 @@ import type {
   ConversationSummary,
   ProfileOut,
   DepthOut,
+  Model3DOut,
+  PhotoDepthOut,
   HandoffOut,
   TranscriptOut,
   RunSummary,
@@ -77,6 +79,15 @@ export const api = {
     request<WalkinOut>(`/runs/${runId}/walkins`, { method: 'POST', body: json(body) }),
   depth: (imageUrl: string) =>
     request<DepthOut>('/depth', { method: 'POST', body: json({ image_url: imageUrl }), signal: AbortSignal.timeout(60_000) }),
+  /** The empty room photo's depth: the shell of the 3D room. */
+  photoDepth: (photo: Blob) => {
+    const form = new FormData()
+    form.append('photo', photo, 'room.jpg')
+    return request<PhotoDepthOut>('/depth/photo', { method: 'POST', body: form, signal: AbortSignal.timeout(90_000) })
+  },
+  /** A real 3D model (GLB) of one product, made from its shop photo. The first time takes a minute or two. */
+  model3d: (imageUrl: string) =>
+    request<Model3DOut>('/model3d', { method: 'POST', body: json({ image_url: imageUrl }), signal: AbortSignal.timeout(300_000) }),
   /** A drop box the phone can send a photo into (the QR code on the empty room). */
   openHandoff: () => request<HandoffOut>('/handoff', { method: 'POST' }),
   sendHandoff: (code: string, photo: Blob) => {
