@@ -53,7 +53,6 @@ A pine dot with a white ring on each placed piece. Click: a small card next to i
 - Lines, not bubbles: "You" and "Roomify" as small labels, the text in body size. The agent's question shows as a line with quick answers under it (the suggested value, "Skip").
 - First message: "What do you need, and what's the budget?" A budget written in the sentence ("€300") is read from it; otherwise the budget chip above the composer is used (editable).
 - **Speak in:** hold the mic button or Space. A thin live waveform of the real microphone level replaces the input text while listening; the words appear as they are heard.
-- **Speak out:** new agent replies are read aloud with the browser's voice; the line being spoken lights up word by word. A speaker toggle in the column header mutes it.
 
 ## Walk-in
 One "Walk in" button in the caption row once the room is done. It makes a 5 s push-in from the middle of the near edge and plays inside the room frame, labelled "Walk-in preview" (never 3D). While it is being made the button reads "Making walk-in…". Real conversations (offers) don't have walk-ins yet; asking "show it from the door" in words changes the view instead.
@@ -88,7 +87,6 @@ GSAP with `useGSAP` and a scoped ref; every entrance through `enter()` in `front
 | Render ready | After wipes in from the left with `clip-path`; outlines draw; pins land with a 70 ms stagger |
 | Total changes | Figure counts to the new value |
 | Voice in | Waveform bars follow the mic level |
-| Voice out | Words of the spoken line go from muted to ink as they are said |
 | Controls | Press scale 0.97 |
 
 ## Rules that hold everywhere

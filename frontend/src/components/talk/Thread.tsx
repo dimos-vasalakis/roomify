@@ -6,10 +6,8 @@ import { useStore } from '../../state/store'
 import { BlockError } from '../common/BlockError'
 import { LiveDot } from '../common/LiveDot'
 
-type Props = { speaking: string | null; spoken: number }
-
-/** Lines, not bubbles. The line being read aloud lights up word by word. */
-export function Thread({ speaking, spoken }: Props) {
+/** Lines, not bubbles. */
+export function Thread() {
   const { active: s } = useStore()
   const actions = useActions()
   const list = useRef<HTMLOListElement>(null)
@@ -42,21 +40,10 @@ export function Thread({ speaking, spoken }: Props) {
   return (
     <ol ref={list} className="flex flex-col gap-5 pb-2">
       {lines.map((line, i) => {
-        const key = `${s.id}:${i}`
-        const live = speaking === key
         return (
-          <li key={key} data-line className="flex flex-col gap-1">
+          <li key={`${s.id}:${i}`} data-line className="flex flex-col gap-1">
             <span className={`text-small font-semibold ${line.role === 'agent' ? 'text-chosen' : 'text-muted'}`}>{line.role === 'agent' ? 'Roomify' : 'You'}</span>
-            <p className="text-body text-ink">
-              {live ? (
-                <>
-                  <span>{line.text.slice(0, spoken)}</span>
-                  <span className="text-muted">{line.text.slice(spoken)}</span>
-                </>
-              ) : (
-                line.text
-              )}
-            </p>
+            <p className="text-body text-ink">{line.text}</p>
           </li>
         )
       })}
