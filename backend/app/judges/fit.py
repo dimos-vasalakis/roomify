@@ -67,7 +67,9 @@ class Measure(BaseModel):
 
 
 def _words(text: str) -> set[str]:
-    return {w.removesuffix("s").removesuffix("ς") for w in re.findall(r"[^\W\d_]{3,}", text.lower())}
+    return {
+        w.removesuffix("s").removesuffix("ς") for w in re.findall(r"[^\W\d_]{3,}", text.lower())
+    }
 
 
 # Words that only say which wall: "back wall" is a wall, "space for the wall art" is not.

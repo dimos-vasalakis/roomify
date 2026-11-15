@@ -185,7 +185,11 @@ export type Measured = { box: { x: number; y: number; w: number; h: number }; he
 /** The room measured in metres (MoGe-2): distance along each grid ray, 0 where unknown. */
 export type Geometry = { fov_y: number; cols: number; rows: number; distance: number[] }
 
-export function buildRoom(photo: HTMLImageElement, depth: HTMLImageElement, measured: Measured[], geometry: Geometry | null, cutouts: Cutout[] = []): Room {
+/** What the photo didn't show, imagined: the same view `widen` times wider (the photo in its
+ *  middle), and the view from the same spot turned round. */
+export type Surroundings = { wide: HTMLImageElement; behind: HTMLImageElement | null; widen: number }
+
+export function buildRoom(photo: HTMLImageElement, depth: HTMLImageElement, measured: Measured[], geometry: Geometry | null, cutouts: Cutout[] = [], around: Surroundings | null = null): Room {
   const aspect = photo.naturalWidth / photo.naturalHeight
   const vfov = geometry ? geometry.fov_y : PHONE_VFOV
   const tanY = Math.tan((vfov * RAD) / 2)
@@ -348,10 +352,92 @@ export function buildRoom(photo: HTMLImageElement, depth: HTMLImageElement, meas
   // A wall the photo never saw takes the colour of the walls it did.
   const wallColour = average(painted.filter((p) => !['floor', 'ceiling'].includes(p.surface.name))) ?? [225, 220, 212]
   const ceilingColour = average(painted.filter((p) => p.surface.name === 'ceiling')) ?? wallColour.map((c) => Math.min(255, c * 1.05))
+  const imagine = around ? imagined(around) : null
   const surfaces = painted.map((p) => {
-    if (p.surface.name === 'floor') return finish(p, floorPatch(p) ?? floorBase(p) ?? flat(average([p]) ?? [150, 120, 90]))
-    return finish(p, flat(p.surface.name === 'ceiling' ? ceilingColour : wallColour))
+    const plain = p.surface.name === 'floor'
+      ? floorPatch(p) ?? floorBase(p) ?? flat(average([p]) ?? [150, 120, 90])
+      : flat(p.surface.name === 'ceiling' ? ceilingColour : wallColour)
+    imagine?.(p)
+    return finish(p, plain)
   })
+
+  /**
+   * The imagined views painted in where the photo saw nothing: beyond the photo's frame the wide
+   * view (the same camera, a wider lens); the rest from the view back from the far wall, as a
+   * person would take it, at eye height in front of that wall. Mixed by the
+   * photo's own fade at its frame, so the photo runs straight on into them; what neither reaches
+   * (right under the camera, behind a sofa) is filled as before.
+   */
+  function imagined(a: Surroundings) {
+    const read = (img: HTMLImageElement) => {
+      const W = Math.min(img.naturalWidth, 2400)
+      const H = Math.round(W / (img.naturalWidth / img.naturalHeight))
+      return { W, H, data: pixels(img, W, H).data }
+    }
+    const wide = read(a.wide)
+    const behind = a.behind ? read(a.behind) : null
+    const behindTanX = behind ? tanY * (behind.W / behind.H) : 0
+    // The view back: from the middle of the far wall, a step in front of it, looking at the camera.
+    const eye = at((s0 + s1) / 2, t0 + 0.35, floorY + CAMERA_HEIGHT_M)
+    const ahead = axisT.clone()
+    const right = axisS.clone().negate() // turned round: its right is the photo's left
+    const d = new THREE.Vector3()
+    const sample = (img: { W: number; H: number; data: Uint8ClampedArray }, u: number, v: number, out: Float32Array, k: number) => {
+      const x = clamp(u * (img.W - 1), 0, img.W - 1)
+      const y = clamp(v * (img.H - 1), 0, img.H - 1)
+      const x0 = Math.floor(x)
+      const y0 = Math.floor(y)
+      const x1 = Math.min(img.W - 1, x0 + 1)
+      const y1 = Math.min(img.H - 1, y0 + 1)
+      const fx = x - x0
+      const fy = y - y0
+      for (let ch = 0; ch < 3; ch++) {
+        const top = img.data[(y0 * img.W + x0) * 4 + ch] * (1 - fx) + img.data[(y0 * img.W + x1) * 4 + ch] * fx
+        const bottom = img.data[(y1 * img.W + x0) * 4 + ch] * (1 - fx) + img.data[(y1 * img.W + x1) * 4 + ch] * fx
+        out[k * 3 + ch] = top * (1 - fy) + bottom * fy
+      }
+    }
+    const guess = new Float32Array(3)
+    return (pt: Painted) => {
+      const s = pt.surface
+      const q = new THREE.Vector3()
+      const mix = (k: number) => {
+        const w = pt.weight[k]
+        for (let ch = 0; ch < 3; ch++) pt.rgb[k * 3 + ch] = pt.rgb[k * 3 + ch] * w + guess[ch] * (1 - w)
+        pt.weight[k] = 1
+      }
+      for (let r = 0; r < pt.H; r++)
+        for (let i = 0; i < pt.W; i++) {
+          if (pt.weight[r * pt.W + i] >= 1) continue // the photo saw it: nothing to imagine
+          const k = r * pt.W + i
+          q.copy(s.origin).addScaledVector(s.u, ((i + 0.5) / pt.W) * s.lu).addScaledVector(s.v, (1 - (r + 0.5) / pt.H) * s.lv)
+          d.copy(q).sub(eye)
+          q.applyQuaternion(unlevel)
+          let done = false
+          if (q.z < -1e-3) {
+            const pu = (q.x / -q.z / (tanY * aspect) + 1) / 2
+            const pv = (1 - q.y / -q.z / tanY) / 2
+            const inFrame = pu >= 0 && pu <= 1 && pv >= 0 && pv <= 1
+            // Inside the frame, what the photo hid (behind a sofa) stays unknown: only its fading edge mixes.
+            if (inFrame && pt.weight[k] <= 0) continue
+            const wu = (pu - 0.5) / a.widen + 0.5
+            if (pv >= 0 && pv <= 1 && wu >= 0 && wu <= 1) {
+              sample(wide, wu, pv, guess, 0)
+              mix(k)
+              done = true
+            }
+          }
+          const z = d.dot(ahead)
+          if (!done && behind && z > 0.3) {
+            const bu = (d.dot(right) / z / behindTanX + 1) / 2
+            const bv = (1 - d.y / z / tanY) / 2
+            if (bu < 0 || bu > 1 || bv < 0 || bv > 1) continue
+            sample(behind, bu, bv, guess, 0)
+            mix(k)
+          }
+        }
+    }
+  }
 
   function paint(s: Omit<Surface, 'canvas'>) {
     const W = clamp(Math.round(s.lu * PX_PER_M), 8, MAX_PX)

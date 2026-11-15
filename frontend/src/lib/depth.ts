@@ -32,12 +32,13 @@ const roomDepthOf = (photoSrc: string) =>
   once(rooms, photoSrc, async (): Promise<Shell> => {
     const photo = await (await fetch(photoSrc)).blob()
     const out = await api.photoDepth(photo)
-    return { photo: photoSrc, depth: out.depth_url, geometry: out.geometry ?? null, objects: out.objects ?? [] }
+    return { photo: photoSrc, hosted: out.image_url, depth: out.depth_url, geometry: out.geometry ?? null, objects: out.objects ?? [] }
   })
 
 /** Something already standing in the room, cut out of the picture to be modelled. */
 export type RoomObject = { name: string; box: Product['box']; on_top: boolean; crop_url: string }
-type Shell = { photo: string; depth: string; geometry: Geometry | null; objects: RoomObject[] }
+/** `hosted`: the empty room's picture on fal, which its imagined surroundings are made from. */
+type Shell = { photo: string; hosted?: string; depth: string; geometry: Geometry | null; objects: RoomObject[] }
 type Recording = { capturedAt: string; shell: Shell; models: Record<string, Model3DOut> }
 const recordings = new Map<string, Promise<Recording>>()
 const recordingOf = (url: string) => once(recordings, url, async () => {
@@ -70,7 +71,7 @@ async function askShell(render: string, pieces: ReturnType<typeof shellPieces>):
   })
   const body = await response.json().catch(() => null)
   if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : "Couldn't prepare the room for 3D.")
-  return { photo: body.image_url, depth: body.depth_url, geometry: body.geometry ?? null, objects: body.objects ?? [] }
+  return { photo: body.image_url, hosted: body.image_url, depth: body.depth_url, geometry: body.geometry ?? null, objects: body.objects ?? [] }
 }
 
 /**
@@ -87,6 +88,26 @@ export function roomShellOf(s: Session): Promise<Shell> {
   return once(shells, JSON.stringify([render, pieces]), () => askShell(render, pieces)).catch(fromPhoto)
 }
 
+/** What the photo didn't show, imagined (the same view continued at the sides, and the wall behind
+ * the camera): only ever drawn where the photo saw nothing. */
+export type Surround = { wide_url: string; widen: number; behind_url: string | null }
+const surrounds = new Map<string, Promise<Surround>>()
+export function surroundOf(shell: Shell): Promise<Surround | null> {
+  if (!shell.hosted || !API_URL) return Promise.resolve(null)
+  const image = shell.hosted
+  return once(surrounds, image, async () => {
+    const response = await fetch(`${API_URL}/depth/surround`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: image }),
+      signal: AbortSignal.timeout(150_000), // two image edits side by side
+    })
+    const body = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : "Couldn't imagine the rest of the room.")
+    return body as Surround
+  }).catch(() => null)
+}
+
 /** A 3D model of something already in the room, from its cut-out of the picture. */
 export const objectModelOf = (o: RoomObject, s: Session) => s.recorded3d ? recordedModel(s, o.crop_url) : once(models, o.crop_url, () => api.model3d(o.crop_url, '', o.name))
 
@@ -98,7 +119,10 @@ export function prepare3D(s: Session) {
   if (!canView3D(s)) return
   void import('../components/room3d/Room3D').catch(() => {}) // the viewer's code, ahead of the click
   roomShellOf(s)
-    .then((shell) => shell.objects.forEach((o) => objectModelOf(o, s).catch(() => {})))
+    .then((shell) => {
+      void surroundOf(shell)
+      shell.objects.forEach((o) => objectModelOf(o, s).catch(() => {}))
+    })
     .catch(() => {})
   for (const p of s.products) if (p.placed !== false && p.thumb?.src) modelOf(p, s).catch(() => {})
 }

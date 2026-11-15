@@ -415,3 +415,27 @@ test('the 3D button is always there: off without a photo, the room from the phot
   await expect(page.getByRole('button', { name: /walk-?in/i })).toHaveCount(0)
   expect(errors).toEqual([])
 })
+
+test('what the photo did not show is imagined on the 3D walls, and said to be', async ({ page }, info) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  let asked = 0
+  await page.route(/\/depth\/photo$/, (r) => r.fulfill({ json: { depth_url: 'http://127.0.0.1:4173/fake-depth.png', image_url: 'https://v3b.fal.media/empty-room.jpg', width: 2, height: 2 } }))
+  await page.route('http://127.0.0.1:4173/fake-depth.png', (r) => r.fulfill({ contentType: 'image/png', body: fakeDepth() }))
+  await page.route(/\/depth\/surround$/, (r) => {
+    asked += 1
+    return r.fulfill({ json: { wide_url: 'http://127.0.0.1:4173/demo3d/18083d3903f50bec.jpg', widen: 1.55, behind_url: 'http://127.0.0.1:4173/demo3d/2d305df9267c5d15.jpg' } })
+  })
+  await newRoom(page)
+  await upload(page)
+  await page.getByRole('button', { name: 'Look around in 3D' }).click()
+  const room = page.locator('[data-room3d]')
+  // The note is in the caption's detail lines, which phones fold away.
+  await expect(room.getByText(/What the photo didn't show is imagined/)).toBeAttached({ timeout: 15_000 })
+  expect(asked).toBe(1)
+  await page.screenshot({ path: info.outputPath('front.png') })
+  await room.getByRole('button', { name: 'Back', exact: true }).click()
+  await page.waitForTimeout(1500)
+  await page.screenshot({ path: info.outputPath('back.png') })
+  expect(errors).toEqual([])
+})

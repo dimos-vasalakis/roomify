@@ -14,7 +14,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { HANGS, placePieces, type Box, type Placement } from './placement'
-import { RAD, buildRoom, clamp, type Geometry, type Surface } from './roomShell'
+import { RAD, buildRoom, clamp, type Geometry, type Surface, type Surroundings } from './roomShell'
 
 export type { Box }
 export type Piece = {
@@ -52,6 +52,8 @@ type Options = {
   /** The room measured in metres, when the back end could. */
   geometry: Geometry | null
   render: HTMLImageElement | null
+  /** What the photo didn't show, imagined: only painted where the photo saw nothing. */
+  surround?: Surroundings | null
   pieces: Piece[]
   ground: string
   paper: string
@@ -95,6 +97,7 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
     o.geometry,
     // What already stands there is modelled, so it isn't also painted on the floor and walls.
     o.pieces.filter((p) => p.existing).map((p) => p.box),
+    o.surround ?? null,
   )
   const { floorY, ceilingY } = room
   const centre = room.at((room.s0 + room.s1) / 2, (room.t0 + room.t1) / 2, floorY)

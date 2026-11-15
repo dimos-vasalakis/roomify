@@ -1,7 +1,7 @@
 import { ArrowLeft, ExternalLink, Maximize2, Minimize2, Minus, Pause, Play, Plus, RotateCcw, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { Model3DOut } from '../../api/wire'
-import { modelOf, objectModelOf, roomShellOf } from '../../lib/depth'
+import { modelOf, objectModelOf, roomShellOf, surroundOf } from '../../lib/depth'
 import { money } from '../../lib/format'
 import { enter, gsap, reducedMotion, useGSAP } from '../../lib/motion'
 import { createScene, type Piece, type PieceState, type Scene3D, type ViewName } from '../../lib/scene3d'
@@ -16,6 +16,17 @@ const VIEWS: { id: ViewName; label: string }[] = [
 ]
 const control = 'press grid size-9 shrink-0 place-items-center rounded-control bg-surface text-ink hover:bg-raised'
 const cssColor = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+
+/** The room's imagined surroundings, when they come within a minute: the room never waits longer. */
+async function imagined(shell: Parameters<typeof surroundOf>[0]) {
+  const made = await Promise.race([surroundOf(shell), new Promise<null>((r) => setTimeout(() => r(null), 60_000))])
+  if (!made) return null
+  const [wide, behind] = await Promise.all([
+    loadImage(made.wide_url).catch(() => null),
+    made.behind_url ? loadImage(made.behind_url).catch(() => null) : Promise.resolve(null),
+  ])
+  return wide ? { wide, behind, widen: made.widen } : null
+}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -46,6 +57,7 @@ export function Room3D({ s }: { s: Session }) {
   const [made, setMade] = useState<Record<string, Model3DOut>>({})
   const [expanded, setExpanded] = useState(() => matchMedia('(max-width: 639px)').matches)
   const [rotating, setRotating] = useState(false)
+  const [guessed, setGuessed] = useState(false)
   const placed = s.products.filter((p) => p.placed !== false)
   const key = JSON.stringify(placed.map((p) => [p.id, p.box, p.thumb?.src, p.widthCm, p.depthCm, p.heightCm]))
 
@@ -111,10 +123,12 @@ export function Room3D({ s }: { s: Session }) {
     ;(async () => {
       try {
         const shell = await roomShellOf(s)
-        const [photo, depth, render] = await Promise.all([
+        const [photo, depth, render, around] = await Promise.all([
           loadImage(shell.photo), loadImage(shell.depth),
           s.afterSrc ? loadImage(s.afterSrc).catch(() => null) : Promise.resolve(null),
+          imagined(shell),
         ])
+        if (alive) setGuessed(!!around)
         if (!alive || !canvas.current) return
         shell.objects.forEach((obj, i) => list.push({
           id: `room-${i}`, slot: obj.name, title: obj.name, box: obj.box,
@@ -125,7 +139,7 @@ export function Room3D({ s }: { s: Session }) {
         await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)))
         if (!alive || !canvas.current) return
         built = createScene(canvas.current, {
-          photo, depth, geometry: shell.geometry, render, pieces: list,
+          photo, depth, geometry: shell.geometry, render, surround: around, pieces: list,
           ground: cssColor('--color-scrim'), paper: cssColor('--color-ground'), accent: cssColor('--color-chosen-bright'),
           onPins: (raw) => {
             // Keep numbered callouts apart, matching the schedule beside the room.
@@ -223,14 +237,14 @@ export function Room3D({ s }: { s: Session }) {
         <button ref={closeButton} type="button" onClick={close} aria-label="Close the 3D view (Esc)" className={control}><X size={16} /></button>
       </div>
 
-      {stage === 'loading' && <div className="absolute inset-x-3 bottom-3 rounded-card bg-surface p-3 text-chrome text-ink" role="status"><p className="flex items-center gap-2 font-semibold"><LiveDot /> Building your room in 3D…</p><p className="mt-1 text-small text-muted">Preparing the room and its pieces. New models can take a few minutes; saved models open faster.</p></div>}
+      {stage === 'loading' && <div className="absolute inset-x-3 bottom-3 rounded-card bg-surface p-3 text-chrome text-ink" role="status"><p className="flex items-center gap-2 font-semibold"><LiveDot /> Building your room in 3D…</p><p className="mt-1 text-small text-muted">Preparing the room, imagining what the photo didn't show, and modelling its pieces. The first time can take a few minutes; after that it opens faster.</p></div>}
       {stage === 'failed' && <div className="absolute inset-x-3 bottom-3 flex flex-wrap items-center justify-between gap-3 rounded-card bg-surface p-3 text-chrome text-ink"><p role="alert">{error}</p><button type="button" onClick={() => setAttempt((n) => n + 1)} className="press inline-flex min-h-9 items-center gap-1.5 rounded-control bg-primary px-3 text-surface"><RotateCcw size={14} /> Try again</button></div>}
 
       {stage === 'ready' && <>
         <div data-chrome className="pointer-events-none absolute top-3 left-3 max-w-[50%] rounded-control bg-surface px-3 py-2 text-small text-ink max-sm:py-1.5">
           <p className="text-chrome font-semibold">{s.recorded3d ? 'Recorded 3D demo' : 'Your room in 3D'}</p>
           <p className="mt-0.5 max-sm:hidden">Drag to orbit · scroll to zoom</p>
-          <p className="mt-0.5 text-muted max-sm:hidden">Approximate reconstruction from photos.</p>
+          <p className="mt-0.5 text-muted max-sm:hidden">{guessed ? "Approximate reconstruction from photos. What the photo didn't show is imagined." : 'Approximate reconstruction from photos.'}</p>
         </div>
         <div data-chrome className={`absolute top-14 right-3 flex flex-col gap-1.5 sm:top-16 ${expanded ? '' : 'max-sm:hidden'}`}>
           <button type="button" className={control} aria-label="Zoom in" onClick={() => { touched(true); view.current?.zoom(1 / 1.2) }}><Plus size={16} /></button>

@@ -17,6 +17,7 @@ from app.tools.model3d import (
     product_model,
     room_shell,
 )
+from app.tools.surround import Surround, SurroundError, surround
 
 router = APIRouter(tags=["depth"])
 PHOTO_MAX_BYTES = 8 * 1024 * 1024
@@ -84,3 +85,23 @@ async def model3d(body: ModelIn) -> Model3D:
         raise HTTPException(status, str(exc)) from exc
     except ReplayMiss as exc:
         raise HTTPException(503, "This 3D model isn't part of the recorded demo.") from exc
+
+
+class SurroundIn(BaseModel):
+    image_url: str = Field(max_length=2000)
+
+
+@router.post("/depth/surround")
+async def depth_surround(body: SurroundIn) -> Surround:
+    """What the room photo didn't show, imagined for the 3D room's walls and floor: the same
+    picture continued at the sides, and the wall behind the camera. Made once, then instant."""
+    try:
+        return await surround(body.image_url)
+    except SurroundError as exc:
+        raise HTTPException(
+            422 if "Only" in str(exc) or "already" in str(exc) else 502, str(exc)
+        ) from exc
+    except ReplayMiss as exc:
+        raise HTTPException(
+            503, "The imagined surroundings aren't part of the recorded demo."
+        ) from exc
