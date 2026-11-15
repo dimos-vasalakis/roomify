@@ -22,9 +22,11 @@ from PIL import Image
 from app.agent import loop
 from app.judges.basket import Basket, Pick
 from app.main import app
+from app.routes import speech
 from app.tools.find_products import FindResult
 from app.tools.read_product_page import extract_listing
 from app.tools.search_products import ProductSpec
+from app.tools.transcribe import Transcript
 from tests.test_read_product_page import fixture
 
 url, html = fixture("ikea_mittzon_desk")
@@ -71,6 +73,8 @@ async def _decide(photo: bytes, turn: loop.Turn) -> loop.Decision:
 
 
 loop.decide = _decide
+# The mic's fallback: whatever was recorded, Whisper "heard" a question about the basket.
+speech.transcribe = AsyncMock(return_value=Transcript(text="How wide is the desk?"))
 
 
 @app.get("/test-room.jpg")

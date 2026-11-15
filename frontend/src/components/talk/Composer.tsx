@@ -1,4 +1,4 @@
-import { ArrowUp, Mic, Square } from 'lucide-react'
+import { ArrowUp, LoaderCircle, Mic, Square } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { money } from '../../lib/format'
 import { instructionOf, productNamed } from '../../lib/match'
@@ -19,8 +19,8 @@ const budgetIn = (text: string) => {
 }
 
 /**
- * Speak or type. Hold the mic (or Space) to talk: a live waveform of the real microphone level
- * and the words as they are heard. The sentence goes to the agent when you let go.
+ * Speak or type. Tap the mic and talk: a live waveform of the real microphone level and the
+ * words as they are heard; it sends by itself when you stop talking. Or hold Space and let go.
  */
 export function Composer() {
   const { state, active: s, dispatch } = useStore()
@@ -69,7 +69,7 @@ export function Composer() {
   }, [startError, fresh])
 
   const speech = useSpeech({ onFinal: send })
-  const bars = useMicBars(speech.listening, BARS)
+  const bars = useMicBars(speech.listening, BARS, speech.level)
 
   // A pin's Swap writes into the composer.
   useEffect(() => {
@@ -85,15 +85,22 @@ export function Composer() {
     return () => window.removeEventListener('roomify:compose', take)
   }, [])
 
-  // Hold Space to talk.
+  // Hold Space to talk; Escape throws away what was heard.
   const held = useRef(false)
-  const { start, stop } = speech
+  const { start, stop, cancel } = speech
+  const listening = speech.listening
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && listening) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        held.current = false
+        return cancel()
+      }
       if (e.code !== 'Space' || e.repeat || typing(e.target) || busy || state.playingWalkInId) return
       e.preventDefault()
       held.current = true
-      start()
+      start({ hold: true })
     }
     const up = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || !held.current) return
@@ -101,13 +108,13 @@ export function Composer() {
       held.current = false
       stop()
     }
-    window.addEventListener('keydown', down)
+    window.addEventListener('keydown', down, true)
     window.addEventListener('keyup', up)
     return () => {
-      window.removeEventListener('keydown', down)
+      window.removeEventListener('keydown', down, true)
       window.removeEventListener('keyup', up)
     }
-  }, [start, stop, busy, state.playingWalkInId])
+  }, [start, stop, cancel, listening, busy, state.playingWalkInId])
 
   const placeholder = busy
     ? 'Roomify is working…'
@@ -147,7 +154,7 @@ export function Composer() {
             ref={input}
             rows={2}
             autoComplete="off"
-            value={speech.listening ? speech.interim : text}
+            value={speech.listening ? speech.interim : speech.transcribing ? '' : text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -155,11 +162,13 @@ export function Composer() {
                 e.currentTarget.form?.requestSubmit()
               }
             }}
-            disabled={busy}
-            placeholder={speech.listening ? '' : placeholder}
+            disabled={busy || speech.transcribing}
+            placeholder={speech.listening ? '' : speech.transcribing ? 'Writing down what you said…' : placeholder}
             className={`block w-full resize-none bg-transparent px-4 pt-3 text-body leading-6 placeholder:text-muted focus:outline-none disabled:cursor-not-allowed ${speech.listening ? 'text-ink' : ''}`}
           />
-          {speech.listening && !speech.interim && <span className="pointer-events-none absolute top-3 left-4 text-body text-muted">Listening…</span>}
+          {speech.listening && !speech.interim && (
+            <span className="pointer-events-none absolute top-3 left-4 text-body text-muted">Listening… it sends when you stop talking</span>
+          )}
         </div>
 
         <div className="flex items-center gap-2 px-2 pb-2">
@@ -192,19 +201,25 @@ export function Composer() {
               )}
             </span>
           ) : (
-            <span className="flex-1 pl-2 text-small text-muted"><span className="max-lg:hidden">{speech.supported ? 'Hold Space to talk' : ''}</span></span>
+            <span className="flex-1 pl-2 text-small text-muted"><span className="max-lg:hidden">{speech.supported ? 'Tap the mic, or hold Space, to talk' : ''}</span></span>
           )}
 
           {speech.supported && (
             <button
               type="button"
-              disabled={busy && !speech.listening}
+              disabled={(busy && !speech.listening) || speech.transcribing}
               onClick={() => (speech.listening ? stop() : start())}
-              aria-label={speech.listening ? 'Stop and send' : 'Talk to Roomify'}
+              aria-label={speech.listening ? 'Stop and send' : speech.transcribing ? 'Writing down what you said' : 'Talk to Roomify'}
               aria-pressed={speech.listening}
-              className={`press grid size-10 shrink-0 place-items-center rounded-full transition-colors duration-200 disabled:opacity-40 ${speech.listening ? 'bg-ink text-surface' : 'bg-raised text-ink hover:bg-active'}`}
+              className={`press grid size-10 shrink-0 place-items-center rounded-full transition-colors duration-200 disabled:opacity-40 ${speech.listening || speech.transcribing ? 'bg-ink text-surface disabled:opacity-100' : 'bg-raised text-ink hover:bg-active'}`}
             >
-              {speech.listening ? <Square size={14} strokeWidth={2.5} className="fill-current" /> : <Mic size={18} strokeWidth={2} />}
+              {speech.listening ? (
+                <Square size={14} strokeWidth={2.5} className="fill-current" />
+              ) : speech.transcribing ? (
+                <LoaderCircle size={18} strokeWidth={2} className="motion-safe:animate-spin" />
+              ) : (
+                <Mic size={18} strokeWidth={2} />
+              )}
             </button>
           )}
           <button

@@ -5,6 +5,7 @@ import type {
   ConversationSummary,
   ProfileOut,
   DepthOut,
+  TranscriptOut,
   RunSummary,
   WalkinOut,
 } from './wire'
@@ -75,4 +76,10 @@ export const api = {
     request<WalkinOut>(`/runs/${runId}/walkins`, { method: 'POST', body: json(body) }),
   depth: (imageUrl: string) =>
     request<DepthOut>('/depth', { method: 'POST', body: json({ image_url: imageUrl }), signal: AbortSignal.timeout(60_000) }),
+  transcribe: (audio: Blob, signal?: AbortSignal) => {
+    const form = new FormData()
+    const ext = audio.type.includes('mp4') ? 'm4a' : audio.type.includes('ogg') ? 'ogg' : 'webm'
+    form.append('audio', audio, `speech.${ext}`)
+    return request<TranscriptOut>('/transcribe', { method: 'POST', body: form, signal: signal ?? AbortSignal.timeout(40_000) })
+  },
 }

@@ -46,3 +46,14 @@ async def fal(
     return await cached(
         "fal", {"model": model, "arguments": arguments}, call, FalResult, max_age_s=max_age_s
     )
+
+
+async def fal_upload(data: bytes, content_type: str, file_name: str, timeout: float = 20) -> str:
+    """Put a file on fal's storage for a model to read; returns its link. Never cached."""
+    try:
+        async with asyncio.timeout(timeout):
+            return await fal_client.upload_async(data, content_type, file_name)
+    except TimeoutError as exc:
+        raise FalError("This step took too long. Please try again.") from exc
+    except Exception as exc:
+        raise FalError("The design service could not take this file. Please try again.") from exc

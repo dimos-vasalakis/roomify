@@ -53,7 +53,7 @@ A pine dot with a white ring on each placed piece. Click: a small card next to i
 ## Conversation and voice
 - Lines, not bubbles: "You" and "Roomify" as small labels, the text in body size. The agent's question shows as a line with quick answers under it (the suggested value, "Skip").
 - First message: "What do you need, and what's the budget?" A budget written in the sentence ("€300") is read from it; otherwise the budget chip above the composer is used (editable).
-- **Speak in:** hold the mic button or Space. A thin live waveform of the real microphone level replaces the input text while listening; the words appear as they are heard.
+- **Speak in:** tap the mic and talk (it sends by itself a moment after you stop), or hold Space and let go. A thin live waveform of the real microphone level replaces the input text while listening; in Chrome and Edge the words appear as they are heard. Browsers without their own speech recognition (Firefox, Brave, Safari, in-app browsers, phones) send the recording to `POST /transcribe` and show “Writing down what you said…” for a second. Escape throws the sentence away.
 
 ## Walk-in
 One "Walk in" button in the caption row once the room is done. It makes a 5 s push-in from the middle of the near edge and plays inside the room frame, labelled "Walk-in preview" (never 3D). While it is being made the button reads "Making walk-in…". Real conversations (offers) don't have walk-ins yet; asking "show it from the door" in words changes the view instead.

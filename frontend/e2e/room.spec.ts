@@ -164,3 +164,73 @@ test('the rooms rail hides completely and comes back', async ({ page }) => {
   await page.getByRole('button', { name: 'Show rooms (Ctrl B)' }).click()
   await expect(page.getByRole('navigation', { name: 'Rooms' })).toBeInViewport()
 })
+
+test('voice without the browser\'s recogniser: recorded, ends on silence, transcribed by the server', async ({ page }) => {
+  test.skip(phone(page), 'Same code path on phones; the fake microphone is set up for desktop')
+  // Firefox, Brave and in-app browsers: no speech recognition of their own.
+  await page.addInitScript(() => {
+    delete (window as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition
+    delete (window as { SpeechRecognition?: unknown }).SpeechRecognition
+  })
+  await start(page)
+  await done(page)
+  const sent = page.waitForRequest(/\/transcribe$/)
+  await page.getByRole('button', { name: 'Talk to Roomify' }).click()
+  await expect(page.getByRole('button', { name: 'Stop and send' })).toBeVisible()
+  // Nobody presses stop: the quiet after the "sentence" ends it.
+  await sent
+  const chat = page.getByLabel('Conversation with Roomify')
+  await expect(chat).toContainText('How wide is the desk?', { timeout: 10_000 })
+  await expect(chat).toContainText('The desk is 140 cm wide.')
+  await expect(page.getByRole('button', { name: 'Talk to Roomify' })).toBeEnabled()
+})
+
+test('voice with the browser\'s recogniser: live caption, sent without a server round trip', async ({ page }) => {
+  test.skip(phone(page), 'Phones use the recording only')
+  await page.addInitScript(() => {
+    class FakeRecognition {
+      lang = 'en-US'
+      interimResults = false
+      continuous = false
+      onresult: ((e: unknown) => void) | null = null
+      onerror: ((e: unknown) => void) | null = null
+      onend: (() => void) | null = null
+      start() {
+        setTimeout(() => this.onresult?.({ results: [{ isFinal: false, 0: { transcript: 'How wide' } }] }), 150)
+        setTimeout(() => this.onresult?.({ results: [{ isFinal: true, 0: { transcript: 'How wide is the desk?' } }] }), 400)
+      }
+      stop() {
+        setTimeout(() => this.onend?.(), 50)
+      }
+      abort() {
+        this.onend?.()
+      }
+    }
+    const w = window as unknown as { webkitSpeechRecognition: unknown; SpeechRecognition: unknown }
+    w.SpeechRecognition = w.webkitSpeechRecognition = FakeRecognition
+  })
+  let transcribed = 0
+  page.on('request', (r) => void (/\/transcribe$/.test(r.url()) && transcribed++))
+  await start(page)
+  await done(page)
+  await page.getByRole('button', { name: 'Talk to Roomify' }).click()
+  await expect(composer(page)).toHaveValue(/How wide/)
+  const chat = page.getByLabel('Conversation with Roomify')
+  await expect(chat).toContainText('The desk is 140 cm wide.', { timeout: 10_000 })
+  expect(transcribed).toBe(0)
+})
+
+test('Escape while listening throws the sentence away', async ({ page }) => {
+  test.skip(phone(page), 'Keyboard only')
+  await start(page)
+  await done(page)
+  let transcribed = 0
+  page.on('request', (r) => void (/\/transcribe$/.test(r.url()) && transcribed++))
+  await page.getByRole('button', { name: 'Talk to Roomify' }).click()
+  await expect(page.getByRole('button', { name: 'Stop and send' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Talk to Roomify' })).toBeVisible()
+  await page.waitForTimeout(2500)
+  expect(transcribed).toBe(0)
+  await expect(page.getByLabel('Conversation with Roomify')).not.toContainText('How wide is the desk?')
+})
