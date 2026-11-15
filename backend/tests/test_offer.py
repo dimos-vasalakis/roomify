@@ -252,31 +252,15 @@ def _check_result(product_id, **flags):
     )
 
 
-def test_wrong_scale_is_rendered_again_with_the_reason(pipeline, monkeypatch):
-    monkeypatch.setattr(
-        loop,
-        "_check",
-        AsyncMock(
-            side_effect=[
-                _check_result(pipeline.id, scale_ok=False),
-                _check_result(pipeline.id),
-            ]
-        ),
-    )
-    stream = events(finish())
-    assert stream[-1][0] == "done"
-    assert loop._render.await_count == 2
-    assert loop._render.await_args.args[-1] == ["desk: Twice its 120 cm width"]
-    feed = [data["text"] for kind, data in stream if kind == "step.started"]
-    assert any("Twice its 120 cm width" in text for text in feed)
-
-
-def test_size_doubt_on_last_try_still_shows_the_room(pipeline, monkeypatch):
+def test_wrong_scale_is_said_not_rendered_again(pipeline, monkeypatch):
+    # A size doubt costs no second render: the room is shown and the chat says the doubt.
     monkeypatch.setattr(
         loop, "_check", AsyncMock(return_value=_check_result(pipeline.id, scale_ok=False))
     )
     stream = events(finish())
-    assert loop._render.await_count == 2
+    assert loop._render.await_count == 1
+    assert any(kind == "render.ready" for kind, _ in stream)
+    assert any("Twice its 120 cm width" in text for text in chat(stream))
     assert stream[-1][0] == "done"
 
 
@@ -309,7 +293,7 @@ def test_no_retry_when_the_run_is_out_of_time(pipeline, monkeypatch):
 def test_an_untrue_picture_is_never_shown_and_the_chat_says_why(pipeline, monkeypatch, check, said):
     monkeypatch.setattr(loop, "_check", AsyncMock(return_value=check(pipeline.id)))
     stream = events(finish())
-    assert loop._render.await_count == 3  # two corrective tries first
+    assert loop._render.await_count == 2  # one corrective try first
     assert not any(kind == "render.ready" for kind, _ in stream)
     assert any(said in text and "shopping list is exact" in text for text in chat(stream))
     assert any(kind == "product.chosen" for kind, _ in stream)  # the basket stands
@@ -328,7 +312,7 @@ def test_doubted_piece_on_last_try_loses_its_dot_not_the_room(pipeline, monkeypa
         loop, "_check", AsyncMock(return_value=_check_result(pipeline.id, match=False))
     )
     stream = events(finish())
-    assert loop._render.await_count == 3
+    assert loop._render.await_count == 2
     assert loop._render.await_args.args[-1] == ["the desk must look exactly like its shop photo"]
     assert next(data for kind, data in stream if kind == "render.ready")["items"] == []
     assert any("differs from the shop photo" in d.get("text", "") for _, d in stream)
@@ -346,7 +330,7 @@ def test_room_photo_is_cropped_to_the_render_geometry(size):
         assert out.width <= 1536 and out.height <= 1024
 
 
-async def test_render_asks_for_true_size_at_high_quality(pipeline, monkeypatch):
+async def test_render_asks_for_true_size_at_fast_quality(pipeline, monkeypatch):
     from app.tools.fal_client import FalResult
 
     monkeypatch.undo()  # the real _render, not the pipeline mock
@@ -367,7 +351,7 @@ async def test_render_asks_for_true_size_at_high_quality(pipeline, monkeypatch):
     )
     assert await loop._render(b"jpeg", {"Desk": pipeline}, layout) == image["url"]
     args = fal.await_args.args[1]
-    assert args["resolution"] == "2K" and args["thinking_level"] == "high"
+    assert args["resolution"] == "1K" and args["thinking_level"] == "minimal"
     assert f"W {pipeline.width_cm:g} cm" in args["prompt"]
     assert "under the window" in args["prompt"] and "door 200 cm" in args["prompt"]
 

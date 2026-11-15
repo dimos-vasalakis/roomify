@@ -125,6 +125,68 @@ async def test_a_view_only_turns_pictures_roomify_made() -> None:
         await loop._view(b"photo", state, Decision(action="view"), lambda e: None)
 
 
+def test_adding_needs_pieces() -> None:
+    assert _sane(Decision(action="add"), turn(basket=[DESK])).action == "add"
+    assert _sane(Decision(action="add"), turn()).action == "design"
+
+
+async def test_add_keeps_the_basket_and_shops_only_the_new_piece(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.judges.basket import Basket, Pick
+    from app.tools.find_products import FindResult
+    from tests.test_offer import extract_listing, fixture
+
+    desk = extract_listing(*fixture("ikea_mittzon_desk"))
+    lamp = desk.model_copy(update={"id": "lamp", "title": "Floor lamp", "price_eur": 40.0})
+    spec = loop.Spec(
+        slot="Desk", spec=loop.ProductSpec(item=["lamp"])
+    )  # same slot name as the desk
+    specs = AsyncMock(return_value=("", [spec]))
+    shop = AsyncMock(return_value=FindResult(candidates=[lamp], rejected=[], searched=1, note=None))
+    judge = AsyncMock(
+        return_value=Basket(
+            text="ok", picks=[Pick(slot="Desk 2", product_id="lamp", passed=True, reason="fits")]
+        )
+    )
+    edited = AsyncMock(return_value=True)
+    monkeypatch.setattr(loop, "_reread", AsyncMock(return_value={"Desk": desk}))
+    monkeypatch.setattr(loop, "_specs", specs)
+    monkeypatch.setattr(loop, "_shop", shop)
+    monkeypatch.setattr(loop, "judge_basket", judge)
+    monkeypatch.setattr(loop, "_add_in_place", edited)
+    sent: list[tuple[str, dict[str, object]]] = []
+    state = turn(basket=[DESK], budget=400, render_url="https://v3.fal.media/old.jpg")
+    await loop._add(
+        b"photo", state, Decision(action="add", instruction="a floor lamp"), sent.append
+    )
+    request, left = specs.await_args.args[1], specs.await_args.args[2]
+    assert "a floor lamp" in request and desk.title in request and left == 400 - desk.price_eur
+    assert shop.await_count == 1  # the desk is not shopped again
+    added, chosen = edited.await_args.args[1], edited.await_args.args[2]
+    assert added == {"Desk 2": lamp} and chosen == {"Desk": desk, "Desk 2": lamp}
+    chosen_events = [d for k, d in sent if k == "product.chosen"]
+    assert [d["slot"] for d in chosen_events] == ["Desk 2"]
+    assert sent[-1] == ("done", {"total_eur": desk.price_eur + 40.0, "currency": desk.currency})
+
+
+async def test_an_added_piece_goes_into_the_latest_picture(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_offer import _check_result
+
+    desk, lamp, edit, _, state = _swap_setup(monkeypatch, None)  # type: ignore[arg-type]
+    check = _check_result(desk.id)
+    check = check.model_copy(update={"products": [
+        *check.products, check.products[0].model_copy(update={"product_id": lamp.id})]})  # fmt: skip
+    monkeypatch.setattr(loop, "_check", AsyncMock(return_value=check))
+    sent: list[tuple[str, dict[str, object]]] = []
+    chosen = {"Desk": desk, "Lamp": lamp}
+    assert await loop._add_in_place(state, {"Lamp": lamp}, chosen, "by the desk", [], sent.append)
+    prompt, refs = edit.await_args.args
+    assert refs == ["https://v3.fal.media/old.jpg", lamp.image_url]
+    assert "Add only these pieces" in prompt and "by the desk" in prompt
+    assert any(k == "render.ready" for k, _ in sent)
+
+
 def test_arranging_needs_pieces() -> None:
     assert _sane(Decision(action="arrange"), turn(basket=[DESK])).action == "arrange"
     assert _sane(Decision(action="arrange"), turn()).action == "design"

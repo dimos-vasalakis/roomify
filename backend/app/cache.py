@@ -8,6 +8,7 @@ demo/cache for the committed demo recording that REPLAY=1 reads.
 
 import hashlib
 import json
+import logging
 import os
 import time
 import uuid
@@ -22,6 +23,8 @@ from app.config import get_settings
 HOUR = 3600
 DAY = 24 * HOUR
 WEEK = 7 * DAY
+SLOW_S = 5.0  # live calls slower than this are logged, failures always
+log = logging.getLogger("roomify.cache")
 
 
 class ReplayMiss(Exception):
@@ -75,7 +78,15 @@ async def cached[T](
             f"No recorded result for {namespace} {json.dumps(inputs, ensure_ascii=False)}"
         )
 
-    result = await call()
+    start = time.monotonic()
+    try:
+        result = await call()
+    except BaseException as exc:
+        log.info("%s %s failed after %.1f s (%s)", namespace, _label(inputs),
+                 time.monotonic() - start, type(exc).__name__)  # fmt: skip
+        raise
+    if (took := time.monotonic() - start) > SLOW_S:
+        log.info("%s %s took %.1f s", namespace, _label(inputs), took)
     path.parent.mkdir(parents=True, exist_ok=True)
     record = {
         "saved_at": time.time(),
@@ -86,3 +97,10 @@ async def cached[T](
     tmp.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
     tmp.replace(path)  # atomic: a crash never leaves half a file
     return result
+
+
+def _label(inputs: dict[str, Any]) -> str:
+    """Which model or page a call was for, never its prompt or keys."""
+    arguments = inputs.get("arguments")
+    inner = arguments.get("model") if isinstance(arguments, dict) else None
+    return " ".join(str(v) for v in (inputs.get("model"), inner, inputs.get("url")) if v)

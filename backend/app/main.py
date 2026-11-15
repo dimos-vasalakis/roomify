@@ -16,6 +16,9 @@ from app.routes import conversations, me, offer
 from app.tools.catalogue import refresh_catalogues
 
 log = logging.getLogger("roomify")
+# Step and slow-call timings (agent/loop.py, cache.py) at INFO; everything else stays quiet.
+logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s")
+log.setLevel(logging.INFO)
 REFRESH_EVERY_S = 3600
 
 
