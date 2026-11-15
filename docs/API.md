@@ -99,7 +99,7 @@ The front end ignores types it does not know, so new ones never break it. Names 
 |---|---|---|
 | `run.status` | `{status}` (`running`, `waiting_for_user`, `done`, `failed`) | Room state |
 | `step.started` | `{text}`, one plain sentence: "Searching ikea.gr for a white sofa under €750" | The Now line |
-| `message` | `{text, action}`; `action` is `ask`, `design`, `swap`, `view` or `reply` | The agent's chat line. `design` starts from an empty basket; the others keep it |
+| `message` | `{text, action}`; `action` is `ask`, `design`, `swap`, `view` or `reply` | The agent's chat line. `design` starts from an empty basket; the others keep it. Mid-run lines (`reply`) say what was left out and why, or that no faithful picture could be made; they go back in `history`, so later answers rest on them |
 | `ask` | `{question, unit, suggestion}`; `suggestion` is the agent's own estimate (e.g. a wall width from the photo) or null | The question card, pre-filled; run is `waiting_for_user` |
 | `fit.proof` | `{product_id, ok, lines}` | Only for pieces whose page gave a size, when the wall width is known: fit lines on the receipt and a tape measure on the room |
 | `product.chosen` | `{slot, product: ProductOut}` | A receipt line, a shelf card |

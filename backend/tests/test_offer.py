@@ -131,9 +131,7 @@ def test_finish_streams_basket_checked_preview_and_total(pipeline):
     loop._render.assert_awaited_once()
 
 
-@pytest.mark.parametrize(
-    "failure", ["no-matches", "render", "wrong-room", "unverified", "invented"]
-)
+@pytest.mark.parametrize("failure", ["no-matches", "render", "unverified", "invented"])
 def test_incomplete_or_inaccurate_results_never_finish(pipeline, monkeypatch, failure):
     if failure == "no-matches":
         monkeypatch.setattr(
@@ -144,16 +142,6 @@ def test_incomplete_or_inaccurate_results_never_finish(pipeline, monkeypatch, fa
     if failure == "render":
         monkeypatch.setattr(
             loop, "_render", AsyncMock(side_effect=LLMError("Preview unavailable. Try again."))
-        )
-    if failure == "wrong-room":
-        monkeypatch.setattr(
-            loop,
-            "_check",
-            AsyncMock(
-                return_value=loop.RenderCheck(
-                    room_preserved=False, no_extra_products=True, products=[]
-                )
-            ),
         )
     if failure in ("unverified", "invented"):
         monkeypatch.setattr(
@@ -292,25 +280,40 @@ def test_size_doubt_on_last_try_still_shows_the_room(pipeline, monkeypatch):
     assert stream[-1][0] == "done"
 
 
+def chat(stream):
+    return [d["text"] for k, d in stream if k == "message"]
+
+
 def test_no_retry_when_the_run_is_out_of_time(pipeline, monkeypatch):
     monkeypatch.setattr(loop, "RETRY_NEEDS_S", loop.RUN_TIMEOUT_S + 1)
     monkeypatch.setattr(
-        loop, "_check", AsyncMock(return_value=_check_result(pipeline.id, room_preserved=False))
+        loop, "_check", AsyncMock(return_value=_check_result(pipeline.id, scale_ok=False))
     )
     stream = events(finish())
     assert loop._render.await_count == 1
-    # The picture still arrives, with the doubt said in plain words.
-    assert any("look different" in d.get("text", "") for k, d in stream if k == "step.started")
+    assert any(kind == "render.ready" for kind, _ in stream)  # a size doubt alone still shows
     assert stream[-1][0] == "done"
 
 
-def test_a_piece_missing_from_the_picture_still_fails(pipeline, monkeypatch):
-    empty = loop.RenderCheck(room_preserved=True, no_extra_products=True, products=[])
-    monkeypatch.setattr(loop, "_check", AsyncMock(return_value=empty))
+@pytest.mark.parametrize(
+    ("check", "said"),
+    [
+        (lambda pid: _check_result(pid, room_preserved=False), "it changed parts of your room"),
+        (lambda pid: loop.RenderCheck(room_preserved=True, no_extra_products=False,
+                                      products=_check_result(pid).products),
+         "it added things that aren't on your shopping list"),
+        (lambda pid: loop.RenderCheck(room_preserved=True, no_extra_products=True, products=[]),
+         "it left out the desk"),
+    ],
+)  # fmt: skip
+def test_an_untrue_picture_is_never_shown_and_the_chat_says_why(pipeline, monkeypatch, check, said):
+    monkeypatch.setattr(loop, "_check", AsyncMock(return_value=check(pipeline.id)))
     stream = events(finish())
-    assert loop._render.await_count == 2
-    assert stream[-1][0] == "error"
+    assert loop._render.await_count == 2  # one corrective try first
     assert not any(kind == "render.ready" for kind, _ in stream)
+    assert any(said in text and "shopping list is exact" in text for text in chat(stream))
+    assert any(kind == "product.chosen" for kind, _ in stream)  # the basket stands
+    assert stream[-1][0] == "done"
 
 
 def test_unlabelled_bed_size_is_a_footprint_with_its_length():
@@ -362,7 +365,7 @@ async def test_render_asks_for_true_size_at_high_quality(pipeline, monkeypatch):
             )
         ],
     )
-    assert await loop._render(b"jpeg", {"Desk": pipeline}, "desk", "calm", layout) == image["url"]
+    assert await loop._render(b"jpeg", {"Desk": pipeline}, layout) == image["url"]
     args = fal.await_args.args[1]
     assert args["resolution"] == "2K" and args["thinking_level"] == "high"
     assert f"W {pipeline.width_cm:g} cm" in args["prompt"]
@@ -370,7 +373,22 @@ async def test_render_asks_for_true_size_at_high_quality(pipeline, monkeypatch):
 
     image["width"], image["height"] = 1024, 1024
     with pytest.raises(LLMError):
-        await loop._render(b"jpeg", {"Desk": pipeline}, "desk", "calm", None)
+        await loop._render(b"jpeg", {"Desk": pipeline}, None)
+
+
+async def test_the_image_model_never_sees_the_persons_words(pipeline, monkeypatch):
+    """A brief saying "maybe a painting" made it paint one that wasn't in the basket."""
+    from app.tools.fal_client import FalResult
+
+    monkeypatch.undo()
+    image = {"url": "https://example.com/r.jpg", "width": 1536, "height": 1024}
+    fal = AsyncMock(return_value=FalResult(data={"images": [image]}))
+    monkeypatch.setattr(loop, "fal", fal)
+    await loop._render(b"jpeg", {"Desk": pipeline}, None, remove=["the potted plant on the right"])
+    prompt = fal.await_args.args[1]["prompt"]
+    assert "brief" not in prompt.lower() and "Direction" not in prompt
+    assert "REMOVE completely: the potted plant on the right" in prompt
+    assert "Never put a new wall" in prompt
 
 
 def test_a_piece_the_shops_lack_does_not_cost_the_whole_room(pipeline, monkeypatch):
@@ -382,7 +400,8 @@ def test_a_piece_the_shops_lack_does_not_cost_the_whole_room(pipeline, monkeypat
     stream = events(finish())
     assert stream[-1][0] == "done"
     assert any(
-        "No suitable roller blinds" in d.get("text", "") for k, d in stream if k == "step.started"
+        text.startswith("No roller blinds made it into your basket (none I found suited")
+        for text in chat(stream)
     )
     assert list(loop._render.await_args.args[1]) == ["Desk"]
 

@@ -96,14 +96,23 @@ def test_reply_answers_from_the_basket(model) -> None:  # type: ignore[no-untype
 def test_design_uses_the_whole_conversation_and_the_confirmed_width(  # type: ignore[no-untyped-def]
     model, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    model({"action": "design", "say": "On it.", "wall_cm": 320, "brief": None})
+    model(
+        {
+            "action": "design",
+            "say": "On it.",
+            "wall_cm": 320,
+            "brief": None,
+            "remove": ["the potted plant on the right"],
+        }
+    )
     design = AsyncMock()
     monkeypatch.setattr(loop, "_design", design)
     history = [{"role": "user", "text": "a calm reading corner"},
                {"role": "agent", "text": "This wall looks about 320 cm. Right?"}]  # fmt: skip
     events(post({"message": "yes", "history": json.dumps(history)}))
-    _, brief, budget, _, wall, _ = design.call_args.args
+    _, brief, budget, _, wall, _, remove = design.call_args.args
     assert brief == "a calm reading corner yes" and wall == 320 and budget == 300
+    assert remove == ["the potted plant on the right"]
 
 
 def test_a_broken_conversation_is_a_422() -> None:
