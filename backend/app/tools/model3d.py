@@ -194,6 +194,8 @@ async def room_shell(render_url: str, pieces: list[ShellPiece]) -> PhotoDepth:
     room, stretched into streaks, with the new sofa's model standing in it."""
     if not fal_hosted(render_url):
         raise DepthError("Only a Roomify preview can be shown in 3D.")
+    # The same pieces in any order are the same shell: the agent prepares it, the page asks for it.
+    pieces = sorted(pieces, key=lambda p: (p.name, p.box.x, p.box.y))
 
     async def make() -> PhotoDepth:
         named = "; ".join(f"{p.name} ({_where(p.box)})" for p in pieces)

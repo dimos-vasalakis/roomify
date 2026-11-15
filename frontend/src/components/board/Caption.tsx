@@ -19,7 +19,8 @@ export function Caption() {
   const phase = phaseOf(s)
   const index = phase ? PHASES.findIndex((p) => p.id === phase) : -1
   const done = s.status === 'done' && !!s.afterSrc
-  const walk = s.walkIns[0]
+  // The walk-in of the picture on screen: an older render's walk-in is not this room any more.
+  const walk = s.walkIns.find((w) => !w.src || w.src === s.afterSrc)
   const making = walk?.status === 'making'
   // A failed room has its own "Back to the last room" on the photo.
   const canUndo = !!s.past?.length && !isWorking(s) && s.status !== 'new' && s.status !== 'failed'
@@ -111,14 +112,14 @@ export function Caption() {
               {state.view3d ? 'Back to the photo' : 'Look around in 3D'}
             </button>
           )}
-          {!s.offer &&
+          {(!s.offer || s.afterSrc?.startsWith('https://')) &&
             (walk?.status === 'ready' ? (
               <button
                 type="button"
                 onClick={() => dispatch({ type: 'play', id: walk.id })}
                 className="press inline-flex h-9 items-center gap-1.5 rounded-control bg-primary px-3.5 text-chrome font-medium text-surface"
               >
-                <Play size={14} strokeWidth={2.25} className="fill-current" /> Walk in
+                <Play size={14} strokeWidth={2.25} className="fill-current" /> Play walk-in
               </button>
             ) : (
               <button
@@ -128,7 +129,7 @@ export function Caption() {
                 className="press inline-flex h-9 items-center gap-1.5 rounded-control bg-primary px-3.5 text-chrome font-medium text-surface disabled:bg-secondary disabled:text-ink"
               >
                 {making ? <LiveDot /> : <Footprints size={15} strokeWidth={2} />}
-                {making ? 'Making walk-in…' : walk?.status === 'failed' ? 'Try walk-in again' : 'Walk in'}
+                {making ? 'Making walk-in… about a minute' : walk?.status === 'failed' ? 'Try walk-in again' : 'Walk-in preview'}
               </button>
             ))}
         </div>

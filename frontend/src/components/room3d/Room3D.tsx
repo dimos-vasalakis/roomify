@@ -119,7 +119,14 @@ export function Room3D({ s }: { s: Session }) {
           ground: cssColor('--color-scrim', '#171717'),
           paper: cssColor('--color-ground', '#f4f3f1'),
           accent: cssColor('--color-chosen-bright', '#8cc5a8'),
-          onPins: (pts) => {
+          onPins: (raw) => {
+            // Two callouts never sit on each other (a lamp on a desk): the later one steps up.
+            const pts = raw.map((p) => ({ ...p }))
+            for (let i = 0; i < pts.length; i++)
+              for (let j = 0; j < i; j++) {
+                if (!pts[i].visible || !pts[j].visible) continue
+                if (Math.abs(pts[i].x - pts[j].x) < 30 && Math.abs(pts[i].y - pts[j].y) < 30) pts[i].y = pts[j].y - 32
+              }
             for (const p of pts) {
               const el = pins.current.get(p.id)
               if (!el) continue
@@ -219,36 +226,47 @@ export function Room3D({ s }: { s: Session }) {
         <img data-preview src={s.afterSrc ?? s.beforeSrc} alt="" className={`pointer-events-none absolute inset-0 size-full object-cover ${stage === 'loading' ? 'opacity-50' : ''}`} draggable={false} />
       )}
 
-      {/* Price pins, kept on their pieces as the camera moves. The outer span is moved every frame. */}
+      {/* Numbered callouts, the same numbers as the schedule, kept on their pieces as the camera
+          moves (the outer span is moved every frame). The name shows on hover, focus or when picked. */}
       {stage === 'ready' &&
-        placed.map((p) => (
-          <span
-            key={p.id}
-            ref={(el) => void (el ? pins.current.set(p.id, el) : pins.current.delete(p.id))}
-            className="pointer-events-none absolute top-0 left-0 will-change-transform"
-            style={{ visibility: 'hidden' }}
-          >
-            <button
-              type="button"
-              data-pin3d
-              onClick={(e) => {
-                e.stopPropagation()
-                pick(p.id)
-              }}
-              className={`pointer-events-auto flex -translate-x-2 -translate-y-full items-center gap-1.5 pb-1 transition-opacity duration-200 ${focused && focused !== p.id ? 'opacity-40' : ''}`}
-              aria-label={`${p.slot}, ${money(p.priceEur, p.currency ?? s.currency)}: see it from every side`}
+        placed.map((p, i) => {
+          const on = focused === p.id
+          return (
+            <span
+              key={p.id}
+              ref={(el) => void (el ? pins.current.set(p.id, el) : pins.current.delete(p.id))}
+              className="pointer-events-none absolute top-0 left-0 will-change-transform"
+              style={{ visibility: 'hidden' }}
             >
-              <span className={`size-4 shrink-0 rounded-full ring-[3px] ring-surface ${pieces[p.id] === 'modelling' ? 'bg-surface/60 motion-safe:animate-[breathe_1.6s_ease-in-out_infinite]' : 'bg-chosen'}`} />
-              <span className="num rounded-[6px] bg-surface px-1.5 py-0.5 text-small font-semibold whitespace-nowrap text-ink max-sm:hidden">
-                {p.slot} · {money(p.priceEur, p.currency ?? s.currency)}
-              </span>
-            </button>
-          </span>
-        ))}
+              <button
+                type="button"
+                data-pin3d
+                onClick={(e) => {
+                  e.stopPropagation()
+                  pick(p.id)
+                }}
+                className={`group pointer-events-auto flex -translate-x-3.5 -translate-y-full items-center pb-1 transition-opacity duration-200 ${focused && !on ? 'opacity-40' : ''}`}
+                aria-label={`${String(i + 1).padStart(2, '0')}, ${p.slot}, ${money(p.priceEur, p.currency ?? s.currency)}: see it from every side`}
+              >
+                <span
+                  className={`label grid size-7 shrink-0 place-items-center rounded-full border-[1.5px] shadow-[0_1px_6px_rgb(0_0_0/0.35)] ${on ? 'border-surface bg-ink text-surface' : pieces[p.id] === 'modelling' ? 'border-surface/60 bg-surface/70 text-ink motion-safe:animate-[breathe_1.6s_ease-in-out_infinite]' : 'border-ink bg-surface text-ink'}`}
+                >
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span className={`flex items-center transition-opacity duration-150 ${on ? '' : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100'} max-sm:hidden`}>
+                  <span className="h-[1.5px] w-3 bg-surface" />
+                  <span className="num rounded-[3px] bg-surface px-1.5 py-0.5 font-mono text-[0.6875rem] whitespace-nowrap text-ink">
+                    {p.slot} · {money(p.priceEur, p.currency ?? s.currency)}
+                  </span>
+                </span>
+              </button>
+            </span>
+          )
+        })}
 
       {stage === 'loading' && (
         <p className="absolute bottom-4 left-3 flex items-center gap-2 rounded-[5px] bg-surface px-2.5 py-1.5 text-chrome font-medium text-ink" aria-live="polite">
-          <LiveDot /> Building your room in 3D…
+          <LiveDot /> Building your room in 3D… the first time takes about a minute
         </p>
       )}
 

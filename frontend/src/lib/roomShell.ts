@@ -19,8 +19,8 @@ const PHONE_VFOV = 50 // a phone's main camera, landscape: when the room wasn't 
 export const RAD = Math.PI / 180
 const CAMERA_HEIGHT_M = 1.45 // where people hold a phone to photograph a room
 const COLS = 240
-const PX_PER_M = 170
-const MAX_PX = 1024
+const PX_PER_M = 300 // about the photo's own sharpness on a wall a few metres away
+const MAX_PX = 2048
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 export const median = (xs: number[]) => {
@@ -349,7 +349,7 @@ export function buildRoom(photo: HTMLImageElement, depth: HTMLImageElement, meas
   const wallColour = average(painted.filter((p) => !['floor', 'ceiling'].includes(p.surface.name))) ?? [225, 220, 212]
   const ceilingColour = average(painted.filter((p) => p.surface.name === 'ceiling')) ?? wallColour.map((c) => Math.min(255, c * 1.05))
   const surfaces = painted.map((p) => {
-    if (p.surface.name === 'floor') return finish(p, floorBase(p) ?? flat(average([p]) ?? [150, 120, 90]))
+    if (p.surface.name === 'floor') return finish(p, floorPatch(p) ?? floorBase(p) ?? flat(average([p]) ?? [150, 120, 90]))
     return finish(p, flat(p.surface.name === 'ceiling' ? ceilingColour : wallColour))
   })
 
@@ -439,7 +439,7 @@ function average(list: Painted[]): [number, number, number] | null {
 type Base = (i: number, r: number) => [number, number, number]
 const flat = (c: number[]): Base => () => [c[0], c[1], c[2]]
 // How far what the photo saw carries into what it didn't: a rug goes on under a table it hid.
-const FILL_REACH_M = { floor: 0.8, wall: 0.35 }
+const FILL_REACH_M = { floor: 0.3, wall: 0.25 }
 
 /**
  * What the photo didn't see: near what it saw, the colours around it carried over (pull-push), so a
@@ -563,6 +563,41 @@ function distanceToSeen(seen: Float32Array, W: number, H: number) {
       }
     }
   return d
+}
+
+/**
+ * The floor where the photo didn't see it, carried on from a clean patch of what it did see: the
+ * boards or the rug continue in their own grain (mirrored so no seam shows), a touch quieter than
+ * the photo so it reads as the same floor rather than a photo of it. Null when the photo saw no
+ * clean square of floor.
+ */
+function floorPatch(p: Painted): Base | null {
+  const { W, H } = p
+  // How many unseen texels in each rectangle, in O(1), from a summed table.
+  const sum = new Float64Array((W + 1) * (H + 1))
+  for (let r = 0; r < H; r++)
+    for (let i = 0; i < W; i++)
+      sum[(r + 1) * (W + 1) + i + 1] = (p.weight[r * W + i] >= 0.99 ? 0 : 1) + sum[r * (W + 1) + i + 1] + sum[(r + 1) * (W + 1) + i] - sum[r * (W + 1) + i]
+  const unseen = (x: number, y: number, n: number) =>
+    sum[(y + n) * (W + 1) + x + n] - sum[y * (W + 1) + x + n] - sum[(y + n) * (W + 1) + x] + sum[y * (W + 1) + x]
+  for (let n = Math.min(W, H, Math.round(1.2 * PX_PER_M)); n >= Math.round(0.35 * PX_PER_M); n = Math.round(n * 0.8)) {
+    const step = Math.max(4, Math.round(n / 6))
+    for (let y = 0; y + n <= H; y += step)
+      for (let x = 0; x + n <= W; x += step) {
+        if (unseen(x, y, n) > 0) continue
+        const patch = new Float32Array(n * n * 3)
+        for (let r = 0; r < n; r++) for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) patch[(r * n + i) * 3 + c] = p.rgb[((y + r) * W + x + i) * 3 + c]
+        const mirror = (v: number) => {
+          const m = v % (2 * n)
+          return m < n ? m : 2 * n - 1 - m
+        }
+        return (i, r) => {
+          const k = (mirror(r) * n + mirror(i)) * 3
+          return [patch[k] * 0.92 + 238 * 0.08, patch[k + 1] * 0.92 + 235 * 0.08, patch[k + 2] * 0.92 + 230 * 0.08]
+        }
+      }
+  }
+  return null
 }
 
 /**

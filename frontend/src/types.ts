@@ -57,6 +57,8 @@ export type WalkIn = {
   videoUrl?: string | null
   posterUrl?: string | null
   error?: string
+  /** The render it walks into: a new render needs a new walk-in. */
+  src?: string
 }
 
 export type ChatLine = { role: 'user' | 'agent'; text: string }

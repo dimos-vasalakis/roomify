@@ -28,6 +28,7 @@ from app.tools.brand import read_brand
 from app.tools.fal_client import FalError, fal
 from app.tools.find_products import FindResult, find_products
 from app.tools.image_data import image_data
+from app.tools.model3d import Box, ShellPiece, room_shell
 from app.tools.money import money
 from app.tools.read_product_page import ProductListing, read_product_page
 from app.tools.search_products import ProductSpec
@@ -907,6 +908,34 @@ def render_items(
     return items
 
 
+# Background work that must outlive the stream that started it (kept, so it isn't collected).
+_background: set[asyncio.Task[Any]] = set()
+
+
+def _warm_3d(url: str, chosen: dict[str, ProductListing], items: list[dict[str, Any]]) -> None:
+    """The 3D room's shell (the render with the pieces taken out, measured) takes a minute or
+    two: start it the moment the render is shown, so it is ready before anyone opens 3D. The
+    front end asks for the same render and pieces, and finds it made."""
+    boxes = {item["product_id"]: item["box"] for item in items}
+    try:
+        pieces = [ShellPiece(name=f"{slot.lower()}: {p.title}"[:200], box=Box(**boxes[p.id]))
+                  for slot, p in chosen.items() if p.id in boxes]  # fmt: skip
+    except (ValidationError, TypeError, KeyError):
+        return
+    if not pieces:
+        return
+
+    async def warm() -> None:
+        try:
+            await room_shell(url, pieces)
+        except Exception as exc:  # noqa: BLE001 - only a head start; the front end asks again
+            log.info("3D shell not prepared ahead (%s)", type(exc).__name__)
+
+    task = asyncio.create_task(warm())
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+
+
 def _step(send: Send, text: str, phase: str | None = None) -> None:
     send(("step.started", {"text": text, **({"phase": phase} if phase else {})}))
 
@@ -1066,6 +1095,7 @@ async def _picture(
         _say(send, note)
     send(("render.ready", {"render_id": hashlib.sha256(url.encode()).hexdigest()[:12],
                            "kind": "render", "image_url": url, "items": items}))  # fmt: skip
+    _warm_3d(url, chosen, items)
     return True
 
 
@@ -2081,6 +2111,7 @@ async def _edit_in_place(
         _say(send, note)
     send(("render.ready", {"render_id": hashlib.sha256(url.encode()).hexdigest()[:12],
                            "kind": "render", "image_url": url, "items": items}))  # fmt: skip
+    _warm_3d(url, chosen, items)
     return True
 
 
@@ -2132,6 +2163,7 @@ async def _view(photo: bytes, turn: Turn, decision: Decision, send: Send) -> Non
         return
     send(("render.ready", {"render_id": hashlib.sha256(url.encode()).hexdigest()[:12],
                            "kind": "view", "image_url": url, "items": items}))  # fmt: skip
+    _warm_3d(url, chosen, items)
     send(("done", {"total_eur": _total(chosen), "currency": chosen_currency(chosen)}))
 
 

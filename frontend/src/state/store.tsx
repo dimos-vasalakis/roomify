@@ -72,6 +72,7 @@ export type Action =
   | { type: 'resetRun'; id: string }
   | { type: 'runEvent'; id: string; event: RunEvent }
   | { type: 'addWalkIn'; id: string; walk: WalkIn }
+  | { type: 'patchWalkIn'; id: string; walkId: string; patch: Partial<WalkIn> }
   | { type: 'setError'; block: Block; sessionId: string; message: string | null }
   | { type: 'cancelSwap' }
   | { type: 'refollow' }
@@ -329,6 +330,14 @@ function reducer(state: State, action: Action): State {
       return e.type === 'done' && action.id === state.activeId ? withReveal(next, true) : next
     }
 
+    case 'patchWalkIn':
+      return {
+        ...state,
+        sessions: state.sessions.map((s) =>
+          s.id === action.id ? { ...s, walkIns: s.walkIns.map((w) => (w.id === action.walkId ? { ...w, ...action.patch } : w)) } : s,
+        ),
+      }
+
     case 'addWalkIn':
       return {
         ...state,
@@ -431,7 +440,11 @@ export function checkpointOf(s: Session, said: string): Checkpoint {
 export const MAX_PAST = 5
 
 /** A room saved mid-run (the page was reloaded or closed) can never finish: say so and offer the way back. */
-function settle(s: Session): Session {
+function settle(room: Session): Session {
+  // A walk-in being made when the page went away will never arrive: it can be asked for again.
+  const s = room.walkIns.some((w) => w.status === 'making' && w.src)
+    ? { ...room, walkIns: room.walkIns.map((w) => (w.status === 'making' && w.src ? { ...w, status: 'failed' as const } : w)) }
+    : room
   if (!isWorking(s)) return s
   return { ...s, status: 'failed', now: null, error: { what: 'The page was reloaded before Roomify finished.', lastGood: '' } }
 }

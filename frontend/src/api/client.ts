@@ -93,6 +93,9 @@ export const api = {
       body: json({ image_url: imageUrl, page_url: pageUrl, title }),
       signal: AbortSignal.timeout(420_000),
     }),
+  /** A 5-second walk-in preview video of a finished render. The first time takes one to three minutes. */
+  walkinPreview: (renderUrl: string) =>
+    request<{ video_url: string }>('/walkin', { method: 'POST', body: json({ render_url: renderUrl }), signal: AbortSignal.timeout(400_000) }),
   /** A drop box the phone can send a photo into (the QR code on the empty room). */
   openHandoff: () => request<HandoffOut>('/handoff', { method: 'POST' }),
   sendHandoff: (code: string, photo: Blob) => {

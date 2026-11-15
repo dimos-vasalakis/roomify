@@ -47,7 +47,8 @@ async function askShell(render: string, pieces: ReturnType<typeof shellPieces>):
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ render_url: render, pieces }),
-    signal: AbortSignal.timeout(150_000),
+    // The first time takes a minute or two (usually already started when the render was drawn).
+    signal: AbortSignal.timeout(300_000),
   })
   const body = await response.json().catch(() => null)
   if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : "Couldn't prepare the room for 3D.")

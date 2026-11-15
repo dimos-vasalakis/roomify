@@ -17,6 +17,7 @@ from app.tools.model3d import (
     product_model,
     room_shell,
 )
+from app.tools.walkin import Walkin, WalkinError, walk_in
 
 router = APIRouter(tags=["depth"])
 PHOTO_MAX_BYTES = 8 * 1024 * 1024
@@ -84,3 +85,20 @@ async def model3d(body: ModelIn) -> Model3D:
         raise HTTPException(status, str(exc)) from exc
     except ReplayMiss as exc:
         raise HTTPException(503, "This 3D model isn't part of the recorded demo.") from exc
+
+
+class WalkinIn(BaseModel):
+    render_url: str = Field(max_length=2000)
+
+
+@router.post("/walkin")
+async def walkin(body: WalkinIn) -> Walkin:
+    """A 5-second walk-in preview of a finished render (a video). The first time takes one to
+    three minutes; then it is instant."""
+    try:
+        return await walk_in(body.render_url)
+    except WalkinError as exc:
+        status = 422 if "Only" in str(exc) else 429 if "this hour" in str(exc) else 502
+        raise HTTPException(status, str(exc)) from exc
+    except ReplayMiss as exc:
+        raise HTTPException(503, "This walk-in isn't part of the recorded demo.") from exc
