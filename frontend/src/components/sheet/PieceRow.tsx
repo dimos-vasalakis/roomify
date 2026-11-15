@@ -1,4 +1,4 @@
-import { ArrowUpRight, CopyPlus, Move, Trash2 } from 'lucide-react'
+import { ArrowUpRight, CopyPlus, Move, Replace, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Crop } from '../common/Crop'
 import { money, shopName } from '../../lib/format'
@@ -6,6 +6,7 @@ import { useActions } from '../../state/actions'
 import type { Product } from '../../types'
 
 const PLACES = ['Against the wall', 'Further left', 'Further right', 'Turned to face the room']
+const INSTEAD = ['Cheaper', 'In a different colour', 'Smaller', 'In another style']
 
 const cm = (v: number | null | undefined) => (v ? `${Math.round(v)}` : '—')
 
@@ -20,19 +21,27 @@ export function PieceRow({ n, p, currency, selected, busy, onSelect }: {
 }) {
   const actions = useActions()
   const row = useRef<HTMLLIElement>(null)
-  const [moving, setMoving] = useState(false)
+  // One small box at a time under the piece: where it goes, or what replaces it.
+  const [open, setOpen] = useState<'move' | 'swap' | null>(null)
   // Picked on the room: its line comes into view here.
   useEffect(() => {
     if (selected) row.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [selected])
-  const [where, setWhere] = useState('')
+  const [words, setWords] = useState('')
   const sized = p.widthCm || p.depthCm || p.heightCm
-  const move = (to: string) => {
-    if (!to.trim()) return
-    setMoving(false)
-    setWhere('')
-    void actions.press('arrange', p, to.trim())
+  const toggle = (box: 'move' | 'swap') => {
+    setOpen((o) => (o === box ? null : box))
+    setWords('')
   }
+  const send = (said: string) => {
+    if (!said.trim() || !open) return
+    const action = open === 'move' ? 'arrange' : 'swap'
+    setOpen(null)
+    setWords('')
+    void actions.press(action, p, said.trim())
+  }
+  const piece = p.slot.toLowerCase()
+  const ask = open === 'move' ? `Where should the ${piece} go?` : `What should replace the ${piece}?`
 
   return (
     <li ref={row} className={`group relative border-b border-ink/10 transition-colors duration-150 ${selected ? 'bg-surface' : 'hover:bg-surface/60'}`}>
@@ -66,18 +75,19 @@ export function PieceRow({ n, p, currency, selected, busy, onSelect }: {
         Shop <ArrowUpRight size={12} strokeWidth={2} />
       </a>
 
-      <div className={`flex flex-wrap items-center gap-1 px-3 pb-3 pl-[3.25rem] ${selected || moving ? '' : 'max-lg:flex lg:hidden lg:group-hover:flex lg:group-focus-within:flex'}`}>
-        <Act icon={<Move size={13} strokeWidth={2} />} label="Move" on={moving} disabled={busy} onClick={() => setMoving((m) => !m)} />
+      <div className={`flex flex-wrap items-center gap-1 px-3 pb-3 pl-[3.25rem] ${selected || open ? '' : 'max-lg:flex lg:hidden lg:group-hover:flex lg:group-focus-within:flex'}`}>
+        <Act icon={<Replace size={13} strokeWidth={2} />} label="Replace" on={open === 'swap'} disabled={busy} onClick={() => toggle('swap')} />
+        <Act icon={<Move size={13} strokeWidth={2} />} label="Move" on={open === 'move'} disabled={busy} onClick={() => toggle('move')} />
         <Act icon={<CopyPlus size={13} strokeWidth={2} />} label="Another like it" disabled={busy} onClick={() => void actions.press('add', p)} />
         <Act icon={<Trash2 size={13} strokeWidth={2} />} label="Remove" disabled={busy} onClick={() => void actions.press('drop', p)} />
       </div>
 
-      {moving && (
+      {open && (
         <div className="px-3 pb-3 pl-[3.25rem]">
           <div className="flex flex-wrap gap-1">
-            {PLACES.map((place) => (
-              <button key={place} type="button" disabled={busy} onClick={() => move(place.toLowerCase())} className="press h-7 rounded-[4px] bg-surface px-2 text-small text-ink ring-1 ring-ink/15 hover:ring-ink disabled:opacity-40">
-                {place}
+            {(open === 'move' ? PLACES : INSTEAD).map((choice) => (
+              <button key={choice} type="button" disabled={busy} onClick={() => send(choice.toLowerCase())} className="press h-7 rounded-[4px] bg-surface px-2 text-small text-ink ring-1 ring-ink/15 hover:ring-ink disabled:opacity-40">
+                {choice}
               </button>
             ))}
           </div>
@@ -85,18 +95,20 @@ export function PieceRow({ n, p, currency, selected, busy, onSelect }: {
             className="mt-1.5 flex gap-1"
             onSubmit={(e) => {
               e.preventDefault()
-              move(where)
+              send(words)
             }}
           >
             <input
-              value={where}
-              onChange={(e) => setWhere(e.target.value)}
-              placeholder={`Where should the ${p.slot.toLowerCase()} go?`}
-              aria-label={`Where should the ${p.slot.toLowerCase()} go?`}
+              autoFocus
+              value={words}
+              onChange={(e) => setWords(e.target.value)}
+              placeholder={open === 'swap' ? `e.g. a grey linen ${piece}, under €300` : ask}
+              aria-label={ask}
+              maxLength={300}
               className="h-8 min-w-0 flex-1 rounded-[4px] bg-surface px-2 text-small text-ink ring-1 ring-ink/15 placeholder:text-muted focus:ring-ink focus:outline-none"
             />
-            <button type="submit" disabled={busy || !where.trim()} className="press h-8 rounded-[4px] bg-ink px-3 text-small font-medium text-surface disabled:opacity-40">
-              Move
+            <button type="submit" disabled={busy || !words.trim()} className="press h-8 rounded-[4px] bg-ink px-3 text-small font-medium text-surface disabled:opacity-40">
+              {open === 'move' ? 'Move' : 'Replace'}
             </button>
           </form>
         </div>

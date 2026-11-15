@@ -1462,7 +1462,7 @@ class BasketLine(BaseModel):
 class Intent(BaseModel):
     """A button the person pressed on one piece: exact, so no model has to guess it."""
 
-    action: Literal["drop", "add", "arrange"]
+    action: Literal["drop", "add", "arrange", "swap"]
     slot: str = Field(max_length=40)
     instruction: str = Field(default="", max_length=300)
 
@@ -2277,11 +2277,12 @@ def _pressed(intent: Intent, turn: Turn) -> Decision:
         "drop": f"Taking the {piece} out; everything else stays.",
         "add": f"Finding another {piece} to go with yours.",
         "arrange": f"Moving the {piece}.",
+        "swap": f"Looking for a different {piece}: {intent.instruction}.",
     }[intent.action]
     decision = Decision(
         action=intent.action,
         say=say,
-        slot=intent.slot if intent.action == "drop" else None,
+        slot=intent.slot if intent.action in ("drop", "swap") else None,
         instruction=intent.instruction or None,
     )
     return _sane(decision, turn)

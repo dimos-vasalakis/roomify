@@ -169,3 +169,22 @@ def test_a_button_for_a_piece_that_is_gone_does_nothing_harmful() -> None:
         loop.Intent(action="drop", slot="Sofa"), turn("Remove the sofa", basket=[CHAIR])
     )
     assert gone.action == "reply"
+
+
+async def test_the_replace_button_swaps_that_piece_for_what_was_typed(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    swapped: list[tuple[str | None, str | None]] = []
+
+    async def never(*_: object) -> Decision:
+        raise AssertionError("a pressed button needs no model to decide")
+
+    async def swap(photo: bytes, t: Turn, d: Decision, send: object) -> None:
+        swapped.append((d.slot, d.instruction))
+
+    monkeypatch.setattr(loop, "decide", never)
+    monkeypatch.setattr(loop, "_swap", swap)
+    t = turn("Replace the chair: in dark wood.", basket=[CHAIR, DESK],
+             intent=loop.Intent(action="swap", slot="Chair", instruction="in dark wood"))  # fmt: skip
+    sent: list[tuple[str, dict]] = []  # type: ignore[type-arg]
+    await loop._turn(b"photo", t, sent.append)
+    assert swapped == [("Chair", "in dark wood")]
+    assert sent[0][1]["text"] == "Looking for a different chair: in dark wood."

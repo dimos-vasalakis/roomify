@@ -439,3 +439,25 @@ test('what the photo did not show is imagined on the 3D walls, and said to be', 
   await page.screenshot({ path: info.outputPath('back.png') })
   expect(errors).toEqual([])
 })
+
+test('replace a piece from its own button: a small box, then that piece only is swapped', async ({ page }) => {
+  await start(page)
+  await done(page)
+  const sent: string[] = []
+  page.on('request', (r) => { if (r.url().endsWith('/turn') && r.method() === 'POST') sent.push(r.postData() ?? '') })
+  const schedule = page.getByLabel('Schedule of pieces')
+  await schedule.getByRole('button', { name: /MITTZON/ }).click()
+  await schedule.getByRole('button', { name: 'Replace', exact: true }).click()
+  const box = schedule.getByLabel('What should replace the desk?')
+  await expect(box).toBeFocused()
+  await expect(schedule.getByRole('button', { name: 'Cheaper' })).toBeVisible()
+  // Move and Replace share the one box: opening one closes the other.
+  await schedule.getByRole('button', { name: 'Move', exact: true }).click()
+  await expect(box).toHaveCount(0)
+  await schedule.getByRole('button', { name: 'Replace', exact: true }).click()
+  await box.fill('in dark oak, under €200')
+  await box.press('Enter')
+  await expect.poll(() => sent.length).toBe(1)
+  expect(sent[0]).toContain('{"action":"swap","slot":"Desk","instruction":"in dark oak, under €200"}')
+  await inLog(page, 'Replace the desk: in dark oak, under €200.')
+})

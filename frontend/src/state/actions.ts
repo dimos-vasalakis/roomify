@@ -11,7 +11,7 @@ import { DRAFT_ID, MAX_PAST, checkpointOf, useStore, type Block } from './store'
 /** The prepared photo of each room, kept for sending with the offer. */
 const photos = new Map<string, Blob>()
 /** A piece's button: carried out exactly by the back end, no guessing what the words meant. */
-type Intent = { action: 'drop' | 'add' | 'arrange'; slot: string; instruction?: string }
+type Intent = { action: 'drop' | 'add' | 'arrange' | 'swap'; slot: string; instruction?: string }
 
 /** The open stream of each room's message, so Stop can end it. */
 const streams = new Map<string, () => void>()
@@ -153,6 +153,7 @@ export function useActions() {
       const said =
         action === 'drop' ? `Remove the ${piece}.`
         : action === 'add' ? `Add another ${piece} like this one, next to it.`
+        : action === 'swap' ? `Replace the ${piece}: ${instruction}.`
         : `Move the ${piece}: ${instruction}.`  // fmt: skip
       const wish = action === 'add' ? `another ${p.title} (${piece}), next to the existing one` : instruction
       return talk(said, {}, 'swap', { action, slot: p.slot, instruction: wish })
