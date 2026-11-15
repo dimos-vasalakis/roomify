@@ -260,3 +260,44 @@ async def test_a_shop_that_refuses_every_page_sends_the_search_elsewhere(
     result = await find_products(ProductSpec(item=["πίνακας"], max_price_eur=150))
     assert [c.url for c in result.candidates] == [other]
     assert asked["skip_hosts"] == {"ikea.gr"} and asked["skip_urls"] == set(ikea)
+
+
+async def test_a_shop_that_turns_us_away_gives_its_reads_to_other_shops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ikea = [f"https://www.ikea.gr/proioda/grafeio-{i}/{i}/" for i in range(20)]
+    jysk = [f"https://jysk.gr/a/b/desk-{i}" for i in range(6)]
+    read: list[str] = []
+
+    async def fake_search(spec: ProductSpec, limit: int) -> SearchResult:
+        hits = [SearchHit(url=u, retailer="ikea.gr", shop_name="IKEA", words="grafeio",
+                          score=2, source="catalogue") for u in ikea]  # fmt: skip
+        hits += [SearchHit(url=u, retailer="jysk.gr", shop_name="JYSK", words="grafeio",
+                           score=1, source="catalogue") for u in jysk]  # fmt: skip
+        return SearchResult(hits=hits[:limit], note=None)
+
+    async def fake_read(url: str) -> PageRead:
+        read.append(url)
+        return ok(url, title=url)
+
+    async def no_robots(urls: list[str]) -> None:
+        return None
+
+    monkeypatch.setattr(finder, "search_products", fake_search)
+    monkeypatch.setattr(finder, "read_product_page", fake_read)
+    monkeypatch.setattr(finder, "warm_robots", no_robots)
+    monkeypatch.setattr(finder, "is_refusing", lambda url: "ikea.gr" in url)
+    result = await find_products(SPEC)
+    assert read == jysk  # every JYSK page read, no IKEA read wasted
+    assert len(result.candidates) == 6
+    assert result.note and "IKEA turned us away, so other shops were read instead" in result.note
+
+
+async def test_when_every_shop_refuses_the_pages_still_say_why(
+    shop: dict[str, PageRead], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shop["https://jysk.gr/a/b/x"] = PageRead(url="https://jysk.gr/a/b/x", listing=None,
+                                             error="jysk.gr is refusing requests right now")  # fmt: skip
+    monkeypatch.setattr(finder, "is_refusing", lambda url: True)
+    result = await find_products(SPEC)
+    assert [r.reason for r in result.rejected] == ["jysk.gr is refusing requests right now"]

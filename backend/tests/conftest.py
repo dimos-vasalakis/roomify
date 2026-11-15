@@ -23,9 +23,10 @@ def isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def firecrawl_on(monkeypatch: pytest.MonkeyPatch) -> None:
     """A test that saw a rejected Firecrawl key must not turn it off for the next one."""
-    from app.tools import firecrawl
+    from app.tools import firecrawl, web_fetch
 
     monkeypatch.setattr(firecrawl, "_off_reason", None)
+    monkeypatch.setattr(web_fetch, "_refusing", {})
 
 
 @pytest.fixture(autouse=True)

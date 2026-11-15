@@ -180,6 +180,15 @@ JSON `{"image_url": "<a render's fal link>"}` → `{"depth_url", "width", "heigh
 ## `POST /transcribe` (the mic)
 Multipart: `audio` (a short recording: `audio/webm`, `audio/mp4`, `audio/ogg`, `audio/wav` or `audio/mpeg`, under 6 MB) → `{"text"}`. Whisper on fal, any language, never cached. Used when the browser's own speech recognition is missing or fails (Firefox, Brave, Safari, in-app browsers, phones); Chrome and Edge still caption live and send without it. `415` for another format, `400` for an empty recording, `413` for a long one, `502` with a readable `detail` when the call fails.
 
+## Phone to laptop (`/handoff`, the QR code)
+- `POST /handoff` → `{"code", "expires_in_s"}`: a drop box for one room photo, kept in memory for 15 minutes. The laptop shows `<front end>/snap/<code>` as a QR code.
+- `POST /handoff/{code}/photo`, multipart `photo` (JPEG, PNG, WebP or HEIC, under 12 MB) → `204`. The phone's page sends a 3:2 crop.
+- `GET /handoff/{code}` → `204` while nothing new has arrived, the image itself once per photo (a retake replaces it), `404` with a readable `detail` once the code has expired.
+No login: the 16-character random code is the only key.
+
+## `GET /health/services`
+Which outside services the server can use, never their keys: `{"firecrawl": {"state": "on" | "no FIRECRAWL_API_KEY" | "off: <reason>", "pages_read", "pages_failed", "last_error"}, "serper", "fal", "gemini", "replay"}`. Firecrawl switches itself off for 10 minutes after a rejected key (401) or no credits (402); a 403 about one site only fails that page.
+
 ## `POST /turn` (the conversation)
 Multipart: `photo` (file), `message`, `budget`, `city`, optional `wall_cm`, `history` (JSON `[{role: "user"|"agent", text}]`), `basket` (JSON: the chosen pieces as the front end holds them, `{slot, url, title, price_eur, currency, width_cm, depth_cm, height_cm}`), optional `render_url` (the latest room picture; only fal-hosted links are accepted). Answers with the run's events as a stream.
 

@@ -14,9 +14,11 @@ from app.config import get_settings
 from app.tools.money import money
 from app.tools.read_product_page import PageRead, ProductListing, read_product_page, saved_page
 from app.tools.search_products import Dropped, ProductSpec, SearchHit, more_leads, search_products
-from app.tools.web_fetch import reads_through_service, warm_robots
+from app.tools.web_fetch import is_refusing, reads_through_service, warm_robots
 
 MAX_PAGES = 20
+# Ranked pages kept in reserve: when a shop turns us away, the next best from other shops are read.
+SPARE_PAGES = 12
 PARALLEL_READS = 4
 READ_TIMEOUT_S = 20.0
 # Firecrawl itself allows 45 s for a page; cutting it at 20 s threw away most IKEA reads.
@@ -162,28 +164,46 @@ def _turned_away(dropped: list[Dropped]) -> list[Rejection]:
     ]
 
 
+async def _skip_refusing(hits: list[SearchHit], got: _Collected, limit: int) -> list[SearchHit]:
+    """Shops that turn this server away right now (IKEA without the page reading service) would
+    only use up reads: their pages are set aside and the next best from other shops read instead.
+    When every shop refuses, nothing is set aside: then the reads say why, page by page."""
+    await warm_robots([h.url for h in hits])
+    refusing = {h.retailer for h in hits if is_refusing(h.url)}
+    if not refusing or refusing >= {h.retailer for h in hits}:
+        return hits[:limit]
+    names = sorted({h.shop_name for h in hits if h.retailer in refusing})
+    for hit in hits:
+        if hit.retailer in refusing:
+            got.failed_hosts[hit.retailer] = got.failed_hosts.get(hit.retailer, 0) + 1
+    got.notes.append(f"{' and '.join(names)} turned us away, so other shops were read instead")
+    return [h for h in hits if h.retailer not in refusing][:limit]
+
+
 async def find_products(spec: ProductSpec, want: int = 8) -> FindResult:
-    search = await search_products(spec, limit=MAX_PAGES)
+    search = await search_products(spec, limit=MAX_PAGES + SPARE_PAGES)
     got = _Collected(want)
     # Names the relevance check turned away come first: they show the agent telling a
     # bulletin board from a painting before it reads a single page.
     got.rejected = _turned_away(search.dropped)
     if search.note:
         got.notes.append(search.note)
-    if search.hits:
-        await _read_round(search.hits, spec, got, FIND_DEADLINE_S)
+    hits = await _skip_refusing(search.hits, got, MAX_PAGES)
+    if hits:
+        await _read_round(hits, spec, got, FIND_DEADLINE_S)
 
     # Too little came back (a shop refused us, say): look beyond the shops that failed,
     # through Google Shopping and our other shops, before giving up on the slot.
     settings = get_settings()
     if len(got.candidates) < ENOUGH and (settings.serper_api_key or settings.replay):
         refused = set(got.failed_hosts) - got.good_hosts
-        more = await more_leads(spec, {h.url for h in search.hits}, refused, MORE_PAGES)
+        more = await more_leads(spec, {h.url for h in hits}, refused, MORE_PAGES + SPARE_PAGES // 2)
         got.rejected += _turned_away(more.dropped)
         if more.note:
             got.notes.append(more.note)
-        if more.hits:
-            await _read_round(more.hits, spec, got, MORE_DEADLINE_S)
+        more_hits = await _skip_refusing(more.hits, got, MORE_PAGES)
+        if more_hits:
+            await _read_round(more_hits, spec, got, MORE_DEADLINE_S)
 
     if not search.hits and not got.candidates and not got.searched:
         return FindResult(candidates=[], rejected=got.rejected, searched=0,

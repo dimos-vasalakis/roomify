@@ -186,3 +186,59 @@ async def test_a_rejected_key_turns_firecrawl_off_instead_of_failing_every_page(
         await firecrawl.firecrawl_html("https://www.ikea.gr/proioda/x/1/")
     assert not firecrawl.firecrawl_enabled()
     assert len(calls) == 1
+
+
+def _answer(monkeypatch: pytest.MonkeyPatch, status: int, body: dict[str, object]) -> None:
+    import httpx
+
+    from app.tools import firecrawl
+
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "test-only")
+    get_settings.cache_clear()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json=body)
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        firecrawl.httpx,
+        "AsyncClient",
+        lambda **kw: real(transport=httpx.MockTransport(handler), **kw),
+    )
+
+
+async def test_a_site_firecrawl_wont_read_never_turns_it_off_for_every_shop(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from app.tools import firecrawl
+
+    _answer(monkeypatch, 403, {"error": "This website is no longer supported"})
+    with pytest.raises(FirecrawlError, match="can't read this site"):
+        await firecrawl.firecrawl_html("https://www.facebook.com/x")
+    assert firecrawl.firecrawl_enabled()
+    assert firecrawl.firecrawl_status()["state"] == "on"
+
+
+async def test_a_rejected_key_turns_firecrawl_off_for_a_while_not_for_good(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from app.tools import firecrawl
+
+    _answer(monkeypatch, 401, {"error": "Unauthorized: Invalid token"})
+    with pytest.raises(FirecrawlError, match="not set up"):
+        await firecrawl.firecrawl_html("https://www.ikea.gr/proioda/x/1/")
+    assert not firecrawl.firecrawl_enabled()
+    assert str(firecrawl.firecrawl_status()["state"]).startswith(
+        "off: FIRECRAWL_API_KEY was rejected"
+    )
+    monkeypatch.setattr(firecrawl, "_off_until", 0.0)  # the pause is over
+    assert firecrawl.firecrawl_enabled()
+
+
+def test_services_say_what_is_set_up_without_keys(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-secret-value")
+    get_settings.cache_clear()
+    with TestClient(app) as client:
+        body = client.get("/health/services").json()
+    assert body["firecrawl"]["state"] == "on"
+    assert "fc-secret-value" not in str(body)

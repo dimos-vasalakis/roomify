@@ -12,8 +12,9 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from app.config import get_settings
-from app.routes import conversations, depth, me, offer, speech
+from app.routes import conversations, depth, handoff, me, offer, speech
 from app.tools.catalogue import refresh_catalogues
+from app.tools.firecrawl import firecrawl_status
 
 log = logging.getLogger("roomify")
 # Step and slow-call timings (agent/loop.py, cache.py) at INFO; everything else stays quiet.
@@ -46,7 +47,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     stop.set()
 
 
-app = FastAPI(title="Roomify", version=os.getenv("RENDER_GIT_COMMIT", "development")[:12], lifespan=lifespan)
+app = FastAPI(
+    title="Roomify", version=os.getenv("RENDER_GIT_COMMIT", "development")[:12], lifespan=lifespan
+)
 
 
 @app.middleware("http")
@@ -80,8 +83,22 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/health/services")
+async def services() -> dict[str, object]:
+    """Which outside services this server can use, and how page reading is going. No keys."""
+    settings = get_settings()
+    return {
+        "firecrawl": firecrawl_status(),
+        "serper": bool(settings.serper_api_key),
+        "fal": bool(os.getenv("FAL_KEY")),
+        "gemini": bool(os.getenv("GEMINI_API_KEY")),
+        "replay": settings.replay,
+    }
+
+
 app.include_router(me.router)
 app.include_router(conversations.router)
 app.include_router(offer.router)
 app.include_router(depth.router)
 app.include_router(speech.router)
+app.include_router(handoff.router)

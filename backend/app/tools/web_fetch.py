@@ -4,6 +4,7 @@ import asyncio
 import ipaddress
 import logging
 import re
+import time
 from typing import NamedTuple
 from urllib.parse import urlsplit
 
@@ -182,6 +183,24 @@ async def _robots(url: str) -> Robots:
     return robots
 
 
+# Sites that turned this server away lately (robots.txt refused or unanswered), so a search
+# reads other shops' pages instead of spending its reads on refusals.
+REFUSING_FOR_S = 600
+_refusing: dict[str, float] = {}
+
+
+def _mark_refusing(url: str) -> None:
+    _refusing[host_of(url)] = time.monotonic()
+
+
+def is_refusing(url: str) -> bool:
+    """This site refused us in the last few minutes and the page reading service can't help."""
+    seen = _refusing.get(host_of(url))
+    return (
+        seen is not None and time.monotonic() - seen < REFUSING_FOR_S and not _through_service(url)
+    )
+
+
 async def warm_robots(urls: list[str]) -> None:
     """Check each site's robots.txt once before reading its pages in parallel, so parallel
     reads find it saved instead of all downloading it at the same moment."""
@@ -189,9 +208,12 @@ async def warm_robots(urls: list[str]) -> None:
 
     async def one(url: str) -> None:
         try:
-            await _robots(url)
+            robots = await _robots(url)
         except FetchError:
-            pass  # each page read reports this in its own words
+            _mark_refusing(url)  # each page read reports this in its own words
+            return
+        if robots.locked and not _through_service(url):
+            _mark_refusing(url)
 
     await asyncio.gather(*(one(u) for u in sites.values()))
 
@@ -239,6 +261,7 @@ async def fetch_text(url: str) -> str:
                         host_of(url))  # fmt: skip
             return await fetch_through_service(url)
         # passing trouble: an earlier read of the page may stand in
+        _mark_refusing(url)
         raise FetchError(f"{host_of(url)} is refusing requests right now", transient=True)
     if not robots_allow(robots_rules(robots.text), url):
         raise FetchError(f"{host_of(url)} does not allow reading this page")
