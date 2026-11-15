@@ -42,7 +42,6 @@ export function Caption() {
   let detail: string | null = null
   if (phase) {
     title = PHASES[index].label
-    detail = s.now?.text && s.now.text !== title ? s.now.text : null
   } else if (s.status === 'new') {
     title = s.beforeSrc ? 'Now tell Roomify what you need' : 'Start with a photo of the room'
   } else {

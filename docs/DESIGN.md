@@ -23,9 +23,10 @@ rail 64 | room board (fills)                         | conversation 400
   ▢     | └──────────────────────────────────────┘   | Roomify  …
         | Reading your room · 1 of 4   [Walk in]   | [▁▃▆ Tell Roomify… 🎙 ↑]
 ```
-- **Rail:** 64px, room thumbnails (3:2), + for a new room. Hover shows name and status. Ctrl B or the top button opens the full list as a panel over the board.
+- **Rail:** 64px, room thumbnails (3:2), + for a new room. Hover shows name and status. The mark opens the full list as a panel over the board. Ctrl B (or the button at the rail's foot) puts the rail away completely; a single "Show rooms" button stays top left. The choice is remembered.
+- **Backdrop:** the page is a drafting table: a 24px dot grid that fades toward the edges, a little paper grain, and, only while the agent works, a band that slowly passes over the grid and darkens its dots. No colour, no glow.
 - **Room board:** the room at 3:2, as large as the height allows. Under it one caption line: the current step, or the room's name and size once done, with the room tools on the right.
-- **Conversation column:** the total against the budget on top, then the conversation, then the composer pinned at the bottom.
+- **Conversation column:** not a box. The total against the budget at the top (36px), then the conversation, which scrolls inside the column and fades out at its top edge (newest lines sit just above the composer), then the composer, the one solid white card.
 - **Phone (390):** top bar (Rooms, name, New), room full width, caption, conversation below, composer sticky at the bottom.
 - **Stage (`?stage=1`):** root font size up 12.5% for the projector.
 
@@ -36,12 +37,20 @@ rail 64 | room board (fills)                         | conversation 400
 | Photo, no brief | The photo, "Change photo" | "Now tell Roomify what you need" |
 | Asking | Photo dimmed slightly, the question in the conversation | "Waiting for your answer" |
 | Reading (planning) | A white scan line sweeps down, corner ticks frame the photo | "Reading your room · 1 of 4" |
-| Shopping | Each chosen piece prints as a tag (slot, shop, price) stacked on the photo; a rejected one prints struck through, then fades | "Finding pieces · 2 of 4" |
+| Shopping | Each chosen piece prints as a tag (slot, shop, price) stacked on the photo; turned-down pieces show in the live trace | "Finding pieces · 2 of 4" |
 | Rendering | A soft band travels across the photo | "Drawing your room · 3 of 4" |
 | Checking / done | The render wipes in; pine outlines draw around each placed piece, then become pins | "Checking it matches · 4 of 4", then the room name |
 | Failed | Photo stays; an error plate with the real reason and "Try again" | — |
 
 Never guess positions: tags float in a stack until a render gives real boxes; a piece without a box gets no pin.
+
+## Live trace (the agent, in real time)
+While the agent works, an ink instrument strip sits over the bottom of the photo (below it on a phone):
+- **Top row:** a "Live" dot, a running clock (0:14.3), the agent's current sentence, and three counters: Looked at, Turned down, Chosen (each number rolls up as it changes).
+- **Time axis:** every action is a tick; the right edge is "now", so ticks flow left as time passes. Steps are short white ticks, chosen pieces tall pine, turned-down pieces short grey, the render the tallest.
+- **Log:** the last three actions, newest at the bottom, older ones dimmer, each with its time, a one-word verb (Search, Read, Pick, Reject, Render, Check) that decodes in with a scramble, and the detail.
+- When the run ends it reads "Done", holds for 1.8 s and folds down; on a failure it folds away at once so the error stays clear.
+- Built on the screen from what the room already shows (`frontend/src/lib/trace.ts`); no new back-end events.
 
 ## Before / after
 A divider across the room once a render exists. Left of it is your photo, right of it the render. Labels "Before" / "After" sit in the top corners while both are visible. Pins only show on the after side. Drag, click or use the arrow keys. The reveal ends with the whole after showing and the handle parked at the left edge.
@@ -87,6 +96,9 @@ GSAP with `useGSAP` and a scoped ref; every entrance through `enter()` in `front
 | Render ready | After wipes in from the left with `clip-path`; outlines draw; pins land with a 70 ms stagger |
 | Total changes | Figure counts to the new value |
 | Voice in | Waveform bars follow the mic level |
+| Trace in / out | Slides up from the photo's edge (expo out, 600 ms); folds down (power3 in, 450 ms) |
+| Trace action | Tick grows from the axis (back out); log rolls up one line; verb scrambles in |
+| Rail hide | Rail slides out and its width closes (500 ms, in-out) |
 | Controls | Press scale 0.97 |
 
 ## Rules that hold everywhere

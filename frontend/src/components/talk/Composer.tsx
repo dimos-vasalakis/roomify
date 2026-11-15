@@ -131,7 +131,7 @@ export function Composer() {
       )}
 
       <form
-        className={`flex flex-col rounded-board border bg-surface transition-colors duration-200 focus-within:border-ink ${speech.listening ? 'border-ink' : 'border-control'}`}
+        className={`flex flex-col rounded-board border bg-surface shadow-[0_1px_0_rgb(23_23_23/0.04),0_12px_32px_-16px_rgb(23_23_23/0.18)] transition-colors duration-200 focus-within:border-ink ${speech.listening ? 'border-ink' : 'border-control'}`}
         onSubmit={(e) => {
           e.preventDefault()
           send(text)

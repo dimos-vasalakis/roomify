@@ -27,7 +27,7 @@ async function start(page: Page, url?: string) {
 }
 async function rooms(page: Page) {
   if (phone(page)) await page.getByRole('button', { name: /^Rooms/ }).click()
-  else await page.getByRole('button', { name: 'All rooms (Ctrl B)', exact: true }).click()
+  else await page.getByRole('button', { name: 'All rooms', exact: true }).click()
 }
 const done = (page: Page) => expect(page.getByRole('slider', { name: 'Before and after' })).toBeVisible({ timeout: 15_000 })
 
@@ -124,7 +124,7 @@ test('HTTP failure keeps the brief and allows a retry', async ({ page }) => {
 test('truncated stream fails with a working retry', async ({ page }) => {
   await page.route('**/turn', route => route.fulfill({ contentType: 'text/event-stream', body: 'id: 1\nevent: run.status\ndata: {"status":"running"}\n\n' }))
   await start(page)
-  await expect(page.getByText('The connection ended before the agent finished. Try again.')).toBeVisible()
+  await expect(page.locator('p', { hasText: 'The connection ended before the agent finished. Try again.' })).toBeVisible()
   await page.unroute('**/turn')
   await page.getByRole('button', { name: 'Try again', exact: true }).click()
   await done(page)
@@ -137,7 +137,7 @@ test('CRLF and unknown future events preserve stream parsing', async ({ page }) 
     'id: 3\r\nevent: error\r\ndata: {"message":"No suitable products found.","retryable":true}',
   ].join('\r\n\r\n') + '\r\n\r\n' }))
   await start(page)
-  await expect(page.getByText('No suitable products found.', { exact: true })).toBeVisible()
+  await expect(page.locator('p', { hasText: 'No suitable products found.' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeVisible()
 })
 
@@ -153,4 +153,23 @@ test('replay never calls the configured offer API', async ({ page }) => {
   await expect(chat).not.toContainText('How wide is the main wall in your photo?')
   await expect(page.getByText('Reading your room', { exact: true })).toBeVisible()
   expect(offers).toBe(0)
+})
+
+test('the rooms rail hides completely and comes back', async ({ page }) => {
+  test.skip(phone(page), 'The rail is a desktop feature')
+  await page.goto('/?demo=1')
+  await page.keyboard.press('Control+b')
+  await expect(page.getByRole('navigation', { name: 'Rooms' })).not.toBeInViewport()
+  await page.reload()
+  await page.getByRole('button', { name: 'Show rooms (Ctrl B)' }).click()
+  await expect(page.getByRole('navigation', { name: 'Rooms' })).toBeInViewport()
+})
+
+test('the live trace shows the run as it happens, then folds away', async ({ page }) => {
+  await start(page)
+  const trace = page.getByRole('status', { name: 'What the agent is doing' })
+  await expect(trace).toBeVisible()
+  await expect(trace).toContainText('Chosen')
+  await done(page)
+  await expect(trace).toHaveCount(0, { timeout: 8000 })
 })

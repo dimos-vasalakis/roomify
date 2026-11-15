@@ -41,15 +41,15 @@ export function Talk() {
   const over = total > s.budgetEur
 
   return (
-    <aside aria-label="Conversation with Roomify" className="flex h-full min-h-0 flex-col rounded-board border border-border bg-surface">
-      <header className="flex items-start justify-between gap-3 border-b border-rule px-5 pt-4 pb-4">
+    <aside aria-label="Conversation with Roomify" className="flex h-full min-h-0 flex-col">
+      <header className="flex items-start justify-between gap-3 border-b border-ink/10 pt-1 pb-4">
         {s.products.length ? (
           <div className="min-w-0 flex-1">
-            <p className="num text-total font-semibold tracking-[-0.02em] text-ink">
+            <p className="num text-[2.25rem] leading-[2.5rem] font-semibold tracking-[-0.03em] text-ink">
               <Count value={total} currency={s.currency} />
               <span className="ml-1.5 text-body font-normal tracking-normal text-muted">of {money(s.budgetEur, s.currency)}</span>
             </p>
-            <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-raised" aria-hidden="true">
+            <div className="mt-3 h-1 overflow-hidden rounded-full bg-ink/10" aria-hidden="true">
               <div
                 className={`h-full origin-left rounded-full transition-transform duration-700 ease-[var(--ease-out)] ${over ? 'bg-negative' : 'bg-chosen'}`}
                 style={{ transform: `scaleX(${Math.min(1, total / Math.max(1, s.budgetEur))})` }}
@@ -65,11 +65,11 @@ export function Talk() {
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-5 [scrollbar-width:thin]">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-6 pr-1 [mask-image:linear-gradient(to_bottom,transparent,#000_3rem)] [scrollbar-width:none]">
         <Thread />
       </div>
 
-      <div className="rounded-b-board bg-surface p-3 max-lg:sticky max-lg:bottom-0">
+      <div className="pt-3">
         <Composer key={s.id} />
       </div>
     </aside>

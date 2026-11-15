@@ -39,7 +39,7 @@ export function phaseOf(s: Session): Phase | null {
 export function statusText(s: Session): string {
   switch (s.status) {
     case 'done':
-      return s.products.length ? `${s.products.length} pieces · ${shopsOf(s)} ${shopsOf(s) === 1 ? 'shop' : 'shops'}` : 'Done'
+      return s.products.length ? `${s.products.length} ${s.products.length === 1 ? 'piece' : 'pieces'} · ${shopsOf(s)} ${shopsOf(s) === 1 ? 'shop' : 'shops'}` : 'Done'
     case 'shopping':
     case 'drawing':
       return PHASES.find((p) => p.id === phaseOf(s))?.label ?? 'Working'

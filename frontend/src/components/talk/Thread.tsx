@@ -38,7 +38,7 @@ export function Thread() {
   }
 
   return (
-    <ol ref={list} className="flex flex-col gap-5 pb-2">
+    <ol ref={list} className="mt-auto flex flex-col gap-5 pt-8 pb-2">
       {lines.map((line, i) => {
         return (
           <li key={`${s.id}:${i}`} data-line className="flex flex-col gap-1">

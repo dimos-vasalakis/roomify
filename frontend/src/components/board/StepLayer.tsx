@@ -1,18 +1,17 @@
 import { useRef } from 'react'
 import { money, shopName } from '../../lib/format'
-import { enter, gsap, reducedMotion, useGSAP } from '../../lib/motion'
-import { phaseOf } from '../../lib/session'
+import { enter, useGSAP } from '../../lib/motion'
+import { isWorking, phaseOf } from '../../lib/session'
 import type { Session } from '../../types'
 
 /**
  * The agent's work, drawn on the photo: a scan while it reads the room, the wall it measured,
- * each piece it chose printed as a tag, the last one it turned down struck through, and a band
- * while it draws. Tags float in a stack: positions only appear once a render gives real boxes.
+ * each piece it chose printed as a tag, and a band while it draws. What it turned down lives
+ * in the live trace. Tags float in a stack: positions only appear once a render gives real boxes.
  */
 export function StepLayer({ s }: { s: Session }) {
   const root = useRef<HTMLDivElement>(null)
   const phase = phaseOf(s)
-  const lastRejection = s.rejections.at(-1)
   const cur = s.currency
 
   // A new piece rises in.
@@ -22,25 +21,6 @@ export function StepLayer({ s }: { s: Session }) {
       if (tags?.length) enter(tags[tags.length - 1], { y: 8 })
     },
     { scope: root, dependencies: [s.products.length] },
-  )
-
-  // A turned-down piece prints, gets struck through, then fades away.
-  useGSAP(
-    () => {
-      if (!lastRejection) return
-      const el = '[data-rejected]'
-      if (reducedMotion()) {
-        gsap.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.16 })
-        gsap.set('[data-strike]', { scaleX: 1 })
-        return
-      }
-      gsap
-        .timeline()
-        .fromTo(el, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.24, ease: 'power3.out' })
-        .fromTo('[data-strike]', { scaleX: 0 }, { scaleX: 1, duration: 0.4, ease: 'power2.inOut' }, '+=0.35')
-        .to(el, { opacity: 0.0, duration: 0.5, ease: 'power1.in' }, '+=1.8')
-    },
-    { scope: root, dependencies: [lastRejection?.id], revertOnUpdate: true },
   )
 
   return (
@@ -74,7 +54,7 @@ export function StepLayer({ s }: { s: Session }) {
 
       {/* The wall the agent measured, drawn like an architect's dimension line. */}
       {s.wallCm && s.status !== 'done' && s.status !== 'failed' && (
-        <div className="absolute inset-x-[8%] bottom-6 flex items-center">
+        <div className={`absolute inset-x-[8%] flex items-center ${isWorking(s) ? 'bottom-6 lg:bottom-[13.5rem]' : 'bottom-6'}`}>
           <span className="h-3 w-0.5 bg-surface" />
           <span className="h-0.5 flex-1 bg-surface" />
           <span className="num mx-2 rounded-[6px] bg-surface px-2 py-0.5 text-chrome font-semibold text-ink">{s.wallCm} cm</span>
@@ -84,28 +64,16 @@ export function StepLayer({ s }: { s: Session }) {
       )}
 
       {/* What it chose so far, and the last thing it turned down. */}
-      {(s.products.length > 0 || lastRejection) && s.status !== 'done' && (
-        <ul className="absolute top-8 left-8 flex max-w-[min(22rem,60%)] flex-col items-start gap-1.5">
+      {s.products.length > 0 && s.status !== 'done' && (
+        <ul className="absolute top-3 left-3 flex max-w-[min(22rem,70%)] flex-col items-start gap-1 sm:top-8 sm:left-8 sm:gap-1.5">
           {s.products.map((p) => (
-            <li key={p.id} data-tag className="flex items-center gap-2 rounded-[8px] bg-surface py-1.5 pr-3 pl-2 text-chrome">
+            <li key={p.id} data-tag className="flex items-center gap-2 rounded-[8px] bg-surface py-1 pr-2.5 pl-2 text-small whitespace-nowrap sm:py-1.5 sm:pr-3 sm:text-chrome">
               <span className="size-2 shrink-0 rounded-full bg-chosen" />
               <span className="font-semibold text-ink">{p.slot}</span>
-              <span className="truncate text-muted">{shopName(p.retailer)}</span>
+              <span className="truncate text-muted max-sm:hidden">{shopName(p.retailer)}</span>
               <span className="num ml-auto pl-2 font-semibold text-ink">{money(p.priceEur, p.currency ?? cur)}</span>
             </li>
           ))}
-          {lastRejection && (
-            <li key={lastRejection.id} data-rejected className="max-w-full rounded-[8px] bg-surface/90 py-1.5 pr-3 pl-2 text-chrome">
-              <span className="relative flex items-center gap-2 text-muted">
-                <span className="size-2 shrink-0 rounded-full ring-1 ring-muted" />
-                <span className="truncate">
-                  {lastRejection.slot} · {shopName(lastRejection.retailer)}
-                </span>
-                <span data-strike className="absolute inset-x-0 top-1/2 h-px origin-left bg-ink" />
-              </span>
-              <span className="mt-0.5 block truncate pl-4 text-small text-ink">{lastRejection.reason}</span>
-            </li>
-          )}
         </ul>
       )}
     </div>

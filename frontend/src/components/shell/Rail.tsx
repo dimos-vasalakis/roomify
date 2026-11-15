@@ -1,4 +1,4 @@
-import { PanelLeft, Plus } from 'lucide-react'
+import { PanelLeft, PanelLeftClose, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { pictureOf, statusText } from '../../lib/session'
 import { useActions } from '../../state/actions'
@@ -27,19 +27,19 @@ export function Thumb({ s, className = '' }: { s: Session; className?: string })
   )
 }
 
-/** Desktop: a thin rail of room thumbnails. Hover shows the name; Ctrl B opens the full list. */
+/** Desktop: a thin rail of room thumbnails. Hover shows the name; the mark opens the full list; Ctrl B puts the rail away. */
 export function Rail() {
   const { state, dispatch } = useStore()
   const actions = useActions()
   const [tip, setTip] = useState<{ s: Session; top: number } | null>(null)
 
   return (
-    <nav aria-label="Rooms" className="sticky top-0 hidden h-dvh w-rail shrink-0 flex-col items-center gap-3 py-4 lg:flex">
+    <nav aria-label="Rooms" className="flex h-dvh w-rail flex-col items-center gap-3 py-4">
       <button
         type="button"
         onClick={() => dispatch({ type: 'toggleSidebar' })}
-        aria-label="All rooms (Ctrl B)"
-        title="All rooms (Ctrl B)"
+        aria-label="All rooms"
+        title="All rooms"
         className="press group relative grid size-10 place-items-center rounded-control hover:bg-raised"
       >
         <span className="transition-opacity group-hover:opacity-0">
@@ -80,6 +80,15 @@ export function Rail() {
           )
         })}
       </ul>
+      <button
+        type="button"
+        onClick={() => dispatch({ type: 'toggleRail' })}
+        aria-label="Hide rooms (Ctrl B)"
+        title="Hide rooms (Ctrl B)"
+        className="press grid size-10 shrink-0 place-items-center rounded-control text-muted hover:bg-raised hover:text-ink"
+      >
+        <PanelLeftClose size={18} strokeWidth={2} />
+      </button>
       {tip && (
         <span role="tooltip" className="pointer-events-none fixed left-[4.25rem] z-50 -translate-y-1/2 rounded-control bg-ink px-2.5 py-1.5 text-surface" style={{ top: tip.top }}>
           <span className="block text-chrome font-semibold whitespace-nowrap">{tip.s.name}</span>

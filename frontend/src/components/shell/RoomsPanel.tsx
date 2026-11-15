@@ -39,7 +39,7 @@ export function RoomsPanel() {
   return (
     <div className="fixed inset-0 z-50">
       <button type="button" aria-label="Close rooms" onClick={close} className="absolute inset-0 bg-scrim/20" />
-      <div ref={panel} role="dialog" aria-label="Rooms" className="absolute inset-y-0 left-0 flex w-full flex-col bg-ground sm:w-panel sm:border-r sm:border-border lg:left-rail">
+      <div ref={panel} role="dialog" aria-label="Rooms" className={`absolute inset-y-0 left-0 flex w-full flex-col bg-ground sm:w-panel sm:border-r sm:border-border ${state.railHidden ? '' : 'lg:left-rail'}`}>
         <div className="flex h-16 items-center justify-between px-4">
           <Mark />
           <button type="button" onClick={close} aria-label="Close" className="press grid size-10 place-items-center rounded-control hover:bg-raised">

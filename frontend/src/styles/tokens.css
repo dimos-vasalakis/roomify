@@ -15,6 +15,9 @@
   --color-secondary: #e5e5e5;
   --color-chosen: #2d5a45;
   --color-chosen-soft: #e3ebe6;
+  /* On the ink of the live trace: the same pine, lifted to read on near-black. */
+  --color-chosen-bright: #8cc5a8;
+  --color-on-ink-muted: #a3a29f;
   --color-negative: #c4242a;
   --color-scrim: #171717;
 
@@ -63,6 +66,18 @@
   }
   100% {
     transform: translateY(1000%);
+  }
+}
+
+/* The backdrop's working band: travels across the dot grid, its dots held in register. */
+@keyframes field {
+  0% {
+    transform: translateX(-40vw);
+    background-position: 40vw 0;
+  }
+  100% {
+    transform: translateX(100vw);
+    background-position: -100vw 0;
   }
 }
 
