@@ -1,75 +1,144 @@
 # Roomify
 
-**Photograph an empty corner. An agent shops real stores near you, to your budget, and shows you your own room furnished with exactly what it chose. Nothing is in the picture that you can't buy.**
+**Real products, planned for your room and your budget.**
 
-## The problem
-You get the keys to a student flat. One empty room, €400, and forty browser tabs. You guess whether the desk fits, whether the lamp matches and whether it all adds up. You buy something, it arrives, and it is too big.
+Roomify turns a room photo and a short brief into a furnished preview and a shopping list. The agent searches retailer listings, evaluates products against the brief and available measurements, then renders the selected pieces into the room. Its choices, rejected candidates and progress appear as it works.
 
-## What Roomify does
-1. **Send one photo** and say what you need: "a study corner, €300, I'm in Athens". The agent asks one thing back: how wide is that wall?
-2. **The agent shops first.** It decides what the room needs, searches real Greek retailers, opens each product page and reads the price, size and delivery.
-3. **It checks what it read.** Every extracted product is judged against the page it came from. Anything it can't prove is dropped.
-4. **It decides out loud.** "Desk 160 cm, your wall is 140. Rejected." "Rug from the same shop as the desk, so it's one trip." Every decision streams live.
-5. **It renders your room with those exact products**, using their real listing photos.
-6. **It checks its own picture** against each listing and re-renders if something came out wrong.
-7. **You get the room and the receipt:** price dots on each object, shop, size, link, delivery, and a total under your budget.
-8. **Tap any item and say what you want instead** ("warmer, and cheaper"). Only that item changes.
-9. **Ask for the walk-in:** a short camera move into your furnished room.
+Built during a 36-hour hackathon.
 
-**Other tools draw a nice room, then look for look-alike products. Roomify buys first, draws second, then proves the picture matches the basket.**
+## Features
 
-## How it works
-| Part | What we use |
-|---|---|
-| Agent brain and vision | Gemini Flash with function calling |
-| Shop search, page scraping, maps | treg (one token for many APIs), with direct fallbacks |
-| Trust and decisions | oumi judges: checks every extracted product against its page, and scores candidates on fit, budget, style and convenience |
-| Render, swap, walk-in video | fal (Nano Banana 2.1 edit, MiniMax camera controls) |
-| App | FastAPI back end, React + Vite + TypeScript + Tailwind + GSAP front end, live steps over server-sent events |
-| Database and auth | Supabase |
-| Hosting | Front end on Vercel, back end on Render |
+- **Shopping grounded in listings.** Product prices, dimensions and links come from retailers' own pages. Greek shop catalogues are included; optional search services extend coverage.
+- **Visible decisions.** Follow the agent's progress, inspect its choices and see why candidates were rejected.
+- **A room you can revise.** Add, remove, move or replace pieces through item controls or natural language. Compare the furnished preview with the original photo.
+- **Interactive 3D.** Orbit the reconstructed room, switch camera angles, zoom and inspect individual product models alongside their listing photos and dimensions.
+- **Walk-in preview.** Generate a short camera-move video from the furnished room.
+- **Voice and phone capture.** Speak a brief or transfer a room photo from a phone using a QR code.
 
-Full details, model IDs, fallbacks and costs: [docs/TECH_STACK.md](docs/TECH_STACK.md).
+The preview and 3D models are reconstructions, not exact product replicas or architectural surveys. Unseen surfaces and details are approximate; the original shop listing remains the reference.
 
-## Tracks
-Content & Digital Art (fal). Open as backup.
+## Try the recorded demo
 
-## Running it locally
+With Node.js 22.12+ and npm installed:
+
 ```bash
-cp backend/.env.example backend/.env   # then fill in the keys
+cd frontend
+npm ci
+npm run dev
+```
 
-# back end (Python 3.12)
+Open **[localhost:5173/?replay=3d](http://localhost:5173/?replay=3d)** and select **Look around in 3D**.
+
+The recording includes the original photo, furnished preview, room geometry and five textured models. All scene assets are bundled locally, so it needs no backend, API keys or external network. The room is read-only and clearly labelled as recorded; displayed prices are those captured with the listings. Opening shop links requires internet access.
+
+Use `?replay=3d&stage=1` for larger projector text. See the [3D demo guide](docs/3D_DEMO.md) for controls, a presentation sequence and recording instructions.
+
+## Run the live app
+
+### Requirements
+
+- Python 3.12
+- Node.js 22.12+ and npm
+- A fal API key for live rendering, 3D model generation and walk-in previews
+
+Supabase is optional for the browser-based demo flow. It is used for account access and saved-data routes.
+
+### Backend
+
+From the repository root, copy the environment template:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+Set `FAL_KEY` in `backend/.env`. Planning and vision use this service by default; `GEMINI_API_KEY` supports direct model access. Optional integrations and model overrides are documented in the same template.
+
+Start the API:
+
+```bash
 cd backend
 python3.12 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
-.venv/bin/uvicorn app.main:app --reload --port 8000   # http://localhost:8000/health
-.venv/bin/pytest -q                                   # tests
+.venv/bin/uvicorn app.main:app --reload --port 8000
 ```
 
-### Database (Supabase Postgres, Alembic)
-Tables live in `backend/app/db/tables.py`, migrations in `backend/migrations/versions/`. Set `DATABASE_URL` in `backend/.env` to the Supabase **session pooler** URL (Connect > Session pooler, port 5432).
+Check [API health](http://localhost:8000/health), [configured services](http://localhost:8000/health/services) or the [interactive API reference](http://localhost:8000/docs).
+
+### Frontend
+
+In a separate terminal, from the repository root:
 
 ```bash
-cd backend
-.venv/bin/alembic upgrade head                                 # apply all migrations
-.venv/bin/alembic revision --autogenerate -m "add x to runs"   # after changing tables.py
-.venv/bin/alembic check                                        # tables.py and migrations agree?
+cp frontend/.env.example frontend/.env
+cd frontend
+npm ci
 ```
-Autogenerate does not see row level security or storage buckets: add those by hand with `op.execute()` in the migration. `REPLAY=1` never touches the database.
 
-Front end steps land here once `frontend/` exists.
+Set the backend address in `frontend/.env` before starting Vite:
 
-`REPLAY=1` runs the full demo from cached results with no network.
+```dotenv
+VITE_API_URL=http://localhost:8000
+```
 
-## Team
-| Area | Owner |
-|---|---|
-| Agent loop, LLM, oumi judges, eval | TBD at kickoff |
-| Tools: search, page reading, treg, stores | TBD at kickoff |
-| fal rendering, front end, demo | TBD at kickoff |
+Then start the frontend from `frontend/`:
 
-## Rules for contributors and coding agents
-See [CLAUDE.md](CLAUDE.md) (identical copy in [AGENTS.md](AGENTS.md)).
+```bash
+npm run dev
+```
+
+Open **[localhost:5173/?demo=1](http://localhost:5173/?demo=1)** to use the live agent without login. Rooms in this flow are retained in the browser tab. Live generation uses paid services, and new 3D models can take several minutes to prepare.
+
+For account access, also configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Backend credentials remain in `backend/.env`; never expose the Supabase secret key in the frontend. For a different frontend origin, add its address to the backend's `FRONTEND_ORIGINS`.
+
+### Database
+
+For Supabase-backed routes, set `DATABASE_URL` to the project's session-pooler connection and apply migrations from `backend/`:
+
+```bash
+.venv/bin/alembic upgrade head
+```
+
+Tables are defined in [backend/app/db/tables.py](backend/app/db/tables.py); migrations live in [backend/migrations/](backend/migrations/).
+
+## Architecture
+
+- **Frontend:** React, TypeScript, Vite and Tailwind CSS, with GSAP for interface motion and Three.js for the 3D viewer.
+- **API and agent:** Python and FastAPI. The agent loop lives in [backend/app/agent/loop.py](backend/app/agent/loop.py); progress streams to the browser over server-sent events.
+- **Shopping and evaluation:** Local retailer catalogues, page extraction and evidence-based basket checks, with optional Serper, Firecrawl and Oumi integrations.
+- **Generation:** fal handles room rendering, product meshes, room geometry and walk-in video. Model access is centralized in [backend/app/llm.py](backend/app/llm.py).
+- **Persistence and hosting:** Supabase for database, storage and authentication; Vercel for the frontend and Render for the backend.
+
+External model and service results pass through the [cache layer](backend/app/cache.py). Backend `REPLAY=1` reads matching cache records without making external calls; it requires an existing recording. The bundled `?replay=3d` demo is independent of that backend mode.
+
+## Development
+
+After installing both applications, run backend checks from `backend/`:
+
+```bash
+.venv/bin/pytest -q
+```
+
+Run frontend checks from `frontend/`:
+
+```bash
+npm run build
+npm run lint
+npx playwright install chromium
+npm run test:e2e
+```
+
+Playwright covers desktop and phone layouts at 1440px and 390px. Tests exercise the design flow, streamed events, room controls, error recovery and recorded 3D scene. Service fixtures avoid paid generation during tests; the 3D tests load the bundled meshes and verify replay network isolation. Database integration tests require a disposable `TEST_DATABASE_URL`.
+
+## Documentation
+
+- [Product scope and principles](PRODUCT.md)
+- [Technical decisions](docs/TECH_STACK.md)
+- [API contract](docs/API.md)
+- [Design system](docs/DESIGN.md)
+- [3D demo guide](docs/3D_DEMO.md)
+- [Frontend setup and testing](frontend/README.md)
+- [Contributor guidelines](AGENTS.md)
 
 ## License
-MIT. See [LICENSE](LICENSE).
+
+[MIT](LICENSE).
