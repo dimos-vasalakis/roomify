@@ -123,7 +123,7 @@ async def test_robots_locked_away_means_read_nothing(monkeypatch: pytest.MonkeyP
 
     import time
 
-    later = time.time() + 2 * 3600  # a bot check passes: robots.txt is asked again
+    later = time.time() + 300  # a bot check passes: robots.txt is asked again within minutes
     monkeypatch.setattr(time, "time", lambda: later)
     with pytest.raises(FetchError):
         await fetch_text(PAGE)

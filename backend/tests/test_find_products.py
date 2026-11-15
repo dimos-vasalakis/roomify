@@ -217,3 +217,46 @@ async def test_a_read_that_raises_does_not_fail_the_step(
     result = await find_products(SPEC)
     assert [c.url for c in result.candidates] == ["https://jysk.gr/a/b/good"]
     assert result.rejected[0].reason == "Could not read this page"
+
+
+async def test_a_shop_that_refuses_every_page_sends_the_search_elsewhere(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The live failure: 19 of 20 painting pages were IKEA, IKEA refused them all, and the
+    slot came back empty although other shops had paintings."""
+    ikea = [f"https://www.ikea.gr/p/pinakas-{i}/" for i in range(3)]
+    other = "https://www.e-shop.gr/pinakas-mple"
+
+    async def fake_search(spec: ProductSpec, limit: int) -> SearchResult:
+        hits = [SearchHit(url=u, retailer="ikea.gr", shop_name="IKEA", words="pinakas",
+                          score=1, source="catalogue") for u in ikea]  # fmt: skip
+        return SearchResult(hits=hits, note=None)
+
+    asked: dict[str, object] = {}
+
+    async def fake_more(spec, skip_urls, skip_hosts, limit):  # type: ignore[no-untyped-def]
+        asked.update(skip_urls=skip_urls, skip_hosts=skip_hosts)
+        hit = SearchHit(url=other, retailer="e-shop.gr", shop_name="e-shop", words="pinakas mple",
+                        score=1, source="web")  # fmt: skip
+        return SearchResult(hits=[hit], note=None)
+
+    async def fake_read(url: str) -> PageRead:
+        if "ikea" in url:
+            return PageRead(url=url, listing=None, error="ikea.gr is refusing requests right now")
+        return ok(url)
+
+    async def no_robots(urls: list[str]) -> None:
+        return None
+
+    class Keyed:
+        serper_api_key = "test-only"
+        replay = False
+
+    monkeypatch.setattr(finder, "search_products", fake_search)
+    monkeypatch.setattr(finder, "more_leads", fake_more)
+    monkeypatch.setattr(finder, "read_product_page", fake_read)
+    monkeypatch.setattr(finder, "warm_robots", no_robots)
+    monkeypatch.setattr(finder, "get_settings", lambda: Keyed())
+    result = await find_products(ProductSpec(item=["πίνακας"], max_price_eur=150))
+    assert [c.url for c in result.candidates] == [other]
+    assert asked["skip_hosts"] == {"ikea.gr"} and asked["skip_urls"] == set(ikea)

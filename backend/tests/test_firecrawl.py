@@ -120,3 +120,42 @@ def test_pasted_keys_lose_spaces_and_quotes(monkeypatch) -> None:  # type: ignor
     monkeypatch.setenv("FIRECRAWL_API_KEY", ' "fc-abc123"\n')
     get_settings.cache_clear()
     assert get_settings().firecrawl_api_key == "fc-abc123"
+
+
+async def test_ikea_robots_unreadable_still_reads_its_product_pages(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The live failure: robots.txt failed through Firecrawl and was refused directly, which
+    turned away every IKEA page for an hour ("ikea.gr is refusing requests right now")."""
+    monkeypatch.setattr(web_fetch, "firecrawl_enabled", lambda: True)
+    _, page = fixture("ikea_mittzon_desk")
+    asked: list[str] = []
+
+    async def service(url: str) -> str:
+        asked.append(url)
+        if url.endswith("robots.txt"):
+            raise FirecrawlError("The page reading service did not answer")
+        return page
+
+    monkeypatch.setattr(web_fetch, "firecrawl_html", service)
+    monkeypatch.setattr(web_fetch, "_download", refuse(403))
+    url = "https://www.ikea.gr/proioda/mittzon-grafeio/12345/"
+    assert "MITTZON" in (await web_fetch.fetch_text(url)).upper()
+    assert asked[-1] == url
+
+
+async def test_robots_refused_now_uses_the_rules_read_before(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import time
+
+    monkeypatch.setattr(web_fetch, "firecrawl_enabled", lambda: False)
+    rules = "User-agent: *\nDisallow: /cart"
+
+    async def direct(url: str) -> str:
+        return rules if url.endswith("robots.txt") else "<html>page</html>"
+
+    monkeypatch.setattr(web_fetch, "_download", direct)
+    url = "https://www.jysk.gr/some-product"
+    await web_fetch._robots(url)
+    later = time.time() + 8 * 24 * 3600  # the week is over: robots.txt is asked again, and refused
+    monkeypatch.setattr(time, "time", lambda: later)
+    monkeypatch.setattr(web_fetch, "_download", refuse(403))
+    robots = await web_fetch._robots(url)
+    assert not robots.locked and robots.text == rules

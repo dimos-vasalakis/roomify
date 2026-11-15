@@ -322,3 +322,16 @@ async def test_google_shopping_widens_greek_searches_beyond_our_shops(
     assert [h.url for h in web] == ["https://www.e-shop.gr/grafeio-oak"]  # other sense dropped
     shop_only = await search_products(ProductSpec(item=["γραφείο"], shops=["jysk.gr"]), limit=20)
     assert all(h.retailer == "jysk.gr" for h in shop_only.hits)  # a named shop stays the only one
+
+
+def test_one_shop_never_takes_every_read_after_the_name_check() -> None:
+    from app.tools.search_products import SearchHit, _fair
+
+    def hit(shop: str, n: int) -> SearchHit:
+        return SearchHit(url=f"https://{shop}/{n}", retailer=shop, shop_name=shop,
+                         words="pinakas", score=1, source="catalogue")  # fmt: skip
+
+    ranked = [hit("ikea.gr", i) for i in range(30)] + [hit("jysk.gr", i) for i in range(5)]
+    picked = _fair(ranked, 20)
+    assert sum(h.retailer == "jysk.gr" for h in picked) == 5
+    assert len(picked) == 20 and picked[0].retailer == "ikea.gr"

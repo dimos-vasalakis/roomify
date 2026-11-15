@@ -37,4 +37,8 @@ async def fal(model: str, arguments: dict[str, Any], timeout: float = 90) -> Fal
                 "The design service could not finish this step. Please try again."
             ) from exc
 
-    return await cached("fal", {"model": model, "arguments": arguments}, call, FalResult)
+    # Live, every render is new: a saved one made "try again" hand back the same picture.
+    # Results are still saved, so a REPLAY=1 recording reads them.
+    return await cached(
+        "fal", {"model": model, "arguments": arguments}, call, FalResult, max_age_s=0
+    )

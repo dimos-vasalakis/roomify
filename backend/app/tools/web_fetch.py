@@ -10,9 +10,9 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel
 
-from app.cache import HOUR, WEEK, cached
+from app.cache import WEEK, cache_path, cached, load_saved
 from app.tools.firecrawl import FirecrawlError, firecrawl_enabled, firecrawl_html, plain_text
-from app.tools.shops import host_of, shop_for_url
+from app.tools.shops import host_of, is_product_url, shop_for_url
 
 log = logging.getLogger("roomify")
 
@@ -26,6 +26,9 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 TIMEOUT = httpx.Timeout(20.0, connect=8.0)
+# A robots.txt that could not be read is asked for again after this long. It was an hour,
+# and one failed fetch then turned away every page of that shop for the whole hour.
+LOCK_RETRY_S = 120
 MAX_BYTES = 12 * 1024 * 1024
 DOWNLOAD_DEADLINE_S = 60.0
 
@@ -136,6 +139,11 @@ def _through_service(url: str) -> bool:
     return bool(shop and shop.read_through_service and firecrawl_enabled())
 
 
+def reads_through_service(url: str) -> bool:
+    """True when this page is read through Firecrawl first, which takes longer."""
+    return _through_service(url)
+
+
 async def _robots(url: str) -> Robots:
     parts = urlsplit(url)
     robots_url = f"{parts.scheme}://{parts.netloc}/robots.txt"
@@ -154,7 +162,11 @@ async def _robots(url: str) -> Robots:
                     return Robots(text=plain_text(await firecrawl_html(robots_url)))
                 except FirecrawlError:
                     pass
-            if exc.status in (401, 403):  # read nothing now; ask again in an hour, not a week
+            if exc.status in (401, 403):
+                # The rules are known from an earlier read: they rarely change, so use them.
+                earlier = load_saved(cache_path("robots", {"url": robots_url}), Robots)
+                if earlier is not None and not earlier.locked:
+                    return earlier
                 return Robots(text="User-agent: *\nDisallow: /", locked=True)
             if exc.status is not None and 400 <= exc.status < 500 and exc.status != 429:
                 return Robots(text="")  # the site has no robots.txt: no rules
@@ -165,7 +177,7 @@ async def _robots(url: str) -> Robots:
 
     robots = await cached(
         "robots", {"url": robots_url}, load, Robots,
-        max_age_s=lambda r: HOUR if r.locked else WEEK,
+        max_age_s=lambda r: LOCK_RETRY_S if r.locked else WEEK,
     )  # fmt: skip
     return robots
 
@@ -218,7 +230,15 @@ async def fetch_text(url: str) -> str:
     """Raw page text, uncached: callers cache what they extract, not megabytes of HTML."""
     _check_address(url)
     robots = await _robots(url)
-    if robots.locked:  # passing trouble: an earlier read of the page may stand in
+    if robots.locked:
+        shop = shop_for_url(url)
+        if _through_service(url) and shop and is_product_url(shop, url):
+            # One of our shops that refuses this server's address, robots.txt included: its
+            # product pages, listed in its own sitemap, are read the way a browser would.
+            log.warning("robots.txt for %s unreadable; reading the product page via Firecrawl",
+                        host_of(url))  # fmt: skip
+            return await fetch_through_service(url)
+        # passing trouble: an earlier read of the page may stand in
         raise FetchError(f"{host_of(url)} is refusing requests right now", transient=True)
     if not robots_allow(robots_rules(robots.text), url):
         raise FetchError(f"{host_of(url)} does not allow reading this page")

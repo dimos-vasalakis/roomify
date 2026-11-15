@@ -309,3 +309,23 @@ async def test_an_unfaithful_swap_edit_falls_back_to_redrawing_the_room(
     assert not any(k == "render.ready" for k, _ in sent)
     no_picture = turn(basket=[DESK])  # nothing to edit yet
     assert not await loop._swap_in_place(no_picture, "Desk", desk, {"Desk": new}, sent.append)
+
+
+async def test_moving_a_piece_edits_the_latest_picture_instead_of_redrawing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The live failure: "put the bed vertically against the wall" redrew the whole room from
+    the original photo, and the wish only reached the image model through the layout plan."""
+    from tests.test_offer import _check_result
+
+    desk, _, edit, picture, state = _swap_setup(monkeypatch, None)  # type: ignore[arg-type]
+    monkeypatch.setattr(loop, "_check", AsyncMock(return_value=_check_result(desk.id)))
+    monkeypatch.setattr(loop, "_reread", AsyncMock(return_value={"Desk": desk}))
+    sent: list[tuple[str, dict[str, object]]] = []
+    decision = Decision(action="arrange", instruction="desk under the window")
+    await loop._arrange(b"photo", state, decision, sent.append)
+    picture.assert_not_awaited()
+    prompt, refs = edit.await_args.args
+    assert refs == ["https://v3.fal.media/old.jpg", desk.image_url]
+    assert "desk under the window" in prompt and "Change nothing else" in prompt
+    assert any(k == "render.ready" for k, _ in sent)

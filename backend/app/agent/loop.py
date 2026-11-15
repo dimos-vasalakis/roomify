@@ -306,9 +306,11 @@ async def _layout(
                 vision=True,
             )
         )
-    except (LLMError, ValueError):
+    except (LLMError, ValueError) as exc:
+        log.warning("Layout plan failed (%s); rendering without placements", type(exc).__name__)
         return None
     if {pl.product_id for pl in layout.placements} != {p.id for p in chosen.values()}:
+        log.warning("Layout plan named other products; rendering without placements")
         return None
     return layout
 
@@ -1120,12 +1122,40 @@ async def _arrange(photo: bytes, turn: Turn, decision: Decision, send: Send) -> 
     send(("run.status", {"status": "running"}))
     chosen = await _reread(turn.basket, send)
     wish = (decision.instruction or turn.message).strip().rstrip(".")
-    _step(send, f"Keeping your pieces and moving them: {wish}.", "rendering")
     brief = f"{_whole_brief(turn)}\nPlacement asked for now (it overrides earlier ones): {wish}."
-    if not await _picture(photo, chosen, brief, "The same pieces, placed as asked.", deadline,
-                          send, decision.remove):  # fmt: skip
+    if await _arrange_in_place(turn, chosen, wish, decision.remove, send):
+        pass
+    elif not await _picture(photo, chosen, brief, "The same pieces, placed as asked.", deadline,
+                            send, decision.remove):  # fmt: skip
         _say(send, "The picture still shows the earlier arrangement.")
     send(("done", {"total_eur": _total(chosen), "currency": chosen_currency(chosen)}))
+
+
+async def _arrange_in_place(
+    turn: Turn, chosen: dict[str, ProductListing], wish: str, remove: list[str], send: Send
+) -> bool:
+    """The pieces moved inside the latest picture, which is edited, not redrawn: the room and
+    every piece stay as the person just saw them, and only what they asked to move moves.
+    These are pieces already in the picture, so their names can't invent anything new."""
+    pieces = " ".join(
+        f"The {slot.lower()} is the exact product in reference {i}: {p.title}, real size "
+        f"{_size(p)}.{_proportion(p)}"
+        for i, (slot, p) in enumerate(chosen.items(), start=2)
+    )
+    prompt = (
+        "Reference 1 is a photo of a furnished room. Rearrange only the pieces named here, "
+        f"exactly as asked: {wish}. {pieces} Each keeps its exact shape, colours, materials "
+        "and true size relative to the room; it only changes position and orientation. A bed "
+        "placed against a wall has its headboard flat against that wall and its full length "
+        "running into the room. Where a piece stood before, show the same floor and wall. "
+        "Change nothing else: every wall, window, door and every other object stays exactly as "
+        "it is, with the same camera, framing, lens, light and grain. Add nothing. "
+        "Photorealistic, natural contact shadows, no text. Landscape 3:2."
+    )
+    return await _edit_in_place(
+        turn, chosen, prompt, [p.image_url for p in chosen.values()], remove,
+        f"Moving your pieces in the picture: {wish}. Everything else stays.", send,
+    )  # fmt: skip
 
 
 async def _swap_in_place(

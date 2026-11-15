@@ -257,12 +257,29 @@ async def _only_the_item(
     """The LLM reads the names and keeps the ones that are the item, best first.
     Unchecked (no LLM), the word-matching order stands, spread across shops."""
     want = describe(spec.item, spec.keywords, spec.meaning)
-    verdict = await relevant(want, [h.words for h in hits], limit)
+    # Ask for more than we read, so the shop cap below still has enough to choose from.
+    verdict = await relevant(want, [h.words for h in hits], limit * 2)
     if not verdict.checked:
         return _spread(hits, shops, limit), []
-    kept = [hits[i] for i in verdict.keep]
+    kept = _fair([hits[i] for i in verdict.keep], limit)
     dropped = [Dropped(hit=hits[i], reason=why) for i, why in verdict.rejected.items()]
     return kept, dropped
+
+
+def _fair(hits: list[SearchHit], limit: int) -> list[SearchHit]:
+    """The relevance order, but no shop takes more than half the reads while others have
+    kept names: one shop that refuses us (IKEA, 19 of 20 pages) must not empty a slot."""
+    cap = max(limit // 2, 1)
+    first: list[SearchHit] = []
+    later: list[SearchHit] = []
+    per_shop: dict[str, int] = {}
+    for hit in hits:
+        if per_shop.get(hit.retailer, 0) < cap:
+            first.append(hit)
+            per_shop[hit.retailer] = per_shop.get(hit.retailer, 0) + 1
+        else:
+            later.append(hit)
+    return (first + later)[:limit]
 
 
 async def _shopping_hits(spec: ProductSpec, query: _Query) -> tuple[list[SearchHit], str | None]:
@@ -330,3 +347,31 @@ async def search_products(spec: ProductSpec, limit: int = 12) -> SearchResult:
         except ReplayMiss:
             notes.append("Web search was not recorded for replay")
     return SearchResult(hits=hits[:limit], note="; ".join(notes) or None, dropped=dropped)
+
+
+async def more_leads(
+    spec: ProductSpec, skip_urls: set[str], skip_hosts: set[str], limit: int
+) -> SearchResult:
+    """A second round for a slot whose first pages could not be read: Google Shopping across
+    the web and a site search of our other shops, minus the shops that refused us and the
+    pages already tried. Never raises."""
+    query = _prepare(spec.item, spec.keywords, spec.exclude)
+    shops = [s for s in enabled_shops() if s.domain not in skip_hosts]
+    notes: list[str] = []
+    pool, note = await _shopping_hits(spec, query)
+    if note:
+        notes.append(note)
+    if spec.country.upper() == "GR" and shops:
+        try:
+            pool += await _web_hits(spec, query, shops)
+        except WebSearchError as exc:
+            notes.append(str(exc))
+        except ReplayMiss:
+            notes.append("Web search was not recorded for replay")
+    fresh = list(
+        {h.url: h for h in pool if h.url not in skip_urls and h.retailer not in skip_hosts}.values()
+    )
+    if not fresh:
+        return SearchResult(hits=[], note="; ".join(notes) or None)
+    kept, dropped = await _only_the_item(spec, fresh[: limit * POOL_FACTOR], shops, limit)
+    return SearchResult(hits=kept, note="; ".join(notes) or None, dropped=dropped)
