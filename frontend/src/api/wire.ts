@@ -107,6 +107,8 @@ export type RunEvent =
   | { type: 'error'; seq: number; data: { message: string; retryable?: boolean; code?: string } }
   | { type: 'fit.proof'; seq: number; data: { product_id: string; ok: boolean; lines: string[] } }
   | { type: 'done'; seq: number; data: { total_eur: number; currency?: string } }
+  /** The person changed the budget in words ("raise it to 800"): the new total, worked out by the server. */
+  | { type: 'budget.changed'; seq: number; data: { budget_eur: number } }
 
 /** POST /handoff: a drop box for a photo from the phone, open for `expires_in_s`. */
 export type HandoffOut = { code: string; expires_in_s: number }

@@ -3,7 +3,7 @@ import { LIVE, OFFERS } from '../api/config'
 import { followTurn } from '../api/stream'
 import { fromDetail, fromSummary, walkIn } from '../api/map'
 import { money, roomName } from '../lib/format'
-import { compose, isWorking, totalOf } from '../lib/session'
+import { compose, isWorking } from '../lib/session'
 import { toRoomPhoto } from '../lib/photo'
 import type { Session, WalkMove } from '../types'
 import { DRAFT_ID, MAX_PAST, checkpointOf, useStore, type Block } from './store'
@@ -143,9 +143,8 @@ export function useActions() {
 
     /** Over budget: ask for the same room for less. */
     fitBudget() {
-      const target = money(active.budgetEur, active.currency)
-      const over = money(totalOf(active) - active.budgetEur, active.currency)
-      return talk(`That is ${over} over my budget. Bring the total under ${target}: swap the priciest pieces for cheaper ones that still fit, and keep the rest.`, {}, 'swap')
+      // Says what it wants plainly; the agent's "fit" works out which piece and what's left.
+      return talk(`Make it fit my budget of ${money(active.budgetEur, active.currency)}: swap the priciest piece for a cheaper one in the same style.`, {}, 'swap')
     },
 
     async newRoom() {

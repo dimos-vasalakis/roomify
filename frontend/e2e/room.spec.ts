@@ -365,3 +365,15 @@ test('a wall width is understood in cm or metres', async ({ page }) => {
   })
   expect(widths).toEqual([160, 160, 160, 320, 300, 250, null, null])
 })
+
+test('a budget said in words changes the budget, with the sums done right', async ({ page }) => {
+  await start(page)
+  await done(page)
+  await say(page, 'I can spend 300 more')
+  const chat = page.getByLabel('Conversation with Roomify')
+  await expect(chat).toContainText('Your budget is now €900. Your pieces come to €219, so €681 is left.')
+  await expect(page.getByRole('button', { name: /^of €/ })).toHaveText('of €900.00')
+  await say(page, 'lower the budget to 150')
+  await expect(chat).toContainText('€69 over. Want me to make it fit?')
+  await expect(page.getByRole('button', { name: /Bring it under €150.00/ })).toBeVisible()
+})

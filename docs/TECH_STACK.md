@@ -104,7 +104,7 @@ class Product(BaseModel):
 ```
 
 SSE events, all JSON with `type`, `run_id`, `t`:
-`message`, `step.started`, `step.result`, `ask`, `fit.proof`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `product.removed`, `budget.update`, `render.ready`, `verify.result`, `video.ready`, `error`, `done`.
+`message`, `step.started`, `step.result`, `ask`, `fit.proof`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `product.removed`, `budget.update`, `budget.changed` (`{budget_eur}`: the person changed the budget in words), `render.ready`, `verify.result`, `video.ready`, `error`, `done`.
 
 ## Shops and the scraper (`backend/app/tools/`)
 Flow: the LLM turns the photo and the user's words into a `ProductSpec` (item names as shops print them, keywords, exclude, an English `meaning`, max price and size) → `find_products(spec)` searches the catalogues (word matching, minus built-in other senses such as whiteboards for πίνακας), lets one text-only LLM pass (`tools/relevance.py`) keep only names that are the item, best first, with a reason for the ones it turns away, reads the top 20 pages 4 at a time, and returns verified `candidates` plus `rejected` with a plain reason each ("Width 160 cm, your space allows 140 cm") → oumi ranks the candidates → fal renders the top 3.

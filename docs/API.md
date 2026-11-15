@@ -194,6 +194,10 @@ Multipart: `photo` (file), `message`, `budget`, `city`, optional `wall_cm`, `his
 
 The server keeps no conversation state, so a restart or a sleeping instance never loses a room. Each turn the agent decides one action from the photo, the conversation and the basket:
 - `ask`: one question, only when it changes what is bought, never twice; for a wall width it proposes its own estimate from visible anchors (`suggestion`).
+- `add`: more pieces on top of the basket; "another", "a second", "next to", "matching" always mean add, never a swap of the piece already there (a server rule backs the model up).
+- `fit`: over budget, or "make it fit" / "too expensive": the priciest piece is swapped for one that brings the total within the budget; when no single swap can, the agent lists the pieces and asks which to drop.
+- Budget in words ("raise it to 800", "€200 more", "lower it by 100", "halve it") is worked out exactly on the server and sent as `budget.changed` before the action, which then uses it.
+- The decision is made by the sharper vision model, which writes a short `thinking` first (logged, never shown).
 - `design`: plan, shop, check, choose, render, check the picture (the `/offer` path). Only for a first design or when the person asks to start over: it empties the basket.
 - `add`: more pieces on top of the basket ("add a lamp"). Every chosen piece stays; only the new ones are shopped, with the budget left, at most 5 pieces in all. The new pieces are edited into the latest picture (checked like a swap), else the whole room is drawn again. Streams `product.chosen` only for the new pieces (a new slot, e.g. `"Lamp 2"` beside a `"Lamp"`), then `render.ready` and `done`, with `message.action` `"add"`.
 - `drop`: take one chosen piece out ("remove the rug"). Nothing is bought; the other pieces stay. Streams `product.removed`, then the latest picture edited without it (checked like a swap, else the room drawn again), then `done`, with `message.action` `"drop"`.

@@ -200,6 +200,8 @@ export function applyEvent(s: Session, e: RunEvent): Session {
       }
     case 'fit.proof':
       return { ...s, products: s.products.map((p) => (p.id === e.data.product_id ? { ...p, fit: e.data.lines, fitOk: e.data.ok } : p)) }
+    case 'budget.changed':
+      return { ...s, budgetEur: e.data.budget_eur }
     case 'done':
       return { ...s, status: 'done', now: null, ask: null, ...(e.data.currency ? { currency: e.data.currency } : {}) }
     default:
