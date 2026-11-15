@@ -53,9 +53,14 @@ export const FRONT: View = { yaw: 0, pitch: 0, zoom: 1 }
 const VFOV = 50 // a phone's main camera, landscape
 const CAMERA_HEIGHT_M = 1.45 // where people hold a phone to photograph a room
 const COLS = 360
-const BREAK = 0.25 // only a real cliff in the empty room is left open; anything less is bridged
+// A cliff in depth (a doorway, a table's edge against the floor) is left open rather than bridged:
+// bridged, it smeared into streaks the moment the camera moved. The backdrop fills what shows through.
+const BREAK = 0.12
 const RAD = Math.PI / 180
-const SWAY = { deg: 12, speed: 0.3 }
+const SWAY = { deg: 7, speed: 0.3 }
+// One photo only saw the room from one place: beyond about 20° round, what it never saw shows.
+const ORBIT_DEG = 20
+const BACKDROP_COLS = 48
 // The direction a generated model faces in its own file: glTF's front is +Z.
 const MODEL_FRONT_YAW = 0
 
@@ -313,6 +318,42 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
   const shell = new THREE.Mesh(shellGeometry, shellMat)
   scene.add(shell)
 
+  // ---- The backdrop: the photo, heavily blurred, on a dome behind the whole room and wider than
+  // the photo. Where the shell is open (a cliff in depth) or ends (the photo's edge), the room's own
+  // soft colour shows instead of a black hole.
+  let farthest = 0
+  for (const p of raw) farthest = Math.max(farthest, p.length())
+  const far = farthest * 1.2
+  const blur = document.createElement('canvas')
+  blur.width = 32
+  blur.height = Math.max(2, Math.round(32 / aspect))
+  blur.getContext('2d')!.drawImage(o.photo, 0, 0, blur.width, blur.height)
+  const backdropTexture = new THREE.CanvasTexture(blur)
+  backdropTexture.colorSpace = THREE.SRGBColorSpace
+  const bRows = Math.round(BACKDROP_COLS / aspect)
+  const bPositions: number[] = []
+  const bUvs: number[] = []
+  for (let j = 0; j <= bRows; j++)
+    for (let i = 0; i <= BACKDROP_COLS; i++) {
+      const u = -0.4 + (1.8 * i) / BACKDROP_COLS
+      const v = -0.4 + (1.8 * j) / bRows
+      const p = cameraRay(u, v, aspect).multiplyScalar(far).applyQuaternion(level).multiplyScalar(scale)
+      bPositions.push(p.x, p.y, p.z)
+      bUvs.push(clamp(u, 0, 1), 1 - clamp(v, 0, 1))
+    }
+  const bIndex: number[] = []
+  for (let j = 0; j < bRows; j++)
+    for (let i = 0; i < BACKDROP_COLS; i++) {
+      const a = j * (BACKDROP_COLS + 1) + i
+      bIndex.push(a, a + BACKDROP_COLS + 1, a + BACKDROP_COLS + 2, a, a + BACKDROP_COLS + 2, a + 1)
+    }
+  const backdropGeometry = new THREE.BufferGeometry()
+  backdropGeometry.setAttribute('position', new THREE.Float32BufferAttribute(bPositions, 3))
+  backdropGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(bUvs, 2))
+  backdropGeometry.setIndex(bIndex)
+  const backdrop = new THREE.Mesh(backdropGeometry, new THREE.MeshBasicMaterial({ map: backdropTexture, toneMapped: false, side: THREE.DoubleSide }))
+  scene.add(backdrop)
+
   // Soft shadows on the floor, nothing else drawn there.
   const catcher = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.32 }))
   catcher.rotation.x = -Math.PI / 2
@@ -362,11 +403,11 @@ export function createScene(canvas: HTMLCanvasElement, o: Options): Scene3D {
   controls.zoomSpeed = 0.7
   controls.update()
   const start = new THREE.Spherical().setFromVector3(camera.position.clone().sub(target))
-  // The photo only saw one side of the room: beyond about 50° round, its walls stretch thin.
-  controls.minAzimuthAngle = start.theta - 50 * RAD
-  controls.maxAzimuthAngle = start.theta + 50 * RAD
-  controls.minPolarAngle = 18 * RAD
-  controls.maxPolarAngle = Math.min(start.phi + 10 * RAD, 98 * RAD)
+  // The photo only saw one side of the room: further round, what it never saw opens up.
+  controls.minAzimuthAngle = start.theta - ORBIT_DEG * RAD
+  controls.maxAzimuthAngle = start.theta + ORBIT_DEG * RAD
+  controls.minPolarAngle = Math.max(18 * RAD, start.phi - 28 * RAD)
+  controls.maxPolarAngle = Math.min(start.phi + 8 * RAD, 98 * RAD)
   controls.minDistance = d0 * 0.3
   controls.maxDistance = d0 * 1.25
   controls.addEventListener('start', () => {

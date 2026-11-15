@@ -1,6 +1,6 @@
 import { RotateCcw, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { modelOf, roomDepthOf } from '../../lib/depth'
+import { modelOf, roomShellOf } from '../../lib/depth'
 import { money } from '../../lib/format'
 import { DUR, EASE_IN_OUT, STAGGER, enter, gsap, reducedMotion, useGSAP } from '../../lib/motion'
 import { FRONT, createScene, type Piece, type PieceState, type Scene3D, type View } from '../../lib/scene3d'
@@ -10,12 +10,12 @@ import { LiveDot } from '../common/LiveDot'
 
 const ANGLES: { id: string; label: string; view: View }[] = [
   { id: 'front', label: 'Front', view: FRONT },
-  { id: 'left', label: 'Left', view: { yaw: -26, pitch: 8, zoom: 0.88 } },
-  { id: 'right', label: 'Right', view: { yaw: 26, pitch: 8, zoom: 0.88 } },
-  { id: 'above', label: 'Above', view: { yaw: 0, pitch: 40, zoom: 1 } },
+  { id: 'left', label: 'Left', view: { yaw: -16, pitch: 6, zoom: 0.9 } },
+  { id: 'right', label: 'Right', view: { yaw: 16, pitch: 6, zoom: 0.9 } },
+  { id: 'above', label: 'Above', view: { yaw: 0, pitch: 24, zoom: 0.95 } },
 ]
 /** Where the intro swings to: enough angle to show every piece is really in 3D. */
-const SWING: View = { yaw: 18, pitch: 10, zoom: 0.92 }
+const SWING: View = { yaw: 12, pitch: 7, zoom: 0.94 }
 const RESUME_MS = 6000
 
 const cssColor = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
@@ -54,9 +54,10 @@ export function Room3D({ s }: { s: Session }) {
     let built: Scene3D | null = null
     ;(async () => {
       try {
+        const shell = await roomShellOf(s)
         const [photo, depth, render] = await Promise.all([
-          loadImage(s.beforeSrc),
-          roomDepthOf(s.beforeSrc).then(loadImage),
+          loadImage(shell.photo),
+          loadImage(shell.depth),
           s.afterSrc ? loadImage(s.afterSrc).catch(() => null) : Promise.resolve(null),
         ])
         if (!alive || !canvas.current) return

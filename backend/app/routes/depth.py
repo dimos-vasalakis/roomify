@@ -8,7 +8,15 @@ from pydantic import BaseModel, Field
 
 from app.cache import ReplayMiss
 from app.tools.depth import Depth, DepthError, depth_map
-from app.tools.model3d import Model3D, Model3DError, PhotoDepth, photo_depth, product_model
+from app.tools.model3d import (
+    Model3D,
+    Model3DError,
+    PhotoDepth,
+    ShellPiece,
+    photo_depth,
+    product_model,
+    room_shell,
+)
 
 router = APIRouter(tags=["depth"])
 PHOTO_MAX_BYTES = 8 * 1024 * 1024
@@ -16,6 +24,11 @@ PHOTO_MAX_BYTES = 8 * 1024 * 1024
 
 class DepthIn(BaseModel):
     image_url: str = Field(max_length=2000)
+
+
+class ShellIn(BaseModel):
+    render_url: str = Field(max_length=2000)
+    pieces: list[ShellPiece] = Field(min_length=1, max_length=8)
 
 
 class ModelIn(BaseModel):
@@ -42,6 +55,18 @@ async def depth_of_photo(photo: Annotated[UploadFile, File()]) -> PhotoDepth:
         return await photo_depth(data)
     except DepthError as exc:
         raise HTTPException(502, str(exc)) from exc
+    except ReplayMiss as exc:
+        raise HTTPException(503, "The 3D room isn't part of the recorded demo.") from exc
+
+
+@router.post("/depth/shell")
+async def depth_of_shell(body: ShellIn) -> PhotoDepth:
+    """The finished room with its chosen pieces taken out, and its depth: the shell of the 3D
+    room. Same render and pieces, same answer, for good."""
+    try:
+        return await room_shell(body.render_url, body.pieces)
+    except DepthError as exc:
+        raise HTTPException(422 if "Only" in str(exc) else 502, str(exc)) from exc
     except ReplayMiss as exc:
         raise HTTPException(503, "The 3D room isn't part of the recorded demo.") from exc
 

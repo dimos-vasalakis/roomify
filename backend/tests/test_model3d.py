@@ -77,3 +77,39 @@ def test_the_empty_room_photo_gets_its_depth_once(monkeypatch: pytest.MonkeyPatc
             assert got.json()["depth_url"] == "https://v3b.fal.media/d.png"
             assert got.json()["image_url"] == "https://v3b.fal.media/room.jpg"
     assert upload.await_count == 1
+
+
+SHELL = {
+    "render_url": "https://v3b.fal.media/render.jpg",
+    "pieces": [{"name": "sofa: HELLERUP beige", "box": {"x": 0.3, "y": 0.6, "w": 0.4, "h": 0.3}}],
+}
+
+
+def test_the_shell_is_the_render_without_its_pieces_made_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A sofa the design replaced stayed in the 3D room when the shell was the person's photo."""
+    fal = AsyncMock(
+        return_value=FalResult(data={"images": [{"url": "https://v3b.fal.media/empty.jpg"}]})
+    )
+    depth = AsyncMock(
+        return_value=model3d.Depth(depth_url="https://v3b.fal.media/d.png", width=30, height=20)
+    )
+    monkeypatch.setattr(model3d, "fal", fal)
+    monkeypatch.setattr(model3d, "depth_map", depth)
+    with TestClient(app) as client:
+        for _ in range(2):
+            got = client.post("/depth/shell", json=SHELL).json()
+            assert got["image_url"] == "https://v3b.fal.media/empty.jpg"
+            assert got["depth_url"] == "https://v3b.fal.media/d.png"
+    assert fal.await_count == 1
+    arguments = fal.await_args.args[1]
+    assert arguments["image_urls"] == [SHELL["render_url"]]
+    assert "sofa: HELLERUP beige (in the lower middle of the picture)" in arguments["prompt"]
+    depth.assert_awaited_once_with("https://v3b.fal.media/empty.jpg")
+
+
+def test_only_roomify_renders_get_a_shell() -> None:
+    with TestClient(app) as client:
+        got = client.post("/depth/shell", json=SHELL | {"render_url": "https://example.com/a.jpg"})
+    assert got.status_code == 422
