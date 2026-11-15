@@ -103,6 +103,8 @@ const now = (text: string) => ({ text, startedAt: Date.now() })
 /** Fold one run event into a room. Pure; unknown events leave the room as it is. */
 export function applyEvent(s: Session, e: RunEvent): Session {
   switch (e.type) {
+    case 'replacement.unavailable':
+      return { ...s, replacementMiss: e.data, now: null }
     case 'run.status': {
       const status = statusOf(e.data.status)
       return { ...s, status, now: status === 'done' || status === 'failed' ? null : s.now, ask: status === 'asking' ? s.ask : null }

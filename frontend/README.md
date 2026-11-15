@@ -74,7 +74,6 @@ Other checks, from `backend/`:
 Database integration tests require a migrated, disposable `TEST_DATABASE_URL`;
 never use the shared Supabase database. Real account login/storage, paid render
 quality, microphone permissions, physical touch devices and production hosting
-need separate live checks. Saved-run events/answer/swap/walk-in routes and phone
-capture are not implemented in the current backend. The current offer flow uses
-whole-brief refinement instead. A complete committed `demo/cache` recording is
+need separate live checks. Saved-run events/answer/swap routes remain unimplemented. The current app uses
+`POST /turn` for design and item actions, including Replace, and `/handoff` for phone capture. A complete committed `demo/cache` recording is
 also absent, so a full backend demo replay cannot yet be certified.

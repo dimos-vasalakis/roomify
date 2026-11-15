@@ -1207,7 +1207,10 @@ def _copy_of(p: ProductListing, slot: str, earlier: list[ProductListing]) -> Pro
     if not any(o.url == p.url for o in earlier):
         return p
     number = re.search(r"\s(\d+)$", slot)
-    n = number.group(1) if number else str(1 + sum(o.url == p.url for o in earlier))
+    n = int(number.group(1)) if number else 1 + sum(o.url == p.url for o in earlier)
+    used = {o.id for o in earlier}
+    while f"{p.id}-{n}" in used:
+        n += 1
     return p.model_copy(update={"id": f"{p.id}-{n}"})
 
 
@@ -1449,6 +1452,7 @@ class ChatLine(BaseModel):
 class BasketLine(BaseModel):
     """A chosen piece as the front end holds it; the page is read again before use."""
 
+    id: str | None = Field(default=None, max_length=100)
     slot: str = Field(max_length=40)
     url: str = Field(max_length=2000)
     title: str = Field(default="", max_length=300)
@@ -1459,12 +1463,22 @@ class BasketLine(BaseModel):
     height_cm: float | None = None
 
 
+class TargetBox(BaseModel):
+    """The selected item's box in the current rendered picture, normalized to 0–1."""
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    w: float = Field(gt=0, le=1)
+    h: float = Field(gt=0, le=1)
+
+
 class Intent(BaseModel):
     """A button the person pressed on one piece: exact, so no model has to guess it."""
 
     action: Literal["drop", "add", "arrange", "swap"]
     slot: str = Field(max_length=40)
     instruction: str = Field(default="", max_length=300)
+    box: TargetBox | None = None
 
 
 class Turn(BaseModel):
@@ -1691,7 +1705,11 @@ async def _reread(basket: list[BasketLine], send: Send) -> dict[str, ProductList
         if read.listing is None:
             _step(send, f"Couldn't read the {line.slot.lower()}'s page again ({read.error}).")
         else:
-            chosen[line.slot] = _copy_of(read.listing, line.slot, list(chosen.values()))
+            piece = _copy_of(read.listing, line.slot, list(chosen.values()))
+            # Preserve the browser's per-copy identity; all shop facts still come from the page.
+            if line.id and line.id not in {p.id for p in chosen.values()}:
+                piece = piece.model_copy(update={"id": line.id})
+            chosen[line.slot] = piece
     if not chosen:
         raise LLMError("Couldn't read the shop pages of your pieces again. Try again in a minute.")
     return chosen
@@ -1720,7 +1738,9 @@ async def _swap(photo: bytes, turn: Turn, decision: Decision, send: Send) -> Non
     old = chosen.get(decision.slot)
     # Every copy of the piece changes together: "red chairs instead" means all six of them.
     line = next(b for b in turn.basket if b.slot == decision.slot)
-    copies = [b.slot for b in turn.basket if b.url == line.url]
+    copies = [decision.slot] if turn.intent and turn.intent.action == "swap" else [
+        b.slot for b in turn.basket if b.url == line.url
+    ]
     rest = {k: v for k, v in chosen.items() if k not in copies}
     left = turn.budget - _total(rest)
     if left <= 0:
@@ -1735,14 +1755,19 @@ async def _swap(photo: bytes, turn: Turn, decision: Decision, send: Send) -> Non
     result = await _shop(spec, left, send, set())
     candidates = [p for p in result.candidates if p.url != line.url]
     if not candidates:
-        raise _nothing_passed([(spec, result)])
+        _replacement_unavailable(
+            turn, line, decision,
+            "I couldn't find a different item matching your request within the remaining budget.", send,
+        )
+        return
     currency = spec.spec.currency
     basket = await judge_basket(photo, request, left, {slot: candidates}, currency,
                                 {slot: len(copies)})  # fmt: skip
     picked = _choose(basket, {slot: candidates}, left, send, {slot: len(copies)}, taken=rest)
     if not picked:
-        raise LLMError(f"None of the {slot.lower()}s I found suits the room. "
-                       "Try describing it differently.")  # fmt: skip
+        _replacement_unavailable(turn, line, decision,
+                                 f"None of the alternatives passed the room and budget checks for your {slot.lower()}.", send)
+        return
     for gone in copies:  # a sofa in place of a coat stand is a sofa, not a coat stand
         if gone not in picked:
             send(("product.removed", {"slot": gone, "url": line.url}))
@@ -1762,6 +1787,18 @@ async def _swap(photo: bytes, turn: Turn, decision: Decision, send: Send) -> Non
     ):
         _say(send, f"The picture still shows your old {decision.slot.lower()}.")
     send(("done", {"total_eur": _total(chosen), "currency": currency}))
+
+
+def _replacement_unavailable(
+    turn: Turn, current: BasketLine, decision: Decision, reason: str, send: Send
+) -> None:
+    """A completed search without a match keeps the current basket and picture intact."""
+    _say(send, f"{reason} Your current {current.slot.lower()} is unchanged.")
+    send(("replacement.unavailable", {
+        "slot": current.slot, "current_url": current.url,
+        "instruction": decision.instruction or turn.message, "reason": reason,
+    }))
+    send(("done", {"total_eur": _basket_total(turn), "currency": current.currency}))
 
 
 def _replaced_in_order(
@@ -1854,14 +1891,14 @@ async def _drop(photo: bytes, turn: Turn, decision: Decision, send: Send) -> Non
         send(("product.removed", {"slot": line.slot, "url": line.url}))
         gone.insert(0, f"the {line.slot.lower()} ({line.title})")
     what = f"the {line.slot.lower()}" if line else _removals(decision.remove)
-    if not chosen:
-        _say(send, "Your basket is empty now. Tell me what you'd like instead.")
-    elif not await _drop_in_place(turn, what, chosen, gone, send, deadline) and not await _picture(
+    if not await _drop_in_place(turn, what, chosen, gone, send, deadline) and not await _picture(
         photo, chosen, _whole_brief(turn), f"The same pieces, without {what}.",
-        deadline, send, decision.remove,
+        deadline, send, gone,
     ):  # fmt: skip
         _say(send, f"The picture still shows {what}."
              + (" It's out of your basket." if line else ""))  # fmt: skip
+    if not chosen:
+        _say(send, "Your basket is empty now. Tell me what you'd like instead.")
     currency = line.currency if line else chosen_currency(chosen)
     send(("done", {"total_eur": _total(chosen), "currency": currency}))
 
@@ -1885,6 +1922,7 @@ async def _drop_in_place(
         "as it is, with the same camera, framing, lens, light and grain. Add nothing. "
         "Photorealistic, no text. Landscape 3:2."
     )
+    prompt += _target_position(turn)
     return await _edit_in_place(
         turn, before, chosen, prompt, [], gone,
         f"Taking {what} out of your room; everything else stays.", send, deadline=deadline,
@@ -2004,6 +2042,21 @@ def _placed(layout: Layout | None, product: ProductListing) -> str:
             f"must look {pl.apparent_size.rstrip('.')}.")  # fmt: skip
 
 
+def _target_position(turn: Turn) -> str:
+    """Name the selected physical copy, not just its basket label, for an image edit."""
+    if not turn.intent or not turn.intent.box:
+        return ""
+    b = turn.intent.box
+    return (
+        f" The selected {turn.intent.slot.lower()} is the item centered "
+        f"{(b.x + b.w / 2) * 100:.1f}% from the LEFT and {(b.y + b.h / 2) * 100:.1f}% "
+        f"from the TOP of reference 1. Its bounding box is [{b.x:.3f}, {b.y:.3f}, "
+        f"{min(1, b.x + b.w):.3f}, {min(1, b.y + b.h):.3f}] as "
+        "[left, top, right, bottom] fractions of the image. "
+        "Change only this selected copy; any identical pieces elsewhere stay unchanged."
+    )
+
+
 async def _swap_in_place(
     turn: Turn,
     slot: str,
@@ -2029,7 +2082,7 @@ async def _swap_in_place(
     layout = await _layout(
         before, {into: new},
         f"The {into.lower()} takes the place of {gone}, which is taken out. If it is bigger, "
-        "it also takes free floor next to that spot, never another object's place.",
+        "it also takes free floor next to that spot, never another object's place." + _target_position(turn),
         "Keep the room exactly as it is apart from this one piece.", [gone],
     )  # fmt: skip
     was = f" (the {old.title}, shown in reference 3)" if old else ""
@@ -2048,6 +2101,7 @@ async def _swap_in_place(
         "nothing. Photorealistic, natural contact shadows, no text. Landscape 3:2."
     )
     refs = [new.image_url, *([old.image_url] if old else [])]
+    prompt += _target_position(turn)
     return await _edit_in_place(
         turn, before, chosen, prompt, refs, [gone],
         f"Putting the new {into.lower()} into your room; everything else stays.", send,

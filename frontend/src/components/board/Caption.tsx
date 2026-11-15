@@ -7,7 +7,6 @@ import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
 import { LiveDot } from '../common/LiveDot'
 
-
 /** One line under the room: the step the agent is on, or the room's name once it is done, and the room's tools. */
 export function Caption() {
   const { state, active: s, dispatch } = useStore()

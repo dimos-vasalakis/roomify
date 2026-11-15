@@ -1,5 +1,20 @@
 # Roomify tech stack
 
+## Item replacement
+
+An item's **Replace** control submits `POST /turn` with an explicit intent
+`{"action":"swap","slot":"Desk","instruction":"warmer wood, under €150"}`.
+Placed items also include a normalized `box` (`{x,y,w,h}`) identifying the selected
+physical copy in the current preview. Basket lines carry their existing `id` so
+identical products keep distinct identities when their listings are read again.
+Only the selected slot is replaced, even when several pieces share one listing.
+The existing piece stays until a suitable alternative passes the shop and basket checks.
+If no alternative passes, the stream emits `replacement.unavailable` with
+`{slot, current_url, instruction, reason}`, then `done` with the unchanged basket total.
+The item presents **Keep current** (local dismissal) and **Remove current** (a new
+explicit `drop` intent). Service and rendering failures remain errors with retry;
+they are not reported as a successful replacement.
+
 Decided 2026-11-14, before the build window. Model IDs and the catalogues of treg and oumi were found on that day and are **not yet confirmed by a real call**. The four kickoff tests at the end of this file confirm them.
 
 ## One-line architecture
@@ -45,7 +60,7 @@ React app ◀──server-sent events: every step, decision, rejection, render�
 ## fal: where it is used
 1. **Render** the room with the chosen products (`render_room`).
 2. **Swap** one item (`swap_item`), same model, then the mask paste.
-3. Stretch: one product as a 3D model.
+3. **3D reconstruction:** product meshes and room geometry for the interactive room.
 
 All fal calls go through `backend/app/tools/fal_client.py`, use the queue API with a timeout, and fall back to the cache.
 
@@ -105,7 +120,7 @@ class Product(BaseModel):
 ```
 
 SSE events, all JSON with `type`, `run_id`, `t`:
-`message`, `step.started`, `step.result`, `ask`, `fit.proof`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `product.removed`, `budget.update`, `budget.changed` (`{budget_eur}`: the person changed the budget in words), `render.ready`, `assessment.ready`, `story.checked`, `verify.result`, `error`, `done`.
+`message`, `step.started`, `step.result`, `ask`, `fit.proof`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `product.removed`, `budget.update`, `budget.changed` (`{budget_eur}`: the person changed the budget in words), `render.ready`, `assessment.ready`, `story.checked`, `verify.result`, `replacement.unavailable`, `error`, `done`.
 
 ## Shops and the scraper (`backend/app/tools/`)
 Flow: the LLM turns the photo and the user's words into a `ProductSpec` (item names as shops print them, keywords, exclude, an English `meaning`, max price and size) → `find_products(spec)` searches the catalogues (word matching, minus built-in other senses such as whiteboards for πίνακας), lets one text-only LLM pass (`tools/relevance.py`) keep only names that are the item, best first, with a reason for the ones it turns away, reads the top 20 pages 4 at a time, and returns verified `candidates` plus `rejected` with a plain reason each ("Width 160 cm, your space allows 140 cm") → oumi ranks the candidates → fal renders the top 3.
@@ -142,9 +157,6 @@ API routes (all except `/health` need `Authorization: Bearer <supabase access to
 
 ## Keys (`.env`, gitignored; names in `.env.example`)
 `GEMINI_API_KEY`, `FAL_KEY`, `TREG_TOKEN`, and the optional direct fallbacks `SERPER_API_KEY`, `FIRECRAWL_API_KEY`. Plus `REPLAY`, `RETAILERS`, `DEFAULT_CITY`. Database and login: `DATABASE_URL` (Supabase session pooler), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_JWT_SECRET` (older projects only), `FRONTEND_ORIGINS`.
-
-## Cost per full run (estimate)
-Three renders (about $0.12), 10 to 20 search and scrape calls through treg (a few cents), Gemini and judge calls (cents). About **$0.20 per run**.
 
 ## Kickoff tests (20:00, before any feature)
 | Test | Pass | If it fails |

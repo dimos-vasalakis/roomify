@@ -5,7 +5,7 @@ Shared between the front end (`frontend/src/api/`) and the back end (`backend/ap
 - Base URL: `VITE_API_URL` on the front end. JSON everywhere, `snake_case` on the wire.
 - Saved-data routes need `Authorization: Bearer <Supabase access token>` (enforced by `app/auth.py`). `/health` and the demo `/offer` route do not require login.
 - Errors: FastAPI's `{"detail": "<one readable sentence>"}`. The front end shows `detail` as is, so write it for a person.
-- Images and videos are short-lived signed URLs (already done by `app/storage.py`).
+- Stored images use short-lived signed URLs (`app/storage.py`).
 
 ## Status
 
@@ -117,13 +117,6 @@ ProductOut = {
   delivery_text: string | null
   in_stock: boolean | null
 }
-  aim_deg: number
-  move: "push" | "orbit" | "rise"
-  seconds: 5 | 8
-  video_url: string | null
-  poster_url: string | null
-  created_at: string
-}
 ```
 
 `ConversationSummary`, `ConversationDetail`, `RunSummary`, `MessageOut` and `ProfileOut` are as in `backend/app/models.py` today.
@@ -205,3 +198,19 @@ The server keeps no conversation state, so a restart or a sleeping instance neve
 - `reply`: an answer from the basket (sizes, totals, fit), no shopping.
 
 Basket pages are read again before a swap or a view, so nothing reaches a picture that was not read from a shop page. Outside Greece, products come from Google Shopping results through Serper (`SERPER_API_KEY`) and are read from any shop's own page; in Greece the shop catalogues come first.
+
+## Item replacement
+
+The Replace form uses `POST /turn` with an explicit `swap` intent and the selected
+slot plus an instruction (up to 300 characters). Unlike a general request to replace
+several matching pieces, this button changes only the selected slot.
+When the selected piece has a verified preview position, the intent includes
+`box: {x,y,w,h}` with coordinates normalized to 0–1. This identifies the physical
+copy to edit or remove. Basket entries may include `id`; this retains per-copy
+identity while prices and other shop facts are read again from the listing.
+
+`replacement.unavailable` carries `{slot, current_url, instruction, reason}` when
+no alternative passes the search and basket checks. It is followed by `done` with
+the unchanged total. The original basket and render stay intact. Keep current
+dismisses the choice locally; Remove current sends a separate `drop` intent.
+Service and rendering errors still use `error` with retry.

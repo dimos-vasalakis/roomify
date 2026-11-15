@@ -227,7 +227,7 @@ class Render(Base):
 
 
 class Walkin(Base):
-    """A walk-in preview video made from one render. Never call it 3D."""
+    """Legacy table retained for existing migrations; no active video API or UI."""
 
     __tablename__ = "walkins"
     __table_args__ = (CheckConstraint("status in ('queued', 'ready', 'failed')", name="status"),)

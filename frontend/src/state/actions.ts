@@ -11,7 +11,7 @@ import { DRAFT_ID, MAX_PAST, checkpointOf, useStore, type Block } from './store'
 /** The prepared photo of each room, kept for sending with the offer. */
 const photos = new Map<string, Blob>()
 /** A piece's button: carried out exactly by the back end, no guessing what the words meant. */
-type Intent = { action: 'drop' | 'add' | 'arrange' | 'swap'; slot: string; instruction?: string }
+type Intent = { action: 'drop' | 'add' | 'arrange' | 'swap'; slot: string; instruction?: string; box?: Product['box'] }
 
 /** The open stream of each room's message, so Stop can end it. */
 const streams = new Map<string, () => void>()
@@ -86,7 +86,7 @@ export function useActions() {
       dispatch({
         type: 'patchRoom',
         id,
-        patch: { ...room, name, prompt: s.prompt || said, offer: true, ask: null, status: 'shopping', error: undefined, past,
+        patch: { ...room, replacementMiss: undefined, name, prompt: s.prompt || said, offer: true, ask: null, status: 'shopping', error: undefined, past,
                  chat: [...history, { role: 'user', text: said }], now: { text: 'Thinking about what you said', startedAt: Date.now() } },
       })
       if (LIVE && name !== active.name) void api.renameRoom(id, name).catch(() => undefined)
@@ -100,7 +100,7 @@ export function useActions() {
       if (intent) form.append('intent', JSON.stringify(intent))
       if (s.measures?.length) form.append('measures', JSON.stringify(s.measures.map(({ label, cm }) => ({ label, cm }))))
       form.append('basket', JSON.stringify(s.products.map((p) => ({
-        slot: p.slot, url: p.url, title: p.title, price_eur: p.priceEur, currency: p.currency ?? 'EUR',
+        id: p.id, slot: p.slot, url: p.url, title: p.title, price_eur: p.priceEur, currency: p.currency ?? 'EUR',
         width_cm: p.widthCm, depth_cm: p.depthCm, height_cm: p.heightCm ?? null,
       }))))
       if (s.afterSrc?.startsWith('https://')) form.append('render_url', s.afterSrc)
@@ -156,7 +156,11 @@ export function useActions() {
         : action === 'swap' ? `Replace the ${piece}: ${instruction}.`
         : `Move the ${piece}: ${instruction}.`  // fmt: skip
       const wish = action === 'add' ? `another ${p.title} (${piece}), next to the existing one` : instruction
-      return talk(said, {}, 'swap', { action, slot: p.slot, instruction: wish })
+      return talk(said, {}, 'swap', { action, slot: p.slot, instruction: wish, box: p.placed !== false ? p.box : undefined })
+    },
+
+    keepCurrent() {
+      dispatch({ type: 'patchRoom', id: active.id, patch: { replacementMiss: undefined } })
     },
 
     /** Stop the agent mid-message: the room goes back to how it was. */

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Crop } from '../common/Crop'
 import { money, shopName } from '../../lib/format'
 import { useActions } from '../../state/actions'
-import type { Product } from '../../types'
+import type { Product, Session } from '../../types'
 
 const PLACES = ['Against the wall', 'Further left', 'Further right', 'Turned to face the room']
 const INSTEAD = ['Cheaper', 'In a different colour', 'Smaller', 'In another style']
@@ -11,37 +11,38 @@ const INSTEAD = ['Cheaper', 'In a different colour', 'Smaller', 'In another styl
 const cm = (v: number | null | undefined) => (v ? `${Math.round(v)}` : '—')
 
 /** One line of the schedule: the piece's number on the drawing, what it is, and what you can do with it. */
-export function PieceRow({ n, p, currency, selected, busy, onSelect }: {
+export function PieceRow({ n, p, currency, selected, busy, onSelect, replacementMiss }: {
   n: number
   p: Product
   currency?: string
   selected: boolean
   busy: boolean
   onSelect: () => void
+  replacementMiss?: Session['replacementMiss']
 }) {
   const actions = useActions()
   const row = useRef<HTMLLIElement>(null)
-  // One small box at a time under the piece: where it goes, or what replaces it.
-  const [open, setOpen] = useState<'move' | 'swap' | null>(null)
+  const [moving, setMoving] = useState(false)
+  const [replacing, setReplacing] = useState(false)
+  const [criteria, setCriteria] = useState('')
+  const replacementInput = useRef<HTMLTextAreaElement>(null)
+  const replaceButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (replacing) replacementInput.current?.focus()
+  }, [replacing, replacementMiss])
+  const closeReplacement = () => { setReplacing(false); replaceButton.current?.focus() }
   // Picked on the room: its line comes into view here.
   useEffect(() => {
     if (selected) row.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [selected])
-  const [words, setWords] = useState('')
+  const [where, setWhere] = useState('')
   const sized = p.widthCm || p.depthCm || p.heightCm
-  const toggle = (box: 'move' | 'swap') => {
-    setOpen((o) => (o === box ? null : box))
-    setWords('')
+  const move = (to: string) => {
+    if (!to.trim()) return
+    setMoving(false)
+    setWhere('')
+    void actions.press('arrange', p, to.trim())
   }
-  const send = (said: string) => {
-    if (!said.trim() || !open) return
-    const action = open === 'move' ? 'arrange' : 'swap'
-    setOpen(null)
-    setWords('')
-    void actions.press(action, p, said.trim())
-  }
-  const piece = p.slot.toLowerCase()
-  const ask = open === 'move' ? `Where should the ${piece} go?` : `What should replace the ${piece}?`
 
   return (
     <li ref={row} className={`group relative border-b border-ink/10 transition-colors duration-150 ${selected ? 'bg-surface' : 'hover:bg-surface/60'}`}>
@@ -75,19 +76,58 @@ export function PieceRow({ n, p, currency, selected, busy, onSelect }: {
         Shop <ArrowUpRight size={12} strokeWidth={2} />
       </a>
 
-      <div className={`flex flex-wrap items-center gap-1 px-3 pb-3 pl-[3.25rem] ${selected || open ? '' : 'max-lg:flex lg:hidden lg:group-hover:flex lg:group-focus-within:flex'}`}>
-        <Act icon={<Replace size={13} strokeWidth={2} />} label="Replace" on={open === 'swap'} disabled={busy} onClick={() => toggle('swap')} />
-        <Act icon={<Move size={13} strokeWidth={2} />} label="Move" on={open === 'move'} disabled={busy} onClick={() => toggle('move')} />
+      <div className={`flex flex-wrap items-center gap-1 px-3 pb-3 pl-[3.25rem] ${selected || moving || replacing || replacementMiss ? '' : 'max-lg:flex lg:hidden lg:group-hover:flex lg:group-focus-within:flex'}`}>
+        <Act icon={<Replace size={13} strokeWidth={2} />} label="Replace" on={replacing} expanded={replacing && !replacementMiss} controls={`replacement-form-${p.id}`} buttonRef={replaceButton} disabled={busy} onClick={() => {
+          setMoving(false)
+          if (replacementMiss) { setCriteria(replacementMiss.instruction); actions.keepCurrent(); setReplacing(true) }
+          else setReplacing((r) => !r)
+        }} />
+        <Act icon={<Move size={13} strokeWidth={2} />} label="Move" on={moving} disabled={busy} onClick={() => { setReplacing(false); setMoving((m) => !m) }} />
         <Act icon={<CopyPlus size={13} strokeWidth={2} />} label="Another like it" disabled={busy} onClick={() => void actions.press('add', p)} />
         <Act icon={<Trash2 size={13} strokeWidth={2} />} label="Remove" disabled={busy} onClick={() => void actions.press('drop', p)} />
       </div>
 
-      {open && (
+      {replacing && !replacementMiss && (
+        <form id={`replacement-form-${p.id}`} className="px-3 pb-3 pl-[3.25rem]" onSubmit={(e) => {
+          e.preventDefault()
+          if (busy || !criteria.trim()) return
+          void actions.press('swap', p, criteria.trim())
+        }}>
+          <label className="block text-chrome font-medium text-ink" htmlFor={`replace-${p.id}`}>What should change about the {p.slot.toLowerCase()}?</label>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {INSTEAD.map((choice) => (
+              <button key={choice} type="button" disabled={busy} onClick={() => void actions.press('swap', p, choice.toLowerCase())} className="press h-7 rounded-[4px] bg-surface px-2 text-small text-ink ring-1 ring-ink/15 hover:ring-ink disabled:opacity-40">{choice}</button>
+            ))}
+          </div>
+          <textarea id={`replace-${p.id}`} ref={replacementInput} value={criteria} rows={2} maxLength={300} disabled={busy}
+            onChange={(e) => setCriteria(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); closeReplacement() } }}
+            placeholder="For example, warmer wood and under €150"
+            className="mt-2 block w-full resize-none rounded-control border border-control bg-surface p-2 text-chrome text-ink placeholder:text-muted focus:border-ink focus:outline-none disabled:opacity-60" />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="submit" disabled={busy || !criteria.trim()} className="press min-h-9 rounded-control bg-ink px-3 text-small font-semibold text-surface disabled:opacity-40">{busy ? 'Finding replacement…' : 'Find replacement'}</button>
+            <button type="button" disabled={busy} onClick={closeReplacement} className="press min-h-9 rounded-control px-3 text-small font-medium text-ink hover:bg-surface disabled:opacity-40">Cancel</button>
+          </div>
+        </form>
+      )}
+
+      {replacementMiss && (
+        <div className="px-3 pb-3 pl-[3.25rem]" role="status">
+          <p className="text-chrome font-semibold text-ink">No matching replacement found</p>
+          <p className="mt-1 text-small text-muted">{replacementMiss.reason} Your current {p.slot.toLowerCase()} is still in the room.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => { closeReplacement(); setCriteria(''); actions.keepCurrent() }} className="press min-h-9 rounded-control bg-ink px-3 text-small font-semibold text-surface disabled:opacity-40">Keep current</button>
+            <button type="button" disabled={busy} onClick={() => { setReplacing(false); void actions.press('drop', p) }} className="press min-h-9 rounded-control border border-control bg-surface px-3 text-small font-medium text-ink hover:border-ink disabled:opacity-40">Remove current</button>
+          </div>
+        </div>
+      )}
+
+      {moving && (
         <div className="px-3 pb-3 pl-[3.25rem]">
           <div className="flex flex-wrap gap-1">
-            {(open === 'move' ? PLACES : INSTEAD).map((choice) => (
-              <button key={choice} type="button" disabled={busy} onClick={() => send(choice.toLowerCase())} className="press h-7 rounded-[4px] bg-surface px-2 text-small text-ink ring-1 ring-ink/15 hover:ring-ink disabled:opacity-40">
-                {choice}
+            {PLACES.map((place) => (
+              <button key={place} type="button" disabled={busy} onClick={() => move(place.toLowerCase())} className="press h-7 rounded-[4px] bg-surface px-2 text-small text-ink ring-1 ring-ink/15 hover:ring-ink disabled:opacity-40">
+                {place}
               </button>
             ))}
           </div>
@@ -95,20 +135,20 @@ export function PieceRow({ n, p, currency, selected, busy, onSelect }: {
             className="mt-1.5 flex gap-1"
             onSubmit={(e) => {
               e.preventDefault()
-              send(words)
+              move(where)
             }}
           >
             <input
               autoFocus
-              value={words}
-              onChange={(e) => setWords(e.target.value)}
-              placeholder={open === 'swap' ? `e.g. a grey linen ${piece}, under €300` : ask}
-              aria-label={ask}
+              value={where}
+              onChange={(e) => setWhere(e.target.value)}
+              placeholder={`Where should the ${p.slot.toLowerCase()} go?`}
+              aria-label={`Where should the ${p.slot.toLowerCase()} go?`}
               maxLength={300}
               className="h-8 min-w-0 flex-1 rounded-[4px] bg-surface px-2 text-small text-ink ring-1 ring-ink/15 placeholder:text-muted focus:ring-ink focus:outline-none"
             />
-            <button type="submit" disabled={busy || !words.trim()} className="press h-8 rounded-[4px] bg-ink px-3 text-small font-medium text-surface disabled:opacity-40">
-              {open === 'move' ? 'Move' : 'Replace'}
+            <button type="submit" disabled={busy || !where.trim()} className="press h-8 rounded-[4px] bg-ink px-3 text-small font-medium text-surface disabled:opacity-40">
+              Move
             </button>
           </form>
         </div>
@@ -117,13 +157,16 @@ export function PieceRow({ n, p, currency, selected, busy, onSelect }: {
   )
 }
 
-function Act({ icon, label, on = false, disabled, onClick }: { icon: React.ReactNode; label: string; on?: boolean; disabled: boolean; onClick: () => void }) {
+function Act({ icon, label, on = false, expanded, controls, buttonRef, disabled, onClick }: { icon: React.ReactNode; label: string; on?: boolean; expanded?: boolean; controls?: string; buttonRef?: React.Ref<HTMLButtonElement>; disabled: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
+      ref={buttonRef}
       onClick={onClick}
       disabled={disabled}
-      aria-pressed={on || undefined}
+      aria-pressed={expanded === undefined ? on || undefined : undefined}
+      aria-expanded={expanded}
+      aria-controls={expanded ? controls : undefined}
       className={`press inline-flex h-7 items-center gap-1.5 rounded-[4px] px-2 text-small font-medium transition-colors disabled:opacity-40 ${on ? 'bg-ink text-surface' : 'bg-surface text-ink ring-1 ring-ink/15 hover:ring-ink'}`}
     >
       {icon}

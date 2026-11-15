@@ -105,6 +105,7 @@ export function Sheet() {
                     key={p.id}
                     n={i + 1}
                     p={p}
+                    replacementMiss={s.replacementMiss?.slot === p.slot && s.replacementMiss.current_url === p.url ? s.replacementMiss : undefined}
                     currency={s.currency}
                     busy={busy || !s.offer || !!s.recorded3d}
                     selected={state.selectedProductId === p.id}

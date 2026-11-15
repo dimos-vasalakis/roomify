@@ -108,7 +108,7 @@ async def turn(
     measures: Annotated[str, Form(max_length=5000)] = "[]",
 ) -> StreamingResponse:
     """One message in the conversation about a room. `intent`: a piece's button (JSON
-    {action, slot, instruction}), carried out exactly instead of read from the message. Stateless: the client sends the
+    {action, slot, instruction, box?}), carried out exactly instead of read from the message. Stateless: the client sends the
     conversation and the basket it holds, so a server restart never loses a room."""
     try:
         state = loop.Turn(

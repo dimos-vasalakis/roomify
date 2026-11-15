@@ -3,9 +3,6 @@
 /** A rectangle on the room image, every value 0 to 1 of the image's width or height. */
 export type Box = { x: number; y: number; w: number; h: number }
 
-/** A point on the room image, 0 to 1. */
-export type Point = { x: number; y: number }
-
 export type Product = {
   id: string
   slot: string
@@ -58,6 +55,8 @@ export type LiveStep =
 export type Measure = { id: string; a: { x: number; y: number }; b: { x: number; y: number }; cm: number; label: string }
 
 export type Session = {
+  /** Search completed without a suitable replacement; the current item stays until chosen. */
+  replacementMiss?: { slot: string; current_url: string; instruction: string; reason: string }
   /** Portable, explicitly labelled 3D recording; all assets are local. */
   recorded3d?: string
   id: string
@@ -107,5 +106,5 @@ export type Session = {
 /** What a message can change about a room, saved before the message is sent. */
 export type Checkpoint = Pick<
   Session,
-  'products' | 'rejections' | 'afterSrc' | 'chat' | 'status' | 'budgetEur' | 'wallCm' | 'prompt' | 'name' | 'direction' | 'ask' | 'currency'
+  'products' | 'rejections' | 'afterSrc' | 'chat' | 'status' | 'budgetEur' | 'wallCm' | 'prompt' | 'name' | 'direction' | 'ask' | 'currency' | 'replacementMiss'
 > & { said: string }

@@ -24,45 +24,100 @@ from app.judges.basket import Basket, Pick
 from app.main import app
 from app.routes import speech
 from app.tools.find_products import FindResult
-from app.tools.read_product_page import extract_listing
+from app.tools.read_product_page import PageRead, ProductListing, extract_listing
 from app.tools.search_products import ProductSpec
 from app.tools.transcribe import Transcript
 from tests.test_read_product_page import fixture
 
 url, html = fixture("ikea_mittzon_desk")
 product = extract_listing(url, html)
-loop._specs = AsyncMock(
-    return_value=("A calm workspace", [loop.Spec(slot="Desk", spec=ProductSpec(item=["γραφείο"]))])
+loop._layout = AsyncMock(return_value=None)
+
+# Replacement fixtures still exercise the production intent, search, judge and render flow.
+replacement = product.model_copy(
+    update={
+        "id": "replacement-desk",
+        "url": product.url + "?replacement=1",
+        "title": "Oak desk",
+        "price_eur": 199,
+    }
 )
-loop.find_products = AsyncMock(
-    return_value=FindResult(candidates=[product], rejected=[], searched=1, note=None)
-)
-loop.judge_basket = AsyncMock(
-    return_value=Basket(
+
+
+async def _specs(photo: bytes, brief: str, *args: object) -> tuple[str, list[loop.Spec]]:
+    if "Replace only" in brief:
+        item = "fixture-no-match" if "no matching" in brief.lower() else "fixture-replacement"
+    else:
+        item = "γραφείο"
+    return "A calm workspace", [loop.Spec(slot="Desk", spec=ProductSpec(item=[item]))]
+
+
+async def _find(spec: ProductSpec, *args: object, **kwargs: object) -> FindResult:
+    if "fixture-no-match" in spec.item:
+        candidates = []
+    else:
+        candidates = [replacement if "fixture-replacement" in spec.item else product]
+    return FindResult(candidates=candidates, rejected=[], searched=1, note=None)
+
+
+async def _read(url: str) -> PageRead:
+    return PageRead(url=url, listing=replacement if "replacement=1" in url else product, error=None)
+
+
+async def _judge(
+    photo: bytes,
+    brief: str,
+    budget: float,
+    candidates: dict[str, list[ProductListing]],
+    *args: object,
+) -> Basket:
+    return Basket(
         text="A calm workspace",
         picks=[
             Pick(
-                slot="Desk",
-                product_id=product.id,
+                slot=slot,
+                product_id=pieces[0].id,
                 passed=True,
-                reason="A desk sized for your work corner.",
+                reason="Meets the requested criteria",
             )
+            for slot, pieces in candidates.items()
+            if pieces
         ],
     )
-)
-loop._layout = AsyncMock(return_value=None)
-loop._render = AsyncMock(return_value="http://127.0.0.1:8173/test-room.jpg")
-loop._check = AsyncMock(
-    return_value=loop.RenderCheck(
+
+
+async def _render(
+    photo: bytes, chosen: dict[str, ProductListing], *args: object, **kwargs: object
+) -> str:
+    suffix = (
+        "?replacement=1"
+        if any(p.id == replacement.id for p in chosen.values())
+        else "?empty=1"
+        if not chosen
+        else ""
+    )
+    return "http://127.0.0.1:8173/test-room.jpg" + suffix
+
+
+async def _check(
+    photo: bytes, url: str, chosen: dict[str, ProductListing], *args: object, **kwargs: object
+) -> loop.RenderCheck:
+    return loop.RenderCheck(
         room_preserved=True,
         no_extra_products=True,
         products=[
-            loop.BoxCheck(
-                product_id=product.id, match=True, note="Matches", box_2d=[200, 100, 600, 600]
-            )
+            loop.BoxCheck(product_id=p.id, match=True, note="Matches", box_2d=[200, 100, 600, 600])
+            for p in chosen.values()
         ],
     )
-)
+
+
+loop._specs = _specs
+loop.find_products = _find
+loop.read_product_page = _read
+loop.judge_basket = _judge
+loop._render = _render
+loop._check = _check
 
 
 async def _decide(photo: bytes, turn: loop.Turn) -> loop.Decision:

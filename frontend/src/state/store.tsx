@@ -282,7 +282,7 @@ function reducer(state: State, action: Action): State {
           lastDelta: old ? { sessionId: action.id, eur: e.data.product.price_eur - old.priceEur, at: Date.now() } : state.lastDelta,
         }
       }
-      return e.type === 'done' && action.id === state.activeId ? withReveal(next, true) : next
+      return e.type === 'done' && action.id === state.activeId && !before?.replacementMiss ? withReveal(next, true) : next
     }
 
     case 'setError': {
@@ -369,7 +369,7 @@ export function checkpointOf(s: Session, said: string): Checkpoint {
   return {
     products: s.products, rejections: s.rejections, afterSrc: s.afterSrc, chat: s.chat, status: s.status,
     budgetEur: s.budgetEur, wallCm: s.wallCm, prompt: s.prompt, name: s.name, direction: s.direction,
-    ask: s.ask, currency: s.currency, said,
+    ask: s.ask, currency: s.currency, replacementMiss: s.replacementMiss, said,
   }  // fmt: skip
 }
 export const MAX_PAST = 5

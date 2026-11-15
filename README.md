@@ -10,7 +10,7 @@ Built during a 36-hour hackathon.
 
 - **Shopping grounded in listings.** Product prices, dimensions and links come from retailers' own pages. Greek shop catalogues are included; optional search services extend coverage.
 - **Visible decisions.** Follow the agent's progress, inspect its choices and see why candidates were rejected.
-- **A room you can revise.** Add, remove, move or replace pieces through item controls or natural language. Compare the furnished preview with the original photo.
+- **A room you can revise.** Add, remove, move or replace pieces through item controls or natural language. Replace opens an item-specific brief; if no suitable alternative is found, keep or remove the current piece. Compare the furnished preview with the original photo.
 - **Interactive 3D.** Orbit the reconstructed room, switch camera angles, zoom and inspect individual product models alongside their listing photos and dimensions.
 - **Voice and phone capture.** Speak a brief or transfer a room photo from a phone using a QR code.
 

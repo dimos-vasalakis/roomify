@@ -220,12 +220,17 @@ async def test_drop_takes_one_piece_out_and_keeps_the_rest(monkeypatch: pytest.M
 
 
 async def test_dropping_the_last_piece_empties_the_basket(monkeypatch: pytest.MonkeyPatch) -> None:
+    picture = AsyncMock(return_value=True)
+    monkeypatch.setattr(loop, "_drop_in_place", AsyncMock(return_value=False))
+    monkeypatch.setattr(loop, "_picture", picture)
     sent: list[tuple[str, dict[str, object]]] = []
     await loop._drop(
         b"photo", turn(basket=[DESK]), Decision(action="drop", slot="Desk"), sent.append
     )
     assert ("product.removed", {"slot": "Desk", "url": DESK.url}) in sent
     assert sent[-1] == ("done", {"total_eur": 0.0, "currency": "EUR"})
+    assert picture.await_args.args[1] == {}
+    assert "desk" in picture.await_args.args[-1][0]
 
 
 def test_arranging_needs_pieces() -> None:

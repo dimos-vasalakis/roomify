@@ -79,6 +79,7 @@ export type TranscriptOut = { text: string }
 
 /** One server-sent event of a run. Unknown types are ignored. */
 export type RunEvent =
+  | { type: 'replacement.unavailable'; seq: number; data: { slot: string; current_url: string; instruction: string; reason: string } }
   | { type: 'run.status'; seq: number; data: { status: RunStatus } }
   | { type: 'step.started'; seq: number; data: { text: string; phase?: 'planning' | 'shopping' | 'rendering' | 'checking' } }
   | { type: 'plan.ready'; seq: number; data: { text: string; slots: string[]; currency?: string } }

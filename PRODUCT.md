@@ -20,12 +20,13 @@ Success: the user ends with a room they can see and a basket they can buy, under
 Other room tools draw a nice room first and then look for look-alike products. Roomify buys first, draws second, then proves the picture matches the basket. Its decisions are visible: every candidate it looked at and rejected stays on screen with the reason.
 
 ## Operating Context
-- One workspace that changes state as the agent works: start, the agent's one question (usually a wall width), live shopping, rendering, checking, result, swap, 3D.
+- One workspace that changes state as the agent works: start, the agent's one question (usually a wall width), live shopping, rendering, checking, result, replacement and interactive 3D.
 - A phone page (`/snap`) opened by QR code lets someone photograph a real space and send it to the big screen.
 - The agent's steps arrive as a stream of server-sent events; the interface must also replay a recorded run with no network for the demo.
 - Retailers are Greek (for example IKEA Greece, JYSK, Leroy Merlin); prices in euros.
 
 ## Capabilities and Constraints
+- Replace opens an inline text box for the requested differences. A failed search keeps the existing piece and offers Keep current or Remove current; only an explicit removal changes that item without a replacement.
 - Interface language: English. Product names, shop names, delivery text and prices appear exactly as the retailer writes them, often in Greek, so every text style must render Greek.
 - A price, size, stock or delivery claim is shown only if it was read from the shop's page and passed the extraction check. Nothing is invented to fill a gap.
 - The rendered room is a preview, not a product photo; the listing photo is always one interaction away.
