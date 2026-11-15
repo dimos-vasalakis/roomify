@@ -174,6 +174,9 @@ Answers with the run's events as a stream: `run.status`, `step.started`, `plan.r
 Deprecated: returns 409 with instructions to refresh and adjust the brief. The client submits a new complete `/offer` so the preview and shopping list always update together.
 
 
+## `POST /depth` (the 3D view)
+JSON `{"image_url": "<a render's fal link>"}` → `{"depth_url", "width", "height"}`: a grayscale map the size of the render, white near and black far (Depth Anything v2 on fal, about 3 s). Only fal-hosted renders are accepted (`422` otherwise); a failed call is `502` with a readable `detail`. Saved forever per render, so a second open and `REPLAY=1` are instant. The front end builds the room as a mesh from it and lets the person look around the furnished room.
+
 ## `POST /turn` (the conversation)
 Multipart: `photo` (file), `message`, `budget`, `city`, optional `wall_cm`, `history` (JSON `[{role: "user"|"agent", text}]`), `basket` (JSON: the chosen pieces as the front end holds them, `{slot, url, title, price_eur, currency, width_cm, depth_cm, height_cm}`), optional `render_url` (the latest room picture; only fal-hosted links are accepted). Answers with the run's events as a stream.
 

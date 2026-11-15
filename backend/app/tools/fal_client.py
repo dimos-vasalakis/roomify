@@ -18,7 +18,11 @@ class FalResult(BaseModel):
     data: dict[str, Any]
 
 
-async def fal(model: str, arguments: dict[str, Any], timeout: float = 90) -> FalResult:
+async def fal(
+    model: str, arguments: dict[str, Any], timeout: float = 90, max_age_s: float | None = 0
+) -> FalResult:
+    """`max_age_s=None` reuses any saved result: for calls whose answer never changes."""
+
     async def call() -> FalResult:
         handle = None
         try:
@@ -37,8 +41,8 @@ async def fal(model: str, arguments: dict[str, Any], timeout: float = 90) -> Fal
                 "The design service could not finish this step. Please try again."
             ) from exc
 
-    # Live, every render is new: a saved one made "try again" hand back the same picture.
-    # Results are still saved, so a REPLAY=1 recording reads them.
+    # Live, every render is new by default: a saved one made "try again" hand back the same
+    # picture. Results are still saved, so a REPLAY=1 recording reads them.
     return await cached(
-        "fal", {"model": model, "arguments": arguments}, call, FalResult, max_age_s=0
+        "fal", {"model": model, "arguments": arguments}, call, FalResult, max_age_s=max_age_s
     )
