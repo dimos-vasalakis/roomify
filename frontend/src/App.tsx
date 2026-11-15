@@ -1,13 +1,11 @@
 import { useEffect } from 'react'
 import { LIVE } from './api/config'
 import { AuthGate, useAuth } from './auth/AuthGate'
-import { Receipt } from './components/receipt/Receipt'
-import { MobileTotal } from './components/receipt/MobileTotal'
-import { RoomsSheet } from './components/rooms/RoomsSheet'
-import { Sidebar } from './components/rooms/Sidebar'
-import { MobileBar } from './components/shell/MobileBar'
-import { TitleRow } from './components/shell/TitleRow'
-import { Stage } from './components/stage/Stage'
+import { Board } from './components/board/Board'
+import { PhoneBar } from './components/shell/PhoneBar'
+import { Rail } from './components/shell/Rail'
+import { RoomsPanel } from './components/shell/RoomsPanel'
+import { Talk } from './components/talk/Talk'
 import { StoreProvider, useStore } from './state/store'
 import { useLiveSync } from './state/useLiveSync'
 
@@ -47,7 +45,7 @@ function useSampleRun() {
 }
 
 function useShortcuts() {
-  const { state, active, dispatch } = useStore()
+  const { state, dispatch } = useStore()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
@@ -58,43 +56,37 @@ function useShortcuts() {
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
       if (e.key === 'Escape') {
         if (state.playingWalkInId) dispatch({ type: 'play', id: null })
-        else if (state.draft) dispatch({ type: 'setDraft', draft: null })
-        else if (state.walkMode) dispatch({ type: 'setWalkMode', on: false })
         else if (state.selectedProductId) dispatch({ type: 'selectProduct', id: null })
-        else if (state.compare) dispatch({ type: 'toggleCompare' })
+        else if (state.voice.pending) dispatch({ type: 'setVoice', voice: { pending: null } })
       }
-      if (e.key.toLowerCase() === 'w' && active.status === 'done' && !active.offer) dispatch({ type: 'setWalkMode', on: !state.walkMode })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [state.playingWalkInId, state.draft, state.walkMode, state.selectedProductId, state.compare, active.status, active.offer, dispatch])
+  }, [state.playingWalkInId, state.selectedProductId, state.voice.pending, dispatch])
 }
 
+/** The board: rooms rail, the room, and the conversation. */
 function Workspace() {
   const { signedIn } = useAuth()
-  const { active } = useStore()
   useSampleRun()
   useLiveSync(signedIn)
   useShortcuts()
-  useEffect(() => {
-    if (active.status === 'new' || active.status === 'shopping' || active.status === 'done') window.scrollTo(0, 0)
-  }, [active.id, active.status])
 
   return (
     <div className="flex min-h-dvh">
-      <Sidebar />
+      <Rail />
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileBar />
-        <main className={`flex flex-1 flex-col px-4 pb-4 lg:pr-6 lg:pb-6 lg:pl-2 ${active.status === 'done' ? 'max-xl:pb-resultbar' : ''}`}>
-          <TitleRow />
-          <div className="grid flex-1 items-start gap-gap xl:grid-cols-[minmax(0,1fr)_var(--spacing-receipt)] xl:items-stretch">
-            <Stage />
-            <Receipt />
+        <PhoneBar />
+        <main className="grid flex-1 items-start gap-4 px-4 pb-4 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_var(--spacing-talk)] lg:items-stretch lg:gap-5 lg:py-4 lg:pr-4 lg:pl-0">
+          <div className="flex min-w-0 flex-col justify-center">
+            <Board />
+          </div>
+          <div className="min-h-[32rem] lg:min-h-0">
+            <Talk />
           </div>
         </main>
       </div>
-      <RoomsSheet />
-      <MobileTotal />
+      <RoomsPanel />
     </div>
   )
 }

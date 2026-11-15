@@ -1,5 +1,5 @@
 /* Roomify tokens. Source of truth for colour, type, space and motion.
-   Direction: Achromatic ledger, seed 2041574039. See docs/DESIGN.md. */
+   Direction: the board, paper and ink with one pine accent. See docs/DESIGN.md. */
 
 @theme {
   --color-ground: #f4f3f1;
@@ -14,10 +14,8 @@
   --color-primary: #171717;
   --color-secondary: #e5e5e5;
   --color-chosen: #2d5a45;
-  --color-positive: #2d5a45;
+  --color-chosen-soft: #e3ebe6;
   --color-negative: #c4242a;
-  --color-warning-bg: #fffbeb;
-  --color-warning-ink: #92400e;
   --color-scrim: #171717;
 
   --font-sans: "Manrope Variable", system-ui, sans-serif;
@@ -28,25 +26,21 @@
   --text-chrome--line-height: 1.25rem;
   --text-body: 1rem;
   --text-body--line-height: 1.5rem;
-  --text-title: 1.5rem;
-  --text-title--line-height: 2rem;
-  --text-total: 1.875rem;
-  --text-total--line-height: 2.25rem;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.75rem;
+  --text-total: 1.75rem;
+  --text-total--line-height: 2.125rem;
 
-  --radius-panel: 1rem;
-  --radius-card: 0.5rem;
-  --radius-control: 0.375rem;
+  --radius-board: 1rem;
+  --radius-card: 0.625rem;
+  --radius-control: 0.5rem;
 
   --spacing-gap: 0.75rem;
-  --spacing-edge: 0.5rem;
-  --spacing-bar: 2.75rem;
   --spacing-control: 2.25rem;
   --spacing-row: 2.75rem;
-  --spacing-receipt: 25rem;
   --spacing-rail: 4rem;
-  --spacing-sidebar: 16rem;
-  --spacing-product: 5rem;
-  --spacing-resultbar: 6rem;
+  --spacing-talk: 25rem;
+  --spacing-panel: 18rem;
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
@@ -62,12 +56,23 @@
   }
 }
 
-@keyframes slide {
+/* The reading scan: a line and a soft band travel down the photo. */
+@keyframes scan {
+  0% {
+    transform: translateY(-10%);
+  }
+  100% {
+    transform: translateY(1000%);
+  }
+}
+
+/* The drawing band: travels across the photo while the render is made. */
+@keyframes sweep {
   0% {
     transform: translateX(-100%);
   }
   100% {
-    transform: translateX(300%);
+    transform: translateX(400%);
   }
 }
 
