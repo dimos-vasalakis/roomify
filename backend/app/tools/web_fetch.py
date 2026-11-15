@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from app.cache import HOUR, WEEK, cached
 from app.tools.firecrawl import FirecrawlError, firecrawl_enabled, firecrawl_html, plain_text
-from app.tools.shops import host_of
+from app.tools.shops import host_of, shop_for_url
 
 # Shops block obvious bots; a normal browser identity with low volume is what we send.
 HEADERS = {
@@ -128,11 +128,23 @@ def robots_allow(rules: list[_Rule], url: str) -> bool:
     return best is None or best.allow
 
 
+def _through_service(url: str) -> bool:
+    shop = shop_for_url(url)
+    return bool(shop and shop.read_through_service and firecrawl_enabled())
+
+
 async def _robots(url: str) -> Robots:
     parts = urlsplit(url)
     robots_url = f"{parts.scheme}://{parts.netloc}/robots.txt"
 
     async def load() -> Robots:
+        if _through_service(url):
+            try:
+                return Robots(text=plain_text(await firecrawl_html(robots_url)))
+            except FirecrawlError as exc:
+                raise FetchError(
+                    f"Could not check what {host_of(url)} allows ({exc})", transient=True
+                ) from exc
         try:
             return Robots(text=await _download(robots_url))
         except FetchError as exc:
@@ -209,6 +221,8 @@ async def fetch_text(url: str) -> str:
         raise FetchError(f"{host_of(url)} is refusing requests right now", transient=True)
     if not robots_allow(robots_rules(robots.text), url):
         raise FetchError(f"{host_of(url)} does not allow reading this page")
+    if _through_service(url):
+        return await fetch_through_service(url)
     try:
         return await _download(url)
     except FetchError as exc:

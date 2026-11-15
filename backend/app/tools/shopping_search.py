@@ -22,6 +22,7 @@ UNREADABLE = (
     "amazon.", "ebay.", "walmart.", "wayfair.", "etsy.", "temu.", "aliexpress.", "shein.",
     "google.", "youtube.", "pinterest.", "facebook.", "instagram.", "reddit.", "tiktok.",
     "skroutz.", "bestprice.",  # price comparison: many shops' prices on one page, no one price
+    "vendora.", "xe.gr", "car.gr", "olx.",  # second-hand classifieds: not a shop's new product
 )  # fmt: skip
 
 
@@ -46,7 +47,9 @@ async def _post(url: str, body: dict[str, object], key: str) -> dict[str, object
     if response.status_code == 429:
         raise WebSearchError("Shopping search is rate limited, try again in a minute")
     if response.status_code >= 400:
-        raise WebSearchError(f"Shopping search failed (HTTP {response.status_code})")
+        raise WebSearchError(
+            f"Shopping search failed (HTTP {response.status_code}: {response.text[:120]})"
+        )
     try:
         data = response.json()
     except ValueError as exc:

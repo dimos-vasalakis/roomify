@@ -24,6 +24,9 @@ class Shop(BaseModel):
     sitemap_filter: str | None = None
     # Only sitemap entries with <image:image> are products (shops that list categories too).
     sitemap_image_required: bool = False
+    # The shop stalls requests from cloud servers (IKEA leaves Render hanging until the read
+    # times out, so no refusal ever arrives): read it through Firecrawl when that is on.
+    read_through_service: bool = False
 
 
 SHOPS: tuple[Shop, ...] = (
@@ -33,6 +36,7 @@ SHOPS: tuple[Shop, ...] = (
         priority=1,
         sitemaps=["https://www.ikea.gr/sitemap/Products/sitemap_index.xml"],
         product_url=r"^https://www\.ikea\.gr/proioda/[^/]+/\d+/?$",
+        read_through_service=True,
     ),
     Shop(
         domain="jysk.gr",

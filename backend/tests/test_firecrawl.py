@@ -84,3 +84,17 @@ def test_robots_text_comes_out_of_the_browser_wrapper() -> None:
         "User-agent: *\nDisallow: /a&b"
     )
     assert plain_text("User-agent: *") == "User-agent: *"
+
+
+async def test_ikea_goes_straight_through_firecrawl_without_waiting_for_a_hang(
+    firecrawl, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(web_fetch, "firecrawl_enabled", lambda: True)
+
+    async def never(url: str) -> str:
+        raise AssertionError("IKEA stalls direct reads from servers; never try")
+
+    monkeypatch.setattr(web_fetch, "_download", never)
+    url = "https://www.ikea.gr/proioda/mittzon-grafeio/12345/"
+    assert "MITTZON" in (await web_fetch.fetch_text(url)).upper()
+    assert firecrawl == ["https://www.ikea.gr/robots.txt", url]

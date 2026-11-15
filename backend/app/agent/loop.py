@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from decimal import Decimal
@@ -217,7 +218,17 @@ def _wider(spec: ProductSpec, budget: float) -> ProductSpec | None:
     return None if wider == spec else wider
 
 
+# Flat pieces that hang: "140x56" on a painting is width × height, never a floor footprint.
+_HANGS = re.compile(
+    r"πίνακ|καμβ|κάδρ|αφίσ|καθρέφτ|pinak|kamba|kadr|afis|kathreft|canvas|poster|mirror|"
+    r"painting|wall art",
+    re.IGNORECASE,
+)
+
+
 def _size(p: ProductListing) -> str:
+    if not p.sizes_order_known and p.width_cm and p.depth_cm and _HANGS.search(p.title):
+        return f"{p.width_cm:g} cm wide × {p.depth_cm:g} cm high, flat on the wall"
     if not p.sizes_order_known and p.width_cm and p.depth_cm:
         # "200x90" does not say which side is which; for a bed the longer side is its length.
         long, short = max(p.width_cm, p.depth_cm), min(p.width_cm, p.depth_cm)
@@ -602,7 +613,8 @@ async def _shop(spec: Spec, budget: float, send: Send) -> FindResult:
 def _report_rejections(results: list[tuple[Spec, FindResult]], send: Send) -> None:
     notes = {n for _, r in results if r.note for n in r.note.split("; ")}
     for note in sorted(notes):
-        if "API_KEY" in note:  # a setup gap is for the logs, not for the person shopping
+        # Setup gaps and search-service trouble are for the logs, not for the person shopping.
+        if "API_KEY" in note or note.startswith(("Web search", "Shopping search")):
             log.warning("Search note: %s", note)
         else:
             _step(send, note, "shopping")

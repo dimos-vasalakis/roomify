@@ -39,7 +39,9 @@ async def _serper(query: str, key: str) -> list[WebResult]:
     if response.status_code == 429:
         raise WebSearchError("Web search is rate limited, try again in a minute")
     if response.status_code >= 400:
-        raise WebSearchError(f"Web search failed (HTTP {response.status_code})")
+        raise WebSearchError(
+            f"Web search failed (HTTP {response.status_code}: {response.text[:120]})"
+        )
     try:
         organic = response.json().get("organic", [])
         return [
@@ -54,7 +56,9 @@ async def web_search(query: str, shops: list[Shop]) -> list[WebHit]:
     settings = get_settings()
     key = settings.serper_api_key or ""
     if not key and not settings.replay:  # replay uses the recording, with or without a key
-        raise WebSearchError("Web search is off (no SERPER_API_KEY), so only shop catalogues were used")
+        raise WebSearchError(
+            "Web search is off (no SERPER_API_KEY), so only shop catalogues were used"
+        )
     sites = " OR ".join(f"site:{s.domain}" for s in shops)
     full_query = f"{query} ({sites})"
     results = await cached(

@@ -461,3 +461,19 @@ def test_fit_lines_only_for_pieces_along_the_measured_wall():
     proofs = [data for kind, data in sent if kind == "fit.proof"]
     assert [p["product_id"] for p in proofs] == [desk.id]
     assert not any(kind == "step.started" for kind, _ in sent)  # no "side by side" with a vase
+
+
+def test_a_painting_size_is_width_by_height_not_a_floor_footprint():
+    art = extract_listing(*fixture("ikea_mittzon_desk")).model_copy(
+        update={"title": "PJÄTTERYD πίνακας/φάρος, 140x56 cm", "width_cm": 140.0,
+                "depth_cm": 56.0, "height_cm": None, "sizes_order_known": False}
+    )  # fmt: skip
+    assert loop._size(art) == "140 cm wide × 56 cm high, flat on the wall"
+
+
+def test_a_bed_frame_is_still_a_footprint():
+    bed = extract_listing(*fixture("ikea_mittzon_desk")).model_copy(
+        update={"title": "Bed frame MALM 90x200", "width_cm": 90.0, "depth_cm": 200.0,
+                "height_cm": None, "sizes_order_known": False}
+    )  # fmt: skip
+    assert loop._size(bed).startswith("footprint 200 × 90 cm")
