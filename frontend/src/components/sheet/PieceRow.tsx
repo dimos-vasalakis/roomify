@@ -52,6 +52,13 @@ export function PieceRow({ n, p, currency, selected, busy, onSelect }: {
             {shopName(p.retailer)}
             {sized ? ` · ${cm(p.widthCm)}×${cm(p.depthCm)}×${cm(p.heightCm)} cm` : ''}
           </span>
+          {/* The sum against the wall or the space measured for it, from the shop's own size. */}
+          {p.fit?.length ? (
+            <span className={`mt-1 flex items-start gap-1.5 text-small ${p.fitOk === false ? 'text-negative' : 'text-ink'}`}>
+              <span aria-hidden="true" className={`mt-[0.4rem] size-1.5 shrink-0 rounded-full ${p.fitOk === false ? 'bg-negative' : 'bg-chosen'}`} />
+              <span className="min-w-0">{p.fit.at(-1)}</span>
+            </span>
+          ) : null}
         </span>
         <span className="num mt-3.5 font-mono text-chrome font-medium text-ink">{money(p.priceEur, p.currency ?? currency)}</span>
       </button>

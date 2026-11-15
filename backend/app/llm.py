@@ -71,11 +71,11 @@ async def llm(
             else os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
         )
     try:
-        return await _answer(prompt, images, json_out, key, use_fal, model, deep)
+        return await _answer_or_fall_back(prompt, images, json_out, key, use_fal, model, deep)
     except _Unreadable:
         # One typo in a long JSON answer should not end a run: ask once more, strictly.
         try:
-            return await _answer(
+            return await _answer_or_fall_back(
                 prompt + "\nReturn strictly valid JSON.",
                 images, json_out, key, use_fal, model, deep,
             )  # fmt: skip
@@ -85,6 +85,35 @@ async def llm(
 
 class _Unreadable(Exception):
     pass
+
+
+async def _answer_or_fall_back(
+    prompt: str,
+    images: list[tuple[bytes, str]] | None,
+    json_out: bool,
+    key: str | None,
+    use_fal: bool,
+    model: str,
+    deep: bool,
+) -> Any:
+    """Through fal first; once more after a short pause; then straight to Gemini when its key is
+    set. One passing failure of one provider must not end a person's run."""
+    try:
+        return await _answer(prompt, images, json_out, key, use_fal, model, deep)
+    except LLMError as first:
+        if not use_fal:
+            raise
+        log.warning("LLM through fal failed (%s); retrying", first)
+        await asyncio.sleep(1.5)
+        try:
+            return await _answer(prompt, images, json_out, key, use_fal, model, deep)
+        except LLMError:
+            if not key:
+                raise
+            log.warning("LLM through fal failed twice; asking Gemini directly")
+            return await _answer(
+                prompt, images, json_out, key, False, model.removeprefix("google/"), deep
+            )
 
 
 async def _answer(

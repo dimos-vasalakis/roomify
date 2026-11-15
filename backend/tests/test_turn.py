@@ -447,9 +447,28 @@ async def test_price_dots_come_from_the_locator(monkeypatch: pytest.MonkeyPatch)
     from tests.test_offer import _check_result
 
     monkeypatch.setattr(loop, "_check", AsyncMock(return_value=_check_result("x")))
-    monkeypatch.setattr(loop, "_locate", AsyncMock(return_value={"x": [10, 20, 30, 40]}))
+    located = loop.Located(product_id="x", box_2d=[100, 200, 500, 600], point_2d=[250, 400])
+    monkeypatch.setattr(loop, "_locate", AsyncMock(return_value={"x": located}))
     check = await loop._verify(b"before", "https://v3.fal.media/new.jpg", {})
-    assert check.products[0].box_2d == [10, 20, 30, 40]
+    assert check.products[0].box_2d == [100, 200, 500, 600]
+    assert check.products[0].point_2d == [250, 400]
+
+
+def test_a_dot_sits_on_the_piece_not_in_the_air_between_its_legs() -> None:
+    from tests.test_find_products import listing
+    from tests.test_offer import _check_result
+
+    check = _check_result("x")
+    chosen = {"Desk": listing("https://jysk.gr/desk")}
+    on = check.products[0].model_copy(
+        update={"box_2d": [100, 200, 500, 600], "point_2d": [250, 400]}
+    )
+    off = check.products[0].model_copy(
+        update={"box_2d": [100, 200, 500, 600], "point_2d": [900, 900]}
+    )
+    item = loop.render_items(check.model_copy(update={"products": [on]}), chosen)[0]
+    assert item["point"] == {"x": 0.4, "y": 0.25}
+    assert "point" not in loop.render_items(check.model_copy(update={"products": [off]}), chosen)[0]
 
 
 async def test_a_rug_removed_on_purpose_is_not_lost(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -574,3 +593,12 @@ def test_a_swap_keeps_the_basket_order() -> None:
         {"Table": a, "Chair": b, "Chair 2": b, "Lamp": a}, ["Chair", "Chair 2"], new
     )
     assert list(out) == ["Table", "Chair", "Chair 2", "Lamp"] and out["Chair"] is c
+
+
+async def test_a_model_that_cant_answer_never_throws_away_a_finished_room(monkeypatch) -> None:
+    monkeypatch.setattr(loop, "llm", AsyncMock(side_effect=LLMError("down")))
+    first = await loop.decide(b"photo", Turn(message="A desk, €300", budget=300, city="Athens"))
+    assert first.action == "design"
+    later = await loop.decide(b"photo", Turn(message="Is the desk solid wood?", budget=300, city="Athens",
+                                             basket=[DESK], render_url="https://v3.fal.media/r.jpg"))  # fmt: skip
+    assert later.action == "reply" and later.say == loop.UNSURE

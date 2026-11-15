@@ -164,7 +164,7 @@ export function applyEvent(s: Session, e: RunEvent): Session {
       const next = product(e.data.product, e.data.slot)
       return {
         ...s,
-        products: s.products.map((p) => (p.id === e.data.old_product_id ? { ...next, box: p.box } : p)),
+        products: s.products.map((p) => (p.id === e.data.old_product_id ? { ...next, box: p.box, anchor: p.anchor } : p)),
         rejections: old
           ? [...s.rejections, { id: `r${e.seq}`, slot: old.slot, title: old.title, retailer: old.retailer, priceEur: old.priceEur, rule: 'style', reason: e.data.reason }]
           : s.rejections,
@@ -173,10 +173,11 @@ export function applyEvent(s: Session, e: RunEvent): Session {
     }
     case 'render.ready': {
       const boxes = new Map(e.data.items.map((i) => [i.product_id, i.box]))
+      const points = new Map(e.data.items.map((i) => [i.product_id, i.point]))
       return {
         ...s,
         afterSrc: e.data.image_url,
-        products: s.products.map((p) => ({ ...p, placed: boxes.has(p.id), ...(boxes.has(p.id) ? { box: boxes.get(p.id)! } : {}) })),
+        products: s.products.map((p) => ({ ...p, placed: boxes.has(p.id), ...(boxes.has(p.id) ? { box: boxes.get(p.id)!, anchor: points.get(p.id) } : {}) })),
       }
     }
     case 'walkin.queued':

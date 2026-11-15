@@ -12,6 +12,7 @@ import { WalkInPlayer } from '../walkin/WalkInPlayer'
 import { Caption } from './Caption'
 import { Compare } from './Compare'
 import { EmptyDrop } from './EmptyDrop'
+import { MeasureLayer } from './MeasureLayer'
 import { StepLayer } from './StepLayer'
 
 // three.js only loads for the 3D room (fetched in the background once a room is finished).
@@ -82,6 +83,7 @@ export function Board() {
         )}
 
         {picture && !done && <StepLayer s={s} />}
+        {picture && s.loaded !== false && <MeasureLayer s={s} />}
 
 
         {s.status === 'new' && picture && (

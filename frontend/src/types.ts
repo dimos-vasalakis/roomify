@@ -21,6 +21,8 @@ export type Product = {
   deliveryText: string | null
   /** Where the product sits in the rendered room. */
   box: Box
+  /** Where its dot goes: a point on the piece itself, so it never floats between legs. */
+  anchor?: { x: number; y: number }
   /** The product's own picture: the shop's listing photo (whole, no box) or a region of a sample photo. */
   thumb?: { src: string; box?: Box }
   reason?: string
@@ -71,6 +73,9 @@ export type LiveStep =
   | { kind: 'chosen'; product: Product }
   | { kind: 'rejected'; rejection: Rejection }
 
+/** A length drawn on the room photo: two points (0 to 1 of the picture), its size, and what it is. */
+export type Measure = { id: string; a: { x: number; y: number }; b: { x: number; y: number }; cm: number; label: string }
+
 export type Session = {
   /** Portable, explicitly labelled 3D recording; all assets are local. */
   recorded3d?: string
@@ -80,6 +85,8 @@ export type Session = {
   budgetEur: number
   /** The one measurement the user gave, in cm. */
   wallCm: number | null
+  /** Lengths the person drew on the photo and named; sent with every message as size limits. */
+  measures?: Measure[]
   prompt: string
   group: 'Today' | 'Yesterday' | 'Last week' | 'Earlier'
   updatedLabel: string

@@ -14,6 +14,7 @@ from starlette.responses import Response
 from app.config import get_settings
 from app.routes import conversations, depth, handoff, me, offer, speech
 from app.tools.catalogue import refresh_catalogues
+from app.tools.fal_client import fal_status
 from app.tools.firecrawl import firecrawl_status
 
 log = logging.getLogger("roomify")
@@ -95,7 +96,7 @@ async def services() -> dict[str, object]:
     return {
         "firecrawl": firecrawl_status(),
         "serper": bool(settings.serper_api_key),
-        "fal": bool(os.getenv("FAL_KEY")),
+        "fal": {"configured": bool(os.getenv("FAL_KEY")), **fal_status()},
         "gemini": bool(os.getenv("GEMINI_API_KEY")),
         "replay": settings.replay,
     }

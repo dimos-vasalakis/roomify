@@ -28,6 +28,8 @@ export type State = {
   playingWalkInId: string | null
   /** The finished room is open in the 3D view. */
   view3d: boolean
+  /** Drawing lengths on the room photo. */
+  measuring: boolean
   compare: boolean
   /** Live mode: the rooms list is loading. */
   roomsLoading: boolean
@@ -63,6 +65,7 @@ export type Action =
   | { type: 'walkInReady'; id: string }
   | { type: 'play'; id: string | null }
   | { type: 'view3d'; on: boolean }
+  | { type: 'measuring'; on: boolean }
   | { type: 'toggleCompare' }
   | { type: 'setRooms'; sessions: Session[] }
   | { type: 'upsertRoom'; session: Session; select?: boolean }
@@ -95,6 +98,7 @@ const clearTransient = {
   draft: null,
   playingWalkInId: null,
   view3d: false,
+  measuring: false,
   compare: false,
 } as const
 
@@ -262,8 +266,11 @@ function reducer(state: State, action: Action): State {
     case 'play':
       return { ...state, playingWalkInId: action.id, selectedProductId: null, walkMode: false, draft: null }
 
+    case 'measuring':
+      return { ...state, measuring: action.on, view3d: false, playingWalkInId: null, selectedProductId: null }
+
     case 'view3d':
-      return { ...state, view3d: action.on, playingWalkInId: null, selectedProductId: null, walkMode: false, draft: null }
+      return { ...state, view3d: action.on, measuring: false, playingWalkInId: null, selectedProductId: null, walkMode: false, draft: null }
 
     case 'toggleCompare':
       return { ...state, compare: !state.compare, walkMode: false, draft: null, selectedProductId: null }
@@ -419,6 +426,7 @@ const initial: State = {
   draft: null,
   playingWalkInId: null,
   view3d: false,
+  measuring: false,
   compare: false,
   roomsLoading: LIVE,
   errors: {},

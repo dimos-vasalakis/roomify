@@ -19,6 +19,17 @@ const streams = new Map<string, () => void>()
 const deleting = new Map<string, ReturnType<typeof setTimeout>>()
 const UNDO_MS = 6000
 
+/** The room photo again, after a reload: a link that expired gets a sentence, not "Failed to fetch". */
+async function refetch(src: string): Promise<Blob> {
+  try {
+    const response = await fetch(src)
+    if (!response.ok) throw new Error(String(response.status))
+    return await response.blob()
+  } catch {
+    throw new Error("Couldn't load this room's photo again. Add the photo once more to carry on.")
+  }
+}
+
 const message = (err: unknown) =>
   err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Something went wrong. Try again.'
 
@@ -58,9 +69,10 @@ export function useActions() {
       return
     }
     const said = text.trim()
-    if (!said) return
+    // One message at a time per room: two streams would write over each other.
+    if (!said || streams.has(active.id)) return
     await guard(block, active.id, async () => {
-      const photo = photos.get(active.id) ?? (active.beforeSrc ? await (await fetch(active.beforeSrc)).blob() : null)
+      const photo = photos.get(active.id) ?? (active.beforeSrc ? await refetch(active.beforeSrc) : null)
       if (!photo) throw new Error('Add a photo of the room first.')
       const id = LIVE ? await ensureRoom() : active.id
       const s = { ...active, ...room }
@@ -86,6 +98,7 @@ export function useActions() {
       if (s.wallCm) form.append('wall_cm', String(s.wallCm))
       form.append('history', JSON.stringify(history.slice(-20)))
       if (intent) form.append('intent', JSON.stringify(intent))
+      if (s.measures?.length) form.append('measures', JSON.stringify(s.measures.map(({ label, cm }) => ({ label, cm }))))
       form.append('basket', JSON.stringify(s.products.map((p) => ({
         slot: p.slot, url: p.url, title: p.title, price_eur: p.priceEur, currency: p.currency ?? 'EUR',
         width_cm: p.widthCm, depth_cm: p.depthCm, height_cm: p.heightCm ?? null,

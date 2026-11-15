@@ -109,7 +109,7 @@ export type RunEvent =
     }
   | { type: 'product.removed'; seq: number; data: { slot: string; url: string } }
   | { type: 'product.swapped'; seq: number; data: { slot: string; old_product_id: string; product: ProductOut; reason: string } }
-  | { type: 'render.ready'; seq: number; data: { render_id: string; kind: string; image_url: string; items: { product_id: string; box: BoxOut }[] } }
+  | { type: 'render.ready'; seq: number; data: { render_id: string; kind: string; image_url: string; items: { product_id: string; box: BoxOut; point?: { x: number; y: number } }[] } }
   | { type: 'verify.result'; seq: number; data: { product_id: string; match: boolean; note: string } }
   | { type: 'walkin.queued'; seq: number; data: { walkin: WalkinOut } }
   | { type: 'video.ready'; seq: number; data: { walkin_id: string; video_url: string; poster_url: string | null } }

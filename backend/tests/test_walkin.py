@@ -17,25 +17,53 @@ def post(url: str = RENDER):  # type: ignore[no-untyped-def]
         return client.post("/walkin", json={"render_url": url})
 
 
-def test_a_render_becomes_a_walk_in_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    fal = AsyncMock(return_value=FalResult(data={"video": {"url": "https://v3b.fal.media/w.mp4"}}))
+ARRIVAL = "https://v3b.fal.media/files/b/x/arrival.jpg"
+
+
+def by_model(**answers):  # type: ignore[no-untyped-def]
+    """A fake fal that answers per model: a list is answered in order, an error is raised."""
+
+    async def call(model: str, args: dict, **_: object) -> FalResult:
+        answer = answers[model]
+        if isinstance(answer, list):
+            answer = answer.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return FalResult(data=answer)
+
+    return AsyncMock(side_effect=call)
+
+
+def video(url: str) -> dict:
+    return {"video": {"url": url}}
+
+
+def test_a_render_becomes_a_walk_to_a_drawn_arrival_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    fal = by_model(**{walkin.VIEW_MODEL: {"images": [{"url": ARRIVAL}]},
+                      walkin.MODEL: video("https://v3b.fal.media/w.mp4")})  # fmt: skip
     monkeypatch.setattr(walkin, "fal", fal)
     assert post().json() == {"video_url": "https://v3b.fal.media/w.mp4"}
     assert post().json() == {"video_url": "https://v3b.fal.media/w.mp4"}
-    assert fal.await_count == 1
-    model, args = fal.await_args.args
-    assert model == walkin.MODEL
-    assert args["image_url"] == RENDER and args["duration"] == "5"
-    assert "furniture" in args["negative_prompt"]
+    assert [c.args[0] for c in fal.await_args_list] == [walkin.VIEW_MODEL, walkin.MODEL]
+    _, args = fal.await_args.args
+    assert args["image_url"] == RENDER and args["tail_image_url"] == ARRIVAL
+    assert args["duration"] == "5" and "furniture" in args["negative_prompt"]
+
+
+def test_without_an_arrival_it_still_moves_from_the_one_picture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fal = by_model(**{walkin.VIEW_MODEL: FalError("busy"),
+                      walkin.MODEL: video("https://v3b.fal.media/one.mp4")})  # fmt: skip
+    monkeypatch.setattr(walkin, "fal", fal)
+    assert post().json() == {"video_url": "https://v3b.fal.media/one.mp4"}
+    assert "tail_image_url" not in fal.await_args.args[1]
 
 
 def test_the_other_video_model_stands_in(monkeypatch: pytest.MonkeyPatch) -> None:
-    fal = AsyncMock(
-        side_effect=[
-            FalError("busy"),
-            FalResult(data={"video": {"url": "https://x.fal.media/b.mp4"}}),
-        ]
-    )
+    fal = by_model(**{walkin.VIEW_MODEL: {"images": [{"url": ARRIVAL}]},
+                      walkin.MODEL: FalError("busy"),
+                      walkin.FALLBACK: video("https://x.fal.media/b.mp4")})  # fmt: skip
     monkeypatch.setattr(walkin, "fal", fal)
     assert post().json() == {"video_url": "https://x.fal.media/b.mp4"}
     assert fal.await_args.args[0] == walkin.FALLBACK

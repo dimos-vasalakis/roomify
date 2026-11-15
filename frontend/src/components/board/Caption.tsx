@@ -1,4 +1,4 @@
-import { Footprints, Play, Rotate3d, RotateCcw, Undo2 } from 'lucide-react'
+import { Footprints, Play, Rotate3d, RotateCcw, Ruler, Undo2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { gsap, reducedMotion, useGSAP } from '../../lib/motion'
 import { canView3D, prepare3D } from '../../lib/depth'
@@ -38,6 +38,8 @@ export function Caption() {
   // The room's depth and every piece's 3D model are made as soon as the room is drawn, so the
   // 3D view has them ready (a model takes a minute or two the first time).
   const in3d = done && canView3D(s)
+  // Lengths are drawn on the photo whenever the agent isn't busy with it.
+  const canMeasure = !!s.beforeSrc && !isWorking(s) && !state.view3d && !s.recorded3d
   const ready3d = in3d ? JSON.stringify([s.id, s.afterSrc, s.recorded3d, s.products.map((p) => [p.id, p.box, p.thumb?.src])]) : ''
   useEffect(() => {
     if (ready3d) prepare3D(s)
@@ -96,6 +98,17 @@ export function Caption() {
         )}
       </div>
 
+      {canMeasure && (
+        <button
+          type="button"
+          aria-pressed={state.measuring}
+          onClick={() => dispatch({ type: 'measuring', on: !state.measuring })}
+          title="Draw a length you know on the photo: a wall, or the space a piece must fit"
+          className={`press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-chrome font-medium ${state.measuring ? 'bg-ink text-surface' : 'text-ink hover:bg-raised'}`}
+        >
+          <Ruler size={15} strokeWidth={2} /> Measure{s.measures?.length ? <span className="num font-mono text-small opacity-70">{s.measures.length}</span> : null}
+        </button>
+      )}
       {canUndo && !done && (
         <UndoButton onClick={() => actions.undo()} />
       )}
@@ -141,7 +154,7 @@ export function Caption() {
                 className="press inline-flex h-9 items-center gap-1.5 rounded-control bg-primary px-3.5 text-chrome font-medium text-surface disabled:bg-secondary disabled:text-ink"
               >
                 {making ? <LiveDot /> : <Footprints size={15} strokeWidth={2} />}
-                {making ? 'Making walk-in… about a minute' : walk?.status === 'failed' ? 'Try walk-in again' : 'Walk-in preview'}
+                {making ? 'Making walk-in… a couple of minutes' : walk?.status === 'failed' ? 'Try walk-in again' : 'Walk-in preview'}
               </button>
             ))}
         </div>

@@ -120,7 +120,8 @@ export function Compare({ s, onPin }: Props) {
         {placed.map((p, i) => {
           const on = p.id === selected
           const dim = !!selected && !on
-          const flip = p.box.x + p.box.w / 2 > 0.62
+          const at = dotAt(p)
+          const flip = at.x > 0.62
           return (
             <button
               key={p.id}
@@ -133,7 +134,7 @@ export function Compare({ s, onPin }: Props) {
               aria-label={`${String(i + 1).padStart(2, '0')}, ${p.slot}, ${money(p.priceEur, p.currency ?? s.currency)}`}
               aria-pressed={on}
               className={`group absolute flex -translate-y-1/2 items-center transition-opacity duration-200 ${flip ? '-translate-x-[calc(100%-0.875rem)] flex-row-reverse' : '-translate-x-3.5'} ${dim ? 'opacity-45' : ''}`}
-              style={{ left: `${(p.box.x + p.box.w / 2) * 100}%`, top: `${(p.box.y + p.box.h / 2) * 100}%` }}
+              style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }}
             >
               {/* A drawing's callout: the piece's number in a circle, its name on a leader line. */}
               <span className={`label grid size-7 shrink-0 place-items-center rounded-full border-[1.5px] shadow-[0_1px_6px_rgb(23_23_23/0.25)] transition-transform duration-200 ease-[var(--ease-out)] group-hover:scale-110 ${on ? 'scale-110 border-surface bg-ink text-surface' : 'border-ink bg-surface text-ink'}`}>
@@ -188,4 +189,10 @@ export function Compare({ s, onPin }: Props) {
       </button>
     </div>
   )
+}
+
+/** The dot sits on the piece: the point the checker named on its body, or, failing that, high
+ * in its box, where a chair's seat or a table's top is, never the empty floor between legs. */
+function dotAt(p: Product) {
+  return p.anchor ?? { x: p.box.x + p.box.w / 2, y: p.box.y + p.box.h * 0.3 }
 }

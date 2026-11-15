@@ -54,3 +54,27 @@ async def test_box_closed_with_a_brace_is_repaired(monkeypatch):
     monkeypatch.setattr(module, "fal", AsyncMock(return_value=FalResult(data={"output": raw})))
     result = await module.llm("Judge again", json_out=True, vision=True)
     assert result["products"][1]["box_2d"] == [764, 356, 988, 659]
+
+
+async def test_a_failing_fal_falls_back_to_gemini_directly(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from app import llm as llm_module
+
+    monkeypatch.setenv("FAL_KEY", "test-only")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+
+    async def no_wait(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(llm_module.asyncio, "sleep", no_wait)
+    calls: list[tuple[bool, str]] = []
+
+    async def answer(prompt, images, json_out, key, use_fal, model, deep=False):  # type: ignore[no-untyped-def]
+        calls.append((use_fal, model))
+        if use_fal:
+            raise llm_module.LLMError("The room designer could not answer. Please try again.")
+        return {"ok": True}
+
+    monkeypatch.setattr(llm_module, "_answer", answer)
+    assert await llm_module.llm("hi", json_out=True, vision=True) == {"ok": True}
+    assert calls[0][0] and calls[1][0]  # fal twice
+    assert calls[2] == (False, "gemini-3-flash-preview")  # then Gemini, same model

@@ -101,12 +101,12 @@ The front end ignores types it does not know, so new ones never break it. Names 
 | `step.started` | `{text}`, one plain sentence: "Searching ikea.gr for a white sofa under €750" | The Now line |
 | `message` | `{text, action}`; `action` is `ask`, `design`, `add`, `drop`, `swap`, `arrange`, `view` or `reply` | The agent's chat line. `design` starts from an empty basket; the others keep it. Mid-run lines (`reply`) say what was left out and why, or that no faithful picture could be made; they go back in `history`, so later answers rest on them |
 | `ask` | `{question, unit, suggestion}`; `suggestion` is the agent's own estimate (e.g. a wall width from the photo) or null | The question card, pre-filled; run is `waiting_for_user` |
-| `fit.proof` | `{product_id, ok, lines}` | Only for pieces whose page gave a size, when the wall width is known: fit lines on the receipt and a tape measure on the room |
+| `fit.proof` | `{product_id, ok, lines}` | Only for pieces whose page gave a size, when the wall width or the piece's own measured space is known: fit lines on the receipt and a tape measure on the room |
 | `product.chosen` | `{slot, product: ProductOut}` | A receipt line, a shelf card |
 | `candidate.rejected` | `{slot, product: {title, retailer, url, price_eur \| null}, rule, reason}` | A struck line with the reason. `rule`: `size`, `budget`, `page-check`, `style`, `trip` |
 | `product.removed` | `{slot, url}` | That slot's piece leaves the basket and the total (sent by `drop`) |
 | `product.swapped` | `{slot, old_product_id, product: ProductOut, reason}` | The line reprints; the old one is struck |
-| `render.ready` | `{render_id, kind (render or view), image_url, items: [{product_id, box: {x, y, w, h}}]}` | The room picture and its price dots. Boxes are 0 to 1 of the render |
+| `render.ready` | `{render_id, kind (render or view), image_url, items: [{product_id, box: {x, y, w, h}, point?: {x, y}}]}` | The room picture and its price dots. Boxes are 0 to 1 of the render; `point`, when given, is a spot on the piece itself where its dot goes |
 | `assessment.ready` | `{who, findings: [{thing, verdict, why, box: {x, y, w, h} \| null}], buy: [{slot, why, needs}], advice: string[], source_url \| null}`; `verdict` is `keep`, `remove`, `move`, `replace` or `missing` | A story only (the person said who the room is for, and the agent decides). Dots on the original photo for each finding, coloured by verdict, with `why` on tap. Boxes are 0 to 1 of the photo. `source_url` is the company page any brand fact came from. The same findings also arrive as a `message` |
 | `story.checked` | `{covered: [{need, by}], unclear: string[], open: string[], risks: string[], verdict, judged_by}`; `judged_by` is `oumi` or `llm` | A story only: the basket against the needs. Also said as a `message` |
 | `verify.result` | `{product_id, match, note}` | Reserved; shown later |
@@ -209,7 +209,7 @@ No login: the 16-character random code is the only key.
 Which outside services the server can use, never their keys: `{"firecrawl": {"state": "on" | "no FIRECRAWL_API_KEY" | "off: <reason>", "pages_read", "pages_failed", "last_error"}, "serper", "fal", "gemini", "replay"}`. Firecrawl switches itself off for 10 minutes after a rejected key (401) or no credits (402); a 403 about one site only fails that page.
 
 ## `POST /turn` (the conversation)
-Multipart: `photo` (file), `message`, `budget`, `city`, optional `wall_cm`, `history` (JSON `[{role: "user"|"agent", text}]`), `basket` (JSON: the chosen pieces as the front end holds them, `{slot, url, title, price_eur, currency, width_cm, depth_cm, height_cm}`), optional `render_url` (the latest room picture; only fal-hosted links are accepted). Answers with the run's events as a stream.
+Multipart: `photo` (file), `message`, `budget`, `city`, optional `wall_cm`, `history` (JSON `[{role: "user"|"agent", text}]`), `basket` (JSON: the chosen pieces as the front end holds them, `{slot, url, title, price_eur, currency, width_cm, depth_cm, height_cm}`), optional `render_url` (the latest room picture; only fal-hosted links are accepted), optional `measures` (JSON `[{label, cm}]`, up to 12: lengths the person measured on the photo; a label naming a piece is that piece's hard max width, one with "wall" sets `wall_cm` when it isn't sent). Answers with the run's events as a stream.
 
 The server keeps no conversation state, so a restart or a sleeping instance never loses a room. Each turn the agent decides one action from the photo, the conversation and the basket:
 - `ask`: one question, only when it changes what is bought, never twice; for a wall width it proposes its own estimate from visible anchors (`suggestion`).

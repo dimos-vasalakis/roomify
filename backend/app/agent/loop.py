@@ -12,6 +12,7 @@ import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -20,7 +21,7 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from app.cache import ReplayMiss
 from app.judges.basket import Basket, judge_basket
-from app.judges.fit import fit_proofs, together
+from app.judges.fit import Measure, fit_proofs, space_for, space_proofs, together, wall_of
 from app.judges.story import judge_story
 from app.llm import LLMError, llm
 from app.tools.analyse_room import Assessment, analyse_room
@@ -227,6 +228,7 @@ class BoxCheck(BaseModel):
     placement_ok: bool = True
     note: str
     box_2d: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    point_2d: list[float] | None = Field(default=None, min_length=2, max_length=2)
 
 
 # Small loose things the image model shuffles about. One of them moved or appeared hid the
@@ -296,13 +298,26 @@ def product_out(p: ProductListing) -> dict[str, Any]:
     )
 
 
+# The lengths the person measured on their photo, for the message being handled.
+_measured: ContextVar[tuple[Measure, ...]] = ContextVar("measured", default=())
+
+
 async def _specs(
     photo: bytes, brief: str, budget: float, city: str, wall: float | None
 ) -> tuple[str, list[Spec]]:
+    measured = [m.model_dump() for m in _measured.get()]
     raw = await llm(
         SPEC_PROMPT
         + "\n"
-        + json.dumps({"brief": brief, "budget": budget, "city": city, "wall_cm": wall}),
+        + json.dumps(
+            {
+                "brief": brief,
+                "budget": budget,
+                "city": city,
+                "wall_cm": wall,
+                "measured_by_the_person_cm": measured,
+            }
+        ),
         images=[(photo, "image/jpeg")],
         json_out=True,
     )
@@ -337,6 +352,9 @@ async def _specs(
             spec.max_width_cm = min(spec.max_width_cm, wall) if wall else None
         if not wall:  # sizes guessed from a photo reject every page that lacks them
             spec.max_depth_cm = spec.max_height_cm = None
+        if space := space_for(slot, list(_measured.get())):
+            # Measured by hand, so a hard limit: nothing wider reaches the room.
+            spec.max_width_cm = min(spec.max_width_cm or space.cm, space.cm)
         specs.append(Spec(slot=slot, spec=spec, quantity=quantity))
     if not specs:
         raise LLMError("I couldn't turn that brief into a plan. Try saying it another way.")
@@ -725,20 +743,24 @@ products, in the order listed below. Find each product in image 1 and give a tig
 the whole piece, from its top to where it meets the floor or wall: box_2d is [ymin, xmin, ymax,
 xmax] in image 1, scaled 0 to 1000. Look for its shape, colour and material; never box another
 object that only shares its kind or colour. null if it is not clearly in image 1.
-Return JSON only: {"boxes":[{"product_id":"<id below>","box_2d":[0,0,0,0]}]}
+point_2d is [y, x], also 0 to 1000: one point ON the piece's solid, visible surface, where a
+label pinned to it would clearly sit on the piece itself: a desk's top, a chair's back or seat,
+a lamp's shade, a bed's mattress, a sofa's back. Never the air between legs or beside an arm.
+Return JSON only: {"boxes":[{"product_id":"<id below>","box_2d":[0,0,0,0],"point_2d":[0,0]}]}
 """
 
 
 class Located(BaseModel):
     product_id: str
     box_2d: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    point_2d: list[float] | None = Field(default=None, min_length=2, max_length=2)
 
 
 class Locations(BaseModel):
     boxes: list[Located]
 
 
-async def _locate(url: str, chosen: dict[str, ProductListing]) -> dict[str, list[float]]:
+async def _locate(url: str, chosen: dict[str, ProductListing]) -> dict[str, Located]:
     """Where each product sits in the picture, asked on its own: the checker, comparing two
     rooms at once, put the price dots on the wrong piece. Empty when it can't tell; the
     checker's boxes are used then."""
@@ -758,7 +780,7 @@ async def _locate(url: str, chosen: dict[str, ProductListing]) -> dict[str, list
         log.warning("Locating products failed (%s); using the checker's boxes", type(exc).__name__)
         return {}
     ids = {p.id for p in chosen.values()}
-    return {b.product_id: b.box_2d for b in found.boxes if b.box_2d and b.product_id in ids}
+    return {b.product_id: b for b in found.boxes if b.box_2d and b.product_id in ids}
 
 
 async def _verify(
@@ -776,8 +798,12 @@ async def _verify(
     )
     if not boxes:
         return check
-    products = [p.model_copy(update={"box_2d": boxes.get(p.product_id, p.box_2d)})
-                for p in check.products]  # fmt: skip
+    products = [
+        p.model_copy(update={"box_2d": found.box_2d, "point_2d": found.point_2d})
+        if (found := boxes.get(p.product_id))
+        else p
+        for p in check.products
+    ]
     return check.model_copy(update={"products": products})
 
 
@@ -894,17 +920,16 @@ def render_items(
         y0, x0, y1, x1 = p.box_2d
         if not (0 <= x0 < x1 <= 1000 and 0 <= y0 < y1 <= 1000):
             continue
-        items.append(
-            {
-                "product_id": p.product_id,
-                "box": {
-                    "x": x0 / 1000,
-                    "y": y0 / 1000,
-                    "w": (x1 - x0) / 1000,
-                    "h": (y1 - y0) / 1000,
-                },
-            }
-        )
+        item: dict[str, Any] = {
+            "product_id": p.product_id,
+            "box": {"x": x0 / 1000, "y": y0 / 1000, "w": (x1 - x0) / 1000, "h": (y1 - y0) / 1000},
+        }
+        # Where its dot goes: a point on the piece itself, if the locator gave one inside its box.
+        if p.point_2d:
+            py, px = p.point_2d
+            if x0 <= px <= x1 and y0 <= py <= y1:
+                item["point"] = {"x": px / 1000, "y": py / 1000}
+        items.append(item)
     return items
 
 
@@ -1266,8 +1291,10 @@ def _prove_fit(
     """Optional: only pieces with a listed size, and only when the wall width is known.
     `along`: the slots the plan sized to that wall. A rug, a vase or a coffee table does
     not stand along it, so it gets no "on your 320 cm wall" line."""
+    spaces = space_proofs(chosen, list(_measured.get()))
     chosen = {slot: p for slot, p in chosen.items() if slot in along}
-    for proof in fit_proofs(chosen, wall_cm):
+    # A piece's own measured space says more than the wall: its line comes last and stays.
+    for proof in [*fit_proofs(chosen, wall_cm), *spaces]:
         send(("fit.proof", proof.model_dump()))
     if line := together(chosen, wall_cm):
         _step(send, line, "checking")
@@ -1414,6 +1441,7 @@ class Turn(BaseModel):
     budget: float
     city: str
     wall_cm: float | None = None
+    measures: list[Measure] = Field(default=[], max_length=12)
 
 
 class Decision(BaseModel):
@@ -1587,9 +1615,12 @@ def budget_line(budget: float, total: float, currency: str = "EUR") -> str:
             "it fit?")  # fmt: skip
 
 
+UNSURE = "I couldn't work that out just now, so your room is unchanged. Say it again in a moment."
+
+
 async def decide(photo: bytes, turn: Turn) -> Decision:
     """One look at the room and the conversation: what to do with this message. If the
-    model can't answer, the person's words become a design request, so nothing stalls."""
+    model can't answer, a first message becomes a design request, so nothing stalls."""
     total = _basket_total(turn)
     context = {
         "history": [line.model_dump() for line in turn.history[-12:]],
@@ -1610,7 +1641,11 @@ async def decide(photo: bytes, turn: Turn) -> Decision:
         log.info("Decided %s: %s", decision.action, decision.thinking[:300])
         return _sane(decision, turn)
     except (LLMError, ReplayMiss, ValueError):
-        return Decision(action="design", say="Let me find pieces for that.")
+        if not turn.basket:
+            return Decision(action="design", say="Let me find pieces for that.")
+        # A finished room is never thrown away because the model didn't answer: the words'
+        # plain rules (heed) may still act on it; otherwise nothing changes.
+        return Decision(action="reply", say=UNSURE)
 
 
 async def _reread(basket: list[BasketLine], send: Send) -> dict[str, ProductListing]:
@@ -2218,6 +2253,9 @@ def _pressed(intent: Intent, turn: Turn) -> Decision:
 
 
 async def _turn(photo: bytes, turn: Turn, send: Send) -> None:
+    _measured.set(tuple(turn.measures))
+    if not turn.wall_cm and (wall := wall_of(turn.measures)):
+        turn = turn.model_copy(update={"wall_cm": wall})
     decision = _pressed(turn.intent, turn) if turn.intent else heed(await decide(photo, turn), turn)
     if decision.budget is not None:
         # The new budget holds from this message on: the screen updates, the action uses it.

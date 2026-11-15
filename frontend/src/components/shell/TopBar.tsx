@@ -33,7 +33,7 @@ export function TopBar() {
         <Thumb s={s} className="w-9 shrink-0 max-sm:hidden" />
         <span className="min-w-0 text-left">
           <span className="label block text-muted max-sm:hidden">Room · {String(state.sessions.findIndex((x) => x.id === s.id) + 1).padStart(2, '0')}</span>
-          <span className="block max-w-[8.5rem] truncate text-chrome font-semibold text-ink sm:max-w-[20rem]">{s.name}</span>
+          <span className="block max-w-[8.5rem] truncate text-chrome font-semibold text-ink sm:max-w-[12rem] lg:max-w-[20rem]">{s.name}</span>
         </span>
         <ChevronDown size={14} strokeWidth={2} className="shrink-0 text-muted transition-transform group-hover:translate-y-0.5" />
         {others.length > 0 && (
@@ -52,7 +52,7 @@ export function TopBar() {
         <Plus size={15} strokeWidth={2} /> <span className="max-sm:sr-only">New room</span>
       </button>
 
-      <div className="ml-auto flex min-w-0 items-center gap-3">
+      <div className="ml-auto flex shrink-0 items-center gap-3">
         <div className="text-right">
           <span className="label block text-muted max-sm:hidden">Total / budget</span>
           <span className="num block font-mono text-small font-medium whitespace-nowrap text-ink sm:text-chrome">
@@ -61,7 +61,7 @@ export function TopBar() {
             <Budget value={s.budgetEur} currency={s.currency} label={(v) => v} />
           </span>
         </div>
-        <div className="relative h-8 w-20 shrink-0 max-sm:hidden" aria-hidden="true">
+        <div className="relative h-8 w-20 shrink-0 max-md:hidden" aria-hidden="true">
           {/* A scale bar: ticks every quarter, the fill is what is spent. */}
           <span className="absolute inset-x-0 top-1/2 h-px bg-ink/30" />
           {[0, 0.25, 0.5, 0.75, 1].map((t) => (
