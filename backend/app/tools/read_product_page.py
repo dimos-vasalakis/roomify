@@ -150,7 +150,7 @@ def parse_price(value: Any, structured: bool = False) -> float | None:
     return price if price > 0 else None
 
 
-def _image_urls(value: Any) -> list[str]:
+def image_urls_in(value: Any) -> list[str]:
     items = value if isinstance(value, list) else [value]
     urls = []
     for item in items:
@@ -169,7 +169,7 @@ def _in_stock(availability: Any) -> bool | None:
     return None
 
 
-def _meta(html: str, name: str) -> str | None:
+def meta_content(html: str, name: str) -> str | None:
     key = rf'(?:property|name)=["\']{re.escape(name)}["\']'
     value = r"""content=(?:"([^"]*)"|'([^']*)')"""  # "Kid's desk" keeps its apostrophe
     for pattern in (rf"<meta[^>]+{key}[^>]*{value}", rf"<meta[^>]+{value}[^>]*{key}"):
@@ -351,7 +351,7 @@ def _shop_name(url: str, html: str) -> tuple[str, str]:
     if shop:
         return shop.domain, shop.name
     host = host_of(url)
-    name = _meta(html, "og:site_name") or host.split(".")[0].replace("-", " ").title()
+    name = meta_content(html, "og:site_name") or host.split(".")[0].replace("-", " ").title()
     return host, name[:40]
 
 
@@ -361,7 +361,7 @@ def extract_listing(url: str, html: str) -> ProductListing:
     offer = _first_offer(product)
     evidence: dict[str, str] = {}
 
-    title = str(product.get("name") or "").strip() or _meta(html, "og:title") or ""
+    title = str(product.get("name") or "").strip() or meta_content(html, "og:title") or ""
     title = htmllib.unescape(title)
     if not title:
         raise NotAProduct("No product found on this page")
@@ -382,8 +382,12 @@ def extract_listing(url: str, html: str) -> ProductListing:
             {"price": raw_price, "priceCurrency": currency}, ensure_ascii=False
         )
     else:
-        raw_price = _meta(html, "product:price:amount") or _meta(html, "og:price:amount")
-        currency = _meta(html, "product:price:currency") or _meta(html, "og:price:currency")
+        raw_price = meta_content(html, "product:price:amount") or meta_content(
+            html, "og:price:amount"
+        )
+        currency = meta_content(html, "product:price:currency") or meta_content(
+            html, "og:price:currency"
+        )
         if raw_price:
             evidence["price_eur"] = f'product:price:amount="{raw_price}" currency="{currency}"'
     price = parse_price(raw_price, structured=True)
@@ -393,7 +397,7 @@ def extract_listing(url: str, html: str) -> ProductListing:
         raise NotAProduct("The page gives a price without saying which currency")
     currency = str(currency or "EUR").upper()[:3]
 
-    images = _image_urls(product.get("image")) or _image_urls(_meta(html, "og:image"))
+    images = image_urls_in(product.get("image")) or image_urls_in(meta_content(html, "og:image"))
     if not images:
         raise NotAProduct("No product photo on the page")
     evidence["image_url"] = images[0]
@@ -427,7 +431,7 @@ def extract_listing(url: str, html: str) -> ProductListing:
         shop_name=shop_name,
         title=title,
         image_url=images[0],
-        image_urls=images[:4],
+        image_urls=images[:12],
         price_eur=round(price, 2),
         currency=currency,
         width_cm=dims.get("width"),

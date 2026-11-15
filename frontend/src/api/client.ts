@@ -85,9 +85,14 @@ export const api = {
     form.append('photo', photo, 'room.jpg')
     return request<PhotoDepthOut>('/depth/photo', { method: 'POST', body: form, signal: AbortSignal.timeout(90_000) })
   },
-  /** A real 3D model (GLB) of one product, made from its shop photo. The first time takes a minute or two. */
-  model3d: (imageUrl: string) =>
-    request<Model3DOut>('/model3d', { method: 'POST', body: json({ image_url: imageUrl }), signal: AbortSignal.timeout(300_000) }),
+  /** A real 3D model (GLB) of one product, made from the shop's photos of it from every side its page shows.
+   *  The first time takes up to about three minutes. */
+  model3d: (imageUrl: string, pageUrl: string, title: string) =>
+    request<Model3DOut>('/model3d', {
+      method: 'POST',
+      body: json({ image_url: imageUrl, page_url: pageUrl, title }),
+      signal: AbortSignal.timeout(420_000),
+    }),
   /** A drop box the phone can send a photo into (the QR code on the empty room). */
   openHandoff: () => request<HandoffOut>('/handoff', { method: 'POST' }),
   sendHandoff: (code: string, photo: Blob) => {

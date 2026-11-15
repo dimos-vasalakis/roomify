@@ -10,8 +10,17 @@ from PIL import Image
 from app.main import app
 from app.tools import model3d
 from app.tools.fal_client import FalError, FalResult
+from app.tools.product_views import ProductViews
 
 PHOTO = "https://cdn2.jysk.com/getimage/wd3.medium/247385"
+LARGE = "https://cdn2.jysk.com/getimage/wd3.large/247385"  # the shop's biggest copy is modelled
+
+
+@pytest.fixture(autouse=True)
+def nothing_measured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shells are measured and searched for furniture by their own calls, tested apart."""
+    monkeypatch.setattr(model3d, "room_geometry", AsyncMock(side_effect=model3d.DepthError("off")))
+    monkeypatch.setattr(model3d, "room_objects", AsyncMock(return_value=[]))
 
 
 def post(url: str):  # type: ignore[no-untyped-def]
@@ -24,10 +33,11 @@ def test_a_product_photo_becomes_a_glb_once(monkeypatch: pytest.MonkeyPatch) -> 
         return_value=FalResult(data={"model_glb": {"url": "https://v3b.fal.media/m.glb"}})
     )
     monkeypatch.setattr(model3d, "fal", fal)
-    assert post(PHOTO).json() == {"glb_url": "https://v3b.fal.media/m.glb"}
-    assert post(PHOTO).json() == {"glb_url": "https://v3b.fal.media/m.glb"}
+    assert post(PHOTO).json()["glb_url"] == "https://v3b.fal.media/m.glb"
+    assert post(PHOTO).json() == {"glb_url": "https://v3b.fal.media/m.glb", "views": 1, "sides": []}
     assert fal.await_count == 1  # the second open is free
     assert fal.await_args.args[0] == "fal-ai/trellis-2"
+    assert fal.await_args.args[1]["image_url"] == LARGE
     assert fal.await_args.args[1]["seed"] == 7  # same photo, same model
 
 
@@ -35,7 +45,47 @@ def test_the_older_model_stands_in_when_the_new_one_fails(monkeypatch: pytest.Mo
     fal = AsyncMock(side_effect=[FalError("busy"),
                                  FalResult(data={"model_mesh": {"url": "https://v3b.fal.media/old.glb"}})])  # fmt: skip
     monkeypatch.setattr(model3d, "fal", fal)
-    assert post(PHOTO).json() == {"glb_url": "https://v3b.fal.media/old.glb"}
+    assert post(PHOTO).json()["glb_url"] == "https://v3b.fal.media/old.glb"
+
+
+VIEWS = ProductViews(image_urls=[LARGE, LARGE + "b"], sides=["front", "back"])
+
+
+def test_the_shops_photos_from_several_sides_make_one_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The back of the model is the shop's own photo of the back, not a guess."""
+    views = AsyncMock(return_value=VIEWS)
+    fal = AsyncMock(
+        return_value=FalResult(data={"model_glb": {"url": "https://v3b.fal.media/mv.glb"}})
+    )
+    monkeypatch.setattr(model3d, "product_views", views)
+    monkeypatch.setattr(model3d, "fal", fal)
+    with TestClient(app) as client:
+        got = client.post(
+            "/model3d",
+            json={"image_url": PHOTO, "page_url": "https://jysk.gr/a/b/c", "title": "Sofa"},
+        )
+    assert got.json() == {
+        "glb_url": "https://v3b.fal.media/mv.glb",
+        "views": 2,
+        "sides": ["front", "back"],
+    }
+    views.assert_awaited_once_with(PHOTO, "https://jysk.gr/a/b/c", "Sofa")
+    assert fal.await_args.args[0] == model3d.MULTI_MODEL
+    assert fal.await_args.args[1]["image_urls"] == VIEWS.image_urls
+
+
+def test_one_photo_stands_in_when_the_several_side_model_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fal = AsyncMock(side_effect=[FalError("busy"),
+                                 FalResult(data={"model_glb": {"url": "https://v3b.fal.media/one.glb"}})])  # fmt: skip
+    monkeypatch.setattr(model3d, "product_views", AsyncMock(return_value=VIEWS))
+    monkeypatch.setattr(model3d, "fal", fal)
+    got = post(PHOTO).json()
+    assert got == {"glb_url": "https://v3b.fal.media/one.glb", "views": 1, "sides": []}
+    assert [c.args[0] for c in fal.await_args_list] == [model3d.MULTI_MODEL, model3d.MODEL]
 
 
 def test_private_or_plain_http_photos_are_refused(monkeypatch: pytest.MonkeyPatch) -> None:

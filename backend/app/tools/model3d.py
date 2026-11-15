@@ -1,10 +1,13 @@
-"""A real 3D model of a chosen product, made from the shop's own photo, for the 3D room.
+"""A real 3D model of a chosen product, made from the shop's own photos, for the 3D room.
 
-TRELLIS-2 on fal turns one product photo into a textured GLB. The same photo always gives the
-same model (fixed seed), so each is made once and reused. The shop's photo is the only input:
-nothing about the product is invented beyond what that photo shows.
+The shop's gallery is sorted first (`product_views`): the photos of the whole product alone, and
+from which side each was taken. Meshy turns up to four of them into one textured GLB, so the back
+and sides of the model are the shop's photos, not a guess. With only one usable photo, TRELLIS-2
+makes the model from it. Each model is made once and reused. Nothing about the product is
+invented beyond what the shop's photos show.
 """
 
+import asyncio
 import hashlib
 import logging
 import time
@@ -12,18 +15,23 @@ from collections import deque
 
 from pydantic import BaseModel, Field
 
-from app.cache import cached
+from app.cache import ReplayMiss, cached
 from app.tools.depth import Depth, DepthError, depth_map, fal_hosted
 from app.tools.fal_client import FalError, fal, fal_upload
+from app.tools.geometry import Geometry, room_geometry
+from app.tools.product_views import product_views
+from app.tools.room_objects import RoomObject, room_objects
 from app.tools.web_fetch import is_public_url
 
 log = logging.getLogger("roomify")
+MULTI_MODEL = "fal-ai/meshy/v7.1/multi-image-to-3d"
+MULTI_TIMEOUT_S = 210  # about three minutes in practice
 MODEL = "fal-ai/trellis-2"
 FALLBACK = "fal-ai/trellis"
-TIMEOUT_S = 240
+TIMEOUT_S = 150
 # New models are paid compute: a ceiling per hour, so a loop or a stranger can't run up a bill.
 # Models already made are free and never count.
-NEW_PER_HOUR = 60
+NEW_PER_HOUR = 40
 _made: deque[float] = deque()
 
 
@@ -33,6 +41,8 @@ class Model3DError(Exception):
 
 class Model3D(BaseModel):
     glb_url: str
+    views: int = 1  # how many of the shop's photos it was made from
+    sides: list[str] = Field(default_factory=list)  # which side of the product each photo showed
 
 
 def _arguments(image_url: str) -> dict[str, object]:
@@ -42,6 +52,16 @@ def _arguments(image_url: str) -> dict[str, object]:
         "resolution": "1024",
         "decimation_target": 40000,  # light enough for a phone, enough for furniture
         "texture_size": "2048",
+    }
+
+
+def _multi_arguments(image_urls: list[str]) -> dict[str, object]:
+    return {
+        "image_urls": image_urls,
+        "target_polycount": 40000,
+        "symmetry_mode": "auto",
+        "should_texture": True,
+        "enable_pbr": True,
     }
 
 
@@ -55,10 +75,7 @@ def _room_for_one_more() -> bool:
     return True
 
 
-async def product_model(image_url: str) -> Model3D:
-    if not (image_url.startswith("https://") and is_public_url(image_url)):
-        raise Model3DError("That product photo can't be used for a 3D model.")
-
+async def _from_one_photo(image_url: str) -> Model3D:
     async def make() -> Model3D:
         if not _room_for_one_more():
             raise Model3DError("Too many 3D models were made this hour. Try again later.")
@@ -66,7 +83,7 @@ async def product_model(image_url: str) -> Model3D:
             result = await fal(MODEL, _arguments(image_url), timeout=TIMEOUT_S, max_age_s=None)
             return Model3D(glb_url=result.data["model_glb"]["url"])
         except (FalError, KeyError, TypeError) as exc:
-            log.warning("TRELLIS-2 failed (%s); trying TRELLIS", type(exc).__name__)
+            log.warning("TRELLIS-2 failed (%s: %s); trying TRELLIS", exc, exc.__cause__)
         try:
             result = await fal(FALLBACK, {"image_url": image_url, "seed": 7, "texture_size": "1024"},
                                timeout=TIMEOUT_S, max_age_s=None)  # fmt: skip
@@ -78,8 +95,57 @@ async def product_model(image_url: str) -> Model3D:
     return await cached("model3d", {"image_url": image_url, "model": MODEL}, make, Model3D, None)
 
 
+async def _from_views(image_urls: list[str], sides: list[str]) -> Model3D:
+    async def make() -> Model3D:
+        if not _room_for_one_more():
+            raise Model3DError("Too many 3D models were made this hour. Try again later.")
+        try:
+            result = await fal(MULTI_MODEL, _multi_arguments(image_urls),
+                               timeout=MULTI_TIMEOUT_S, max_age_s=None)  # fmt: skip
+            return Model3D(
+                glb_url=result.data["model_glb"]["url"], views=len(image_urls), sides=sides
+            )
+        except (FalError, KeyError, TypeError) as exc:
+            raise Model3DError("Couldn't make a 3D model from the shop's photos.") from exc
+
+    inputs = {"image_urls": image_urls, "model": MULTI_MODEL}
+    return await cached("model3d", inputs, make, Model3D, None)
+
+
+async def product_model(image_url: str, page_url: str | None = None, title: str = "") -> Model3D:
+    """The product from every side its shop photographed, or from its main photo alone."""
+    if not (image_url.startswith("https://") and is_public_url(image_url)):
+        raise Model3DError("That product photo can't be used for a 3D model.")
+    views = await product_views(image_url, page_url, title)
+    if len(views.image_urls) >= 2:
+        try:
+            return await _from_views(views.image_urls, views.sides)
+        except Model3DError as exc:
+            log.warning("Multi-view model failed (%s); one photo instead", exc)
+    return await _from_one_photo(views.image_urls[0])
+
+
 class PhotoDepth(Depth):
     image_url: str  # the photo on fal storage, same pixels as sent
+    geometry: Geometry | None = None  # the room in metres, when it could be measured
+    objects: list[RoomObject] = Field(
+        default_factory=list
+    )  # what already stands in it, cut out to be modelled
+
+
+async def _measured(shell: PhotoDepth) -> PhotoDepth:
+    """The shell with the room's real size and what stands in it added. Without either the 3D
+    room still opens: sized from the depth map, with those things painted on its surfaces."""
+
+    async def geometry() -> Geometry | None:
+        try:
+            return await room_geometry(shell.image_url)
+        except (DepthError, ReplayMiss) as exc:
+            log.warning("Room not measured (%s)", exc)
+            return None
+
+    measured, objects = await asyncio.gather(geometry(), room_objects(shell.image_url))
+    return shell.model_copy(update={"geometry": measured, "objects": objects})
 
 
 async def photo_depth(photo: bytes) -> PhotoDepth:
@@ -94,7 +160,7 @@ async def photo_depth(photo: bytes) -> PhotoDepth:
         depth = await depth_map(url)
         return PhotoDepth(**depth.model_dump(), image_url=url)
 
-    return await cached("photo_depth", {"sha256": digest}, make, PhotoDepth, None)
+    return await _measured(await cached("photo_depth", {"sha256": digest}, make, PhotoDepth, None))
 
 
 SHELL_MODEL = "fal-ai/nano-banana-2/edit"
@@ -152,4 +218,4 @@ async def room_shell(render_url: str, pieces: list[ShellPiece]) -> PhotoDepth:
 
     inputs = {"render_url": render_url, "pieces": [p.model_dump() for p in pieces]}
     # The same render and pieces always give the same shell: made once, then instant.
-    return await cached("room_shell", inputs, make, PhotoDepth, None)
+    return await _measured(await cached("room_shell", inputs, make, PhotoDepth, None))

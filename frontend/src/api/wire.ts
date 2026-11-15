@@ -65,10 +65,14 @@ export type BoxOut = { x: number; y: number; w: number; h: number }
 export type DepthOut = { depth_url: string; width: number; height: number }
 
 /** POST /depth/photo: the depth of the person's own photo, and that photo on fal storage. */
-export type PhotoDepthOut = DepthOut & { image_url: string }
+/** The room measured in metres (MoGe-2), when it could be: distance along each grid ray, 0 unknown. */
+export type GeometryOut = { fov_y: number; fov_x: number; cols: number; rows: number; distance: number[] }
+export type RoomObjectOut = { name: string; box: { x: number; y: number; w: number; h: number }; on_top: boolean; crop_url: string }
+export type PhotoDepthOut = DepthOut & { image_url: string; geometry?: GeometryOut | null; objects?: RoomObjectOut[] }
 
 /** POST /model3d: a product's 3D model, made from its shop photo. */
-export type Model3DOut = { glb_url: string }
+/** POST /model3d: the model, and how many of the shop's photos (and which sides) it was made from. */
+export type Model3DOut = { glb_url: string; views: number; sides: string[] }
 
 /** POST /transcribe: what was said into the mic. */
 export type TranscriptOut = { text: string }

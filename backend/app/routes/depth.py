@@ -33,6 +33,8 @@ class ShellIn(BaseModel):
 
 class ModelIn(BaseModel):
     image_url: str = Field(max_length=2000)
+    page_url: str | None = Field(default=None, max_length=2000)  # its gallery has the other sides
+    title: str = Field(default="", max_length=300)
 
 
 @router.post("/depth")
@@ -73,9 +75,10 @@ async def depth_of_shell(body: ShellIn) -> PhotoDepth:
 
 @router.post("/model3d")
 async def model3d(body: ModelIn) -> Model3D:
-    """A textured 3D model (GLB) of one product, from its shop photo. Made once, then instant."""
+    """A textured 3D model (GLB) of one product, from the shop's photos of it from every side
+    the shop shows. Made once, then instant."""
     try:
-        return await product_model(body.image_url)
+        return await product_model(body.image_url, body.page_url, body.title)
     except Model3DError as exc:
         status = 422 if "can't be used" in str(exc) else 429 if "this hour" in str(exc) else 502
         raise HTTPException(status, str(exc)) from exc

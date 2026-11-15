@@ -35,7 +35,9 @@ React app ◀──server-sent events: every step, decision, rejection, render�
 | Render check | Gemini vision compares each product's crop in the render with its listing photo | The step competitors skip | Side-by-side for the human |
 | One-item swap | Re-render from the original photo with the new list, then paste only that item's region back with Pillow and a mask | Rest of the room stays pixel-identical | Full re-render |
 | Walk-in video | fal `minimax/h3-max/camera-controls` (about $0.08 per second at 768p) | "Scene frozen, only the camera moves" | `kling/v4/image-to-video`, `fal-ai/veo3.1/fast/image-to-video` |
-| Optional 3D | fal `tripo3d/h3.1/image-to-3d` for one product as GLB | Stretch: one product in phone AR | Cut |
+| 3D room: products | fal `fal-ai/meshy/v7.1/multi-image-to-3d` from up to four shop photos (a Gemini vision check picks the whole-product photos and which side each shows), about $1.20 and 2 to 3 min per product, made once | The back and sides of the model are the shop's own photos, not a guess | `fal-ai/trellis-2` from the main photo, then `fal-ai/trellis` |
+| 3D room: the room | fal `fal-ai/moge-2` measures the shell picture in metres with the lens's field of view (about $0.02, 5 to 10 s); walls are fitted as straight lines and the picture painted onto them where the camera saw them | Pieces at their listed size match the picture; walk all the way round | Depth Anything v2 depth, scaled from the pieces' listed heights |
+| 3D room: what was already there | Gemini vision lists the furniture in the shell; each is redrawn alone on white (`nano-banana-2/edit`) and modelled with `fal-ai/trellis-2`, sized from MoGe's measurements | The room's own furniture stands in 3D instead of being painted flat on the floor | Painted on the room's surfaces |
 | Database and auth | Supabase | Hosted Postgres and login in one service | Local `runs/{run_id}/` JSON and images |
 | Front end hosting | Vercel | Deploys the Vite app from the repo | Run locally on the demo laptop |
 | Back end hosting | Render | Deploys the FastAPI app from the repo | Run locally on the demo laptop |
