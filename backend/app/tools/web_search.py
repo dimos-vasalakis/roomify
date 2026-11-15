@@ -70,3 +70,13 @@ async def web_search(query: str, shops: list[Shop]) -> list[WebHit]:
         if shop:
             hits.append(WebHit(url=result.url, title=result.title, shop=shop))
     return hits
+
+
+async def web_results(query: str) -> list[WebResult]:
+    """Plain Google results, any site: a company's own website, not a shop."""
+    settings = get_settings()
+    key = settings.serper_api_key or ""
+    if not key and not settings.replay:
+        raise WebSearchError("Web search is off (no SERPER_API_KEY)")
+    return await cached("web_search", {"q": query}, lambda: _serper(query, key),
+                        list[WebResult], DAY)  # fmt: skip

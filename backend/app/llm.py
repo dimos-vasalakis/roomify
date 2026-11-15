@@ -26,6 +26,10 @@ DEFAULT_MODEL = "gemini-flash-latest"
 # Judging pictures (placement, render check, basket fit) needs the sharper eye: the older
 # flash model misread shapes and missed furniture clipping into furniture.
 VISION_MODEL = "google/gemini-3-flash-preview"
+# Reading a whole room for a person or a company and deciding what to change: the one call
+# per design that needs real judgement, so it gets the strongest model and more time.
+DEEP_MODEL = "google/gemini-3.1-pro-preview"  # needs reasoning on
+DEEP_TIMEOUT_S = 120.0
 log = logging.getLogger("roomify.llm")
 TIMEOUT_S = 45.0
 
@@ -47,12 +51,17 @@ async def llm(
     images: list[tuple[bytes, str]] | None = None,
     json_out: bool = False,
     vision: bool = False,
+    deep: bool = False,
 ) -> Any:
     """Text (or parsed JSON when `json_out`) from the model. `images`: (bytes, mime type) pairs.
-    `vision`: a judgement that rests on looking closely at the images."""
+    `vision`: a judgement that rests on looking closely at the images.
+    `deep`: a decision that needs the strongest model (DEEP_MODEL), slower."""
     key = os.getenv("GEMINI_API_KEY")
     use_fal = bool(os.getenv("FAL_KEY"))
-    if vision:
+    if deep:
+        chosen = os.getenv("DEEP_MODEL") or DEEP_MODEL
+        model = chosen if use_fal else chosen.removeprefix("google/")
+    elif vision:
         chosen = os.getenv("VISION_MODEL") or VISION_MODEL
         model = chosen if use_fal else chosen.removeprefix("google/")
     else:
@@ -62,13 +71,14 @@ async def llm(
             else os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
         )
     try:
-        return await _answer(prompt, images, json_out, key, use_fal, model)
+        return await _answer(prompt, images, json_out, key, use_fal, model, deep)
     except _Unreadable:
         # One typo in a long JSON answer should not end a run: ask once more, strictly.
         try:
             return await _answer(
-                prompt + "\nReturn strictly valid JSON.", images, json_out, key, use_fal, model
-            )
+                prompt + "\nReturn strictly valid JSON.",
+                images, json_out, key, use_fal, model, deep,
+            )  # fmt: skip
         except _Unreadable as exc:
             raise LLMError("The AI answered in a shape we could not read.") from exc
 
@@ -84,7 +94,9 @@ async def _answer(
     key: str | None,
     use_fal: bool,
     model: str,
+    deep: bool = False,
 ) -> Any:
+    timeout = DEEP_TIMEOUT_S if deep else TIMEOUT_S
 
     async def call() -> LLMText:
         if use_fal or not key:
@@ -107,9 +119,11 @@ async def _answer(
                         else "Be concise.",
                         "temperature": 0.2,
                         "max_tokens": 6000,
+                        # Pro models refuse to answer with reasoning off.
+                        **({"reasoning": True} if deep else {}),
                         **({"image_urls": refs} if refs else {}),
                     },
-                    timeout=60,
+                    timeout=max(60, timeout),
                 )
                 return LLMText(text=result.data["output"])
             except (FalError, KeyError) as exc:
@@ -131,7 +145,7 @@ async def _answer(
                             response_mime_type="application/json" if json_out else "text/plain",
                         ),
                     ),
-                    TIMEOUT_S,
+                    timeout,
                 )
                 return LLMText(text=response.text or "")
         except TimeoutError as exc:

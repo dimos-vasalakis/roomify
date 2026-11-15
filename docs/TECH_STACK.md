@@ -58,6 +58,8 @@ oumi is the judge layer. It never generates; it decides whether data is trustwor
 4. **Extraction eval (offline).** `eval/extraction/` holds 30 or more real product pages from our retailers with hand-checked fields. One command runs the extractor and the oumi judge over them and prints accuracy per field. The number goes in the README and the video: "the agent's shop reading is 93% accurate on 40 hand-checked pages".
 5. Optional: HallOumi, oumi's sentence-level hallucination checker, as the extraction judge's model if a hosted endpoint is available. It is too heavy to run on a laptop.
 
+6. **Story judge (online, built).** When the person tells a story ("my mother is 82", "we are Coffee Island") the strong model reads the room first (`tools/analyse_room.py`). `judges/story.py` then checks the chosen basket against those needs: covered, unclear from the listing, still open, new risks. It goes to Oumi's hosted inference (`judges/oumi.py`, `POST https://inference.oumi.ai/v1/chat/completions`, `X-API-Key`) when `OUMI_API_KEY` and `OUMI_JUDGE_MODEL` (the deployment path `projects/{id}/deployments/{id}`) are set, else through `llm()`. The verdict says which judged it (`judged_by`).
+
 Judge configs live in `backend/app/judges/*.yaml`. The judge's inference engine points at Gemini. **Unconfirmed:** the exact oumi engine name for Gemini. Check the `InferenceEngineType` list in the oumi docs at kickoff. If oumi can't call Gemini, run the same judge prompts through `llm()` and keep the oumi config and eval harness.
 
 ## treg: verdict
@@ -104,7 +106,7 @@ class Product(BaseModel):
 ```
 
 SSE events, all JSON with `type`, `run_id`, `t`:
-`message`, `step.started`, `step.result`, `ask`, `fit.proof`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `product.removed`, `budget.update`, `budget.changed` (`{budget_eur}`: the person changed the budget in words), `render.ready`, `verify.result`, `video.ready`, `error`, `done`.
+`message`, `step.started`, `step.result`, `ask`, `fit.proof`, `candidate.found`, `candidate.rejected` (with `reason`), `product.chosen`, `product.removed`, `budget.update`, `budget.changed` (`{budget_eur}`: the person changed the budget in words), `render.ready`, `assessment.ready`, `story.checked`, `verify.result`, `video.ready`, `error`, `done`.
 
 ## Shops and the scraper (`backend/app/tools/`)
 Flow: the LLM turns the photo and the user's words into a `ProductSpec` (item names as shops print them, keywords, exclude, an English `meaning`, max price and size) → `find_products(spec)` searches the catalogues (word matching, minus built-in other senses such as whiteboards for πίνακας), lets one text-only LLM pass (`tools/relevance.py`) keep only names that are the item, best first, with a reason for the ones it turns away, reads the top 20 pages 4 at a time, and returns verified `candidates` plus `rejected` with a plain reason each ("Width 160 cm, your space allows 140 cm") → oumi ranks the candidates → fal renders the top 3.

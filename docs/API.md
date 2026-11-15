@@ -107,6 +107,8 @@ The front end ignores types it does not know, so new ones never break it. Names 
 | `product.removed` | `{slot, url}` | That slot's piece leaves the basket and the total (sent by `drop`) |
 | `product.swapped` | `{slot, old_product_id, product: ProductOut, reason}` | The line reprints; the old one is struck |
 | `render.ready` | `{render_id, kind (render or view), image_url, items: [{product_id, box: {x, y, w, h}}]}` | The room picture and its price dots. Boxes are 0 to 1 of the render |
+| `assessment.ready` | `{who, findings: [{thing, verdict, why, box: {x, y, w, h} \| null}], buy: [{slot, why, needs}], advice: string[], source_url \| null}`; `verdict` is `keep`, `remove`, `move`, `replace` or `missing` | A story only (the person said who the room is for, and the agent decides). Dots on the original photo for each finding, coloured by verdict, with `why` on tap. Boxes are 0 to 1 of the photo. `source_url` is the company page any brand fact came from. The same findings also arrive as a `message` |
+| `story.checked` | `{covered: [{need, by}], unclear: string[], open: string[], risks: string[], verdict, judged_by}`; `judged_by` is `oumi` or `llm` | A story only: the basket against the needs. Also said as a `message` |
 | `verify.result` | `{product_id, match, note}` | Reserved; shown later |
 | `walkin.queued` | `{walkin: WalkinOut}` | A walk-in card appears. Sent when `POST /walkins` creates one, so reopening a room replays its walk-ins too |
 | `video.ready` | `{walkin_id, video_url, poster_url}` | Walk-in becomes playable |

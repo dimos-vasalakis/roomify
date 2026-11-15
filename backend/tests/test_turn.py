@@ -447,3 +447,16 @@ async def test_price_dots_come_from_the_locator(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(loop, "_locate", AsyncMock(return_value={"x": [10, 20, 30, 40]}))
     check = await loop._verify(b"before", "https://v3.fal.media/new.jpg", {})
     assert check.products[0].box_2d == [10, 20, 30, 40]
+
+
+async def test_a_rug_removed_on_purpose_is_not_lost(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The live failure: the checker asked to put back the rug the plan took out."""
+    raw = {"lost": ["green rug", "yellow ottoman corner"], "extras": [], "room_preserved": False,
+           "no_extra_products": True, "products": []}  # fmt: skip
+    monkeypatch.setattr(loop, "image_data", AsyncMock(return_value=b"x"))
+    monkeypatch.setattr(loop, "llm", AsyncMock(return_value=dict(raw)))
+    gone = ["the large green rug under the seating area"]
+    check = await loop._check(b"before", "u", {}, gone)
+    assert check.lost == ["yellow ottoman corner"] and not check.room_preserved
+    monkeypatch.setattr(loop, "llm", AsyncMock(return_value=raw | {"lost": ["green rug"]}))
+    assert (await loop._check(b"before", "u", {}, gone)).room_preserved
