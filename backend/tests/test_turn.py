@@ -602,3 +602,26 @@ async def test_a_model_that_cant_answer_never_throws_away_a_finished_room(monkey
     later = await loop.decide(b"photo", Turn(message="Is the desk solid wood?", budget=300, city="Athens",
                                              basket=[DESK], render_url="https://v3.fal.media/r.jpg"))  # fmt: skip
     assert later.action == "reply" and later.say == loop.UNSURE
+
+
+def test_a_last_picture_that_left_out_a_rug_is_shown_and_says_so() -> None:
+    from tests.test_find_products import listing
+    from tests.test_offer import _check_result
+
+    chosen = {"Desk": listing("https://jysk.gr/desk")}
+    check = _check_result("x").model_copy(
+        update={"lost": ["white geometric rug"], "room_preserved": False}
+    )
+    with pytest.raises(loop.Unfaithful):
+        loop.render_items(check, chosen)  # a first try is drawn again
+    assert loop.render_items(check, chosen, final=True)
+    assert "leaves out your white geometric rug" in loop.caveats(check, chosen)[0]
+    moved = check.model_copy(update={"frame_kept": False})
+    with pytest.raises(loop.Unfaithful):
+        loop.render_items(moved, chosen, final=True)  # the room itself changed: never shown
+    many = check.model_copy(update={"lost": ["rug", "side table", "lamp", "plant"]})
+    with pytest.raises(loop.Unfaithful):
+        loop.render_items(many, chosen, final=True)
+    invented = check.model_copy(update={"no_extra_products": False})
+    with pytest.raises(loop.Unfaithful):
+        loop.render_items(invented, chosen, final=True)

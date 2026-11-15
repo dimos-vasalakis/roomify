@@ -255,6 +255,8 @@ class RenderCheck(BaseModel):
     extras: list[str] = Field(default=[], max_length=12)
     minor: list[str] = []  # small loose things moved, gone or added: said, never hidden
     room_preserved: bool
+    # The room itself (walls, windows, camera) as it was: only loose furniture may be in `lost`.
+    frame_kept: bool = True
     no_extra_products: bool
     asked_done: bool = True  # only asked about for a move: did the picture do it?
     asked_note: str = ""
@@ -661,7 +663,9 @@ async def _check(
         "product share a photo, and each copy is its own piece in image 2 with its own box.\n"
         "LOST: go through image 1 object by object, small ones too (furniture, bins, plants, lamps, "
         'appliances, bottles, artwork, rugs, decor). In "lost" name, as it looks, each one that is '
-        "missing from image 2, or was clearly moved, resized, reshaped or hidden behind something new"
+        "missing from image 2, or was clearly moved, resized or reshaped. Something still in its "
+        "place but partly covered by a supplied product (a rug under a new table, a lamp behind a "
+        "new chair) is not lost"
         + (
             f". These were removed on purpose, with anything that stood on or in them, and are "
             f"not lost: {gone}; but a wall, door or window "
@@ -675,7 +679,9 @@ async def _check(
             else ""
         )
         + ". room_preserved is false if anything is lost, or the architecture, perspective or camera "
-        "changed (moved, zoomed or reframed). Be practical about lighting.\n"
+        "changed (moved, zoomed or reframed). frame_kept is false only for that last part: walls, "
+        "doors, windows, floor, ceiling, perspective or camera changed. Be practical about "
+        "lighting.\n"
         "EXTRAS: go through image 2 object by object, small ones too, and look for each in image 1. "
         'In "extras" name each one that is neither in image 1 nor a supplied product, however small '
         "or natural it looks; no_extra_products is false if there is any. A plain mattress and bedding "
@@ -697,7 +703,8 @@ async def _check(
             if asked
             else ""
         )
-        + 'Return JSON {"lost":[],"extras":[],"room_preserved":true,"no_extra_products":true,'
+        + 'Return JSON {"lost":[],"extras":[],"room_preserved":true,"frame_kept":true,'
+        '"no_extra_products":true,'
         + ('"asked_done":true,"asked_note":"",' if asked else "")
         + '"products":[{"product_id":"supplied id","match":true,"scale_ok":true,'
         '"placement_ok":true,"note":"short plain reason, at most 12 words",'
@@ -881,6 +888,12 @@ def unfaithful(check: RenderCheck, chosen: dict[str, ProductListing]) -> str:
 def caveats(check: RenderCheck, chosen: dict[str, ProductListing]) -> list[str]:
     """What a shown preview gets slightly wrong, in plain words. The shopping list stays exact."""
     notes = []
+    if check.lost:  # only reaches a shown picture through lenient()
+        notes.append(
+            f"The picture leaves out your {_listed([t.lower() for t in check.lost])}. They stay in "
+            "your room and nothing about them changes; ask me to try the picture again to bring "
+            "them back."
+        )
     if check.minor:
         notes.append(
             f"In the preview a few small things moved or changed: {'; '.join(check.minor[:4])}. "
@@ -898,17 +911,32 @@ def caveats(check: RenderCheck, chosen: dict[str, ProductListing]) -> list[str]:
     return notes
 
 
+LENIENT_LOST = 3  # loose things a last picture may leave out, said in the chat
+
+
+def lenient(check: RenderCheck, final: bool) -> bool:
+    """On the last try, a picture whose room, camera and pieces are right but which left out a
+    few loose things of the room (a rug, a side table) is shown, saying so, rather than no
+    picture at all. Never a missing or invented piece: those would misstate the basket."""
+    return final and check.frame_kept and 0 < len(check.lost) <= LENIENT_LOST
+
+
 def render_items(
     check: RenderCheck, chosen: dict[str, ProductListing], final: bool = False
 ) -> list[dict[str, Any]]:
     """Price dots for a checked preview. A picture with a missing piece, an invented one or
     a changed room is never shown (Unfaithful): it would promise what the basket isn't. On
-    the final try a piece that only looks a little unlike its shop photo loses its dot."""
+    the final try a piece that only looks a little unlike its shop photo loses its dot, and a
+    few loose things of the room left out are said rather than costing the picture (lenient)."""
     problems = identity_problems(check, chosen)
     doubted = {chosen[slot].id for slot in unlike(check, chosen)}
     shown = {p.product_id for p in check.products}
     missing = any(p.id not in shown for p in chosen.values())
-    untrue = missing or not check.room_preserved or not check.no_extra_products
+    untrue = (
+        missing
+        or not check.no_extra_products
+        or not (check.room_preserved or lenient(check, final))
+    )
     if untrue or (problems and not final):
         raise Unfaithful(
             "The preview didn't match your room and chosen pieces closely enough. Try creating it again."
@@ -1342,6 +1370,12 @@ Rules:
   paragraph, in their words.
 - "add": "instruction" names only the new pieces and where they go, in their words, including
   "next to the existing chair" style placements.
+- SEVERAL CHANGES AT ONCE to things in the PHOTO (not in the basket) plus new pieces are ONE
+  "add": "instruction" names every new piece, counted, and "remove" names every photo thing
+  they replace or take out. "Replace the couch with 2 armchairs, add a wooden table in front of
+  them and replace the 3 paintings with one" -> add, instruction "2 armchairs where the couch
+  is, 1 wooden coffee table in front of them, 1 large painting in place of the three", remove
+  ["the couch", "the three framed paintings"]. Never do part of it and leave the rest.
 - COUNTS: keep every number the person gives in "brief" and "instruction", worked out: "3
   tables with 2 chairs each" is "3 black tables and 6 white chairs". The basket lists each copy
   as its own line ("Chair", "Chair 2"). When they say pieces are missing ("I only see 1 chair, I
@@ -1385,8 +1419,9 @@ Rules:
   a cane, a child, a wheelchair user, "make it safer", "accessible", a company, shop, café,
   office or brand, a rental. A list of pieces ("a sofa and a lamp") is not a story. "company":
   the organisation's name if they give one; "site": its website if they give one, else null.
-- One action per message. If they ask for two (remove one piece and add another), do the first
-  and say in "say" that you'll do the other right after, when they say go.
+- One action per message. Only when a message both changes a BASKET piece (swap, drop) and asks
+  for something else, do the first and end "say" with what is left and that they can ask for
+  it next, e.g. "Then ask me to add the table." Never promise to do it on your own.
 
 Examples (basket: Chair "black office chair" €149, budget €500, total €149):
 - "add a black chair next to the existing one" -> add, instruction "a black chair next to the
