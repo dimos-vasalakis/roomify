@@ -42,30 +42,35 @@ export function Talk() {
 
   return (
     <aside aria-label="Conversation with Roomify" className="flex h-full min-h-0 flex-col">
-      <header className="flex items-start justify-between gap-3 border-b border-ink/10 pt-1 pb-4">
+      {/* One height in every state, so nothing below it moves when the first pieces arrive. */}
+      <header className="flex h-[5.75rem] shrink-0 flex-col justify-end border-b border-ink/10 pb-4">
         {s.products.length ? (
-          <div className="min-w-0 flex-1">
+          <>
             <p className="num text-[2.25rem] leading-[2.5rem] font-semibold tracking-[-0.03em] text-ink">
               <Count value={total} currency={s.currency} />
               <span className="ml-1.5 text-body font-normal tracking-normal text-muted">of {money(s.budgetEur, s.currency)}</span>
             </p>
-            <div className="mt-3 h-1 overflow-hidden rounded-full bg-ink/10" aria-hidden="true">
-              <div
-                className={`h-full origin-left rounded-full transition-transform duration-700 ease-[var(--ease-out)] ${over ? 'bg-negative' : 'bg-chosen'}`}
-                style={{ transform: `scaleX(${Math.min(1, total / Math.max(1, s.budgetEur))})` }}
-              />
+            <div className="mt-3 flex items-center gap-3">
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-ink/10" aria-hidden="true">
+                <div
+                  className={`h-full origin-left rounded-full transition-transform duration-700 ease-[var(--ease-out)] ${over ? 'bg-negative' : 'bg-chosen'}`}
+                  style={{ transform: `scaleX(${Math.min(1, total / Math.max(1, s.budgetEur))})` }}
+                />
+              </div>
+              <span className={`num shrink-0 text-small font-medium ${over ? 'text-negative' : 'text-muted'}`}>
+                {over ? `${money(total - s.budgetEur, s.currency)} over` : `${money(s.budgetEur - total, s.currency)} left`}
+              </span>
             </div>
-            {over && <p className="mt-1.5 text-chrome text-ink">Over budget by {money(total - s.budgetEur, s.currency)}</p>}
-          </div>
+          </>
         ) : (
-          <div className="min-w-0 flex-1">
+          <>
             <p className="truncate text-title font-semibold tracking-[-0.015em] text-ink">{s.name}</p>
             <p className="num mt-0.5 text-chrome text-muted">{s.status === 'new' ? 'Budget and brief in one sentence' : `Budget ${money(s.budgetEur, s.currency)}`}</p>
-          </div>
+          </>
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-6 pr-1 [mask-image:linear-gradient(to_bottom,transparent,#000_3rem)] [scrollbar-width:none]">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:none] data-[scrolled=true]:[mask-image:linear-gradient(to_bottom,transparent,#000_2.5rem)]">
         <Thread />
       </div>
 
