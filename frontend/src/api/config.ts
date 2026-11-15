@@ -16,3 +16,10 @@ export const LIVE = !!(API_URL && SUPABASE_URL && SUPABASE_KEY) && !forceSamples
 
 /** Real offers from POST /offer whenever a back end is configured, with or without login. */
 export const OFFERS = !!API_URL && !forceSamples
+
+/**
+ * Where a phone can open this app (the QR code). The page's own address, unless it is only
+ * reachable from this computer: then VITE_PUBLIC_URL (for example http://192.168.1.20:5173).
+ */
+export const PUBLIC_URL = ((env.VITE_PUBLIC_URL as string | undefined) || location.origin).replace(/\/$/, '')
+export const PHONE_CAN_REACH = !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(PUBLIC_URL)

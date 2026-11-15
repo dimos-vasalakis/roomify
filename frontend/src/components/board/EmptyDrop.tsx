@@ -3,6 +3,7 @@ import { HAS_SAMPLES, SAMPLES } from '../../data/loadSamples'
 import { useActions } from '../../state/actions'
 import { useStore } from '../../state/store'
 import { BlockError } from '../common/BlockError'
+import { PhoneHandoff } from './PhoneHandoff'
 
 /** The empty room: one frame to drop a photo into. */
 export function EmptyDrop() {
@@ -29,7 +30,7 @@ export function EmptyDrop() {
         take(e.dataTransfer.files[0])
       }}
     >
-      <div className="flex max-w-sm flex-col items-center px-6 text-center">
+      <div className="flex max-w-md flex-col items-center px-6 text-center">
         <p className="text-title font-semibold tracking-[-0.015em] text-ink">Drop a photo of your room</p>
         <p className="mt-1.5 text-body text-muted">One wide shot from the doorway works best.</p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -48,6 +49,9 @@ export function EmptyDrop() {
           )}
         </div>
         <BlockError block="photo" className="mt-4 text-left" />
+        <div className="mt-8 border-t border-control pt-6">
+          <PhoneHandoff onPhoto={take} />
+        </div>
       </div>
     </div>
   )

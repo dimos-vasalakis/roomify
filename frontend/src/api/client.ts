@@ -5,6 +5,7 @@ import type {
   ConversationSummary,
   ProfileOut,
   DepthOut,
+  HandoffOut,
   TranscriptOut,
   RunSummary,
   WalkinOut,
@@ -76,6 +77,28 @@ export const api = {
     request<WalkinOut>(`/runs/${runId}/walkins`, { method: 'POST', body: json(body) }),
   depth: (imageUrl: string) =>
     request<DepthOut>('/depth', { method: 'POST', body: json({ image_url: imageUrl }), signal: AbortSignal.timeout(60_000) }),
+  /** A drop box the phone can send a photo into (the QR code on the empty room). */
+  openHandoff: () => request<HandoffOut>('/handoff', { method: 'POST' }),
+  sendHandoff: (code: string, photo: Blob) => {
+    const form = new FormData()
+    form.append('photo', photo, 'room.jpg')
+    return request<void>(`/handoff/${encodeURIComponent(code)}/photo`, { method: 'POST', body: form, signal: AbortSignal.timeout(60_000) })
+  },
+  /** The photo once the phone has sent it, null while it hasn't. ApiError 404 once the code expired. */
+  pickUpHandoff: async (code: string, signal?: AbortSignal): Promise<Blob | null> => {
+    let response: Response
+    try {
+      response = await fetch(`${API_URL}/handoff/${encodeURIComponent(code)}`, { cache: 'no-store', signal: signal ?? AbortSignal.timeout(TIMEOUT_MS) })
+    } catch {
+      throw new ApiError(0, "Can't reach the server. Check that the back end is running.")
+    }
+    if (response.status === 204) return null
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      throw new ApiError(response.status, typeof body?.detail === 'string' ? body.detail : `The server answered ${response.status}.`)
+    }
+    return response.blob()
+  },
   transcribe: (audio: Blob, signal?: AbortSignal) => {
     const form = new FormData()
     const ext = audio.type.includes('mp4') ? 'm4a' : audio.type.includes('ogg') ? 'ogg' : 'webm'

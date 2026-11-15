@@ -234,3 +234,25 @@ test('Escape while listening throws the sentence away', async ({ page }) => {
   expect(transcribed).toBe(0)
   await expect(page.getByLabel('Conversation with Roomify')).not.toContainText('How wide is the desk?')
 })
+
+test('a photo taken on the phone lands on the laptop, and a retake replaces it', async ({ page, context }) => {
+  test.skip(phone(page), 'The QR code is for the laptop screen')
+  await newRoom(page)
+  const href = await page.getByRole('link', { name: 'Link for your phone' }).getAttribute('href')
+  expect(href).toMatch(/\/snap\/[\w-]{16}$/)
+  const handset = await context.newPage()
+  await handset.setViewportSize({ width: 390, height: 844 })
+  await handset.goto(href!)
+  await expect(handset.getByRole('heading', { name: 'Photograph the room' })).toBeVisible()
+  await handset.locator('input[type=file]').first().setInputFiles({ name: 'room.png', mimeType: 'image/png', buffer: photo })
+  await expect(handset.getByText('Sent. It’s on your laptop now.')).toBeVisible()
+  await expect(page.getByText('Change photo', { exact: true })).toBeVisible({ timeout: 10_000 })
+  await say(page, 'A desk for focused work, €600')
+  await done(page)
+})
+
+test('an expired phone link says so in words', async ({ page }) => {
+  await page.goto('/snap/expiredcode1234567')
+  await page.locator('input[type=file]').first().setInputFiles({ name: 'room.png', mimeType: 'image/png', buffer: photo })
+  await expect(page.getByRole('alert')).toHaveText('This code has expired. Scan the new QR code on the laptop.')
+})

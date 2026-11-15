@@ -8,6 +8,7 @@ import { useStore } from '../../state/store'
 import type { Product } from '../../types'
 import { BlockError } from '../common/BlockError'
 import { Room3D } from '../room3d/Room3D'
+import { PhoneHandoff } from './PhoneHandoff'
 import { WalkInPlayer } from '../walkin/WalkInPlayer'
 import { Caption } from './Caption'
 import { Compare } from './Compare'
@@ -89,6 +90,9 @@ export function Board() {
             />
           </label>
         )}
+
+        {/* A retake on the phone replaces the photo until the brief is sent. */}
+        {s.status === 'new' && picture && <PhoneHandoff quiet onPhoto={(file) => void actions.setPhoto(file)} />}
 
         {s.status === 'new' && picture && state.errors.photo?.sessionId === s.id && (
           <div className="absolute inset-x-4 bottom-4 z-20 rounded-card bg-surface px-4 py-3 sm:right-auto sm:max-w-md">

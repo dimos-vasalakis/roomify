@@ -33,7 +33,7 @@ rail 64 | room board (fills)                         | conversation 400
 ## The room's states
 | State | On the room | Caption |
 |---|---|---|
-| Empty | Dashed frame: "Drop a photo of your room", "Choose a photo", "Use a sample room" | — |
+| Empty | Dashed frame: "Drop a photo of your room", "Choose a photo", "Use a sample room", and "Or use your phone" with a QR code. The phone's page (`/snap/<code>`) takes one photo and sends it here; a retake replaces it until the brief is sent | — |
 | Photo, no brief | The photo, "Change photo" | "Now tell Roomify what you need" |
 | Asking | Photo dimmed slightly, the question in the conversation | "Waiting for your answer" |
 | Reading (planning) | A white scan line sweeps down, corner ticks frame the photo | "Reading your room · 1 of 4" |
@@ -51,7 +51,7 @@ A divider across the room once a render exists. Left of it is your photo, right 
 A pine dot with a white ring on each placed piece. Click: a small card next to it with the listing photo, name (as the shop writes it, often Greek), shop, price, "View in shop ↗" and "Swap". Swap puts "Swap the desk: " in the composer.
 
 ## Conversation and voice
-- Lines, not bubbles: "You" and "Roomify" as small labels, the text in body size. The agent's question shows as a line with quick answers under it (the suggested value, "Skip").
+- A work log, not bubbles: your lines open with a hollow ink ring and sit in medium weight, Roomify's open with a filled pine dot. The conversation starts under the total and grows downward, so nothing above moves when a line arrives; it follows new lines only if you are already at the end. The header keeps one height in every state (room name before pieces, then the total with "€x left" on the budget bar). The agent's question shows as a line with quick answers under it (the suggested value, "Skip").
 - First message: "What do you need, and what's the budget?" A budget written in the sentence ("€300") is read from it; otherwise the budget chip above the composer is used (editable).
 - **Speak in:** tap the mic and talk (it sends by itself a moment after you stop), or hold Space and let go. A thin live waveform of the real microphone level replaces the input text while listening; in Chrome and Edge the words appear as they are heard. Browsers without their own speech recognition (Firefox, Brave, Safari, in-app browsers, phones) send the recording to `POST /transcribe` and show “Writing down what you said…” for a second. Escape throws the sentence away.
 
