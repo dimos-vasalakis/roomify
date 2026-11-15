@@ -186,6 +186,7 @@ async def _robots(url: str) -> Robots:
 # Sites that turned this server away lately (robots.txt refused or unanswered), so a search
 # reads other shops' pages instead of spending its reads on refusals.
 REFUSING_FOR_S = 600
+ROBOTS_WAIT_S = 6.0
 _refusing: dict[str, float] = {}
 
 
@@ -208,8 +209,10 @@ async def warm_robots(urls: list[str]) -> None:
 
     async def one(url: str) -> None:
         try:
-            robots = await _robots(url)
-        except FetchError:
+            # A site that doesn't answer in a few seconds is treated as refusing for a while:
+            # IKEA never answers Render, and every search waited a minute for its robots.txt.
+            robots = await asyncio.wait_for(_robots(url), ROBOTS_WAIT_S)
+        except (FetchError, TimeoutError):
             _mark_refusing(url)  # each page read reports this in its own words
             return
         if robots.locked and not _through_service(url):

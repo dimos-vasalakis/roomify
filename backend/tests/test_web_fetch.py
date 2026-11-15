@@ -228,3 +228,25 @@ async def test_parallel_reads_fetch_robots_once_per_site(monkeypatch: pytest.Mon
     await asyncio.gather(*(fetch_text(p) for p in pages))
     robots = [str(r.url) for r in requests if r.url.path == "/robots.txt"]
     assert sorted(robots) == ["https://jysk.gr/robots.txt", "https://www.ikea.gr/robots.txt"]
+
+
+async def test_a_site_that_never_answers_is_set_aside_quickly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """IKEA never answers Render: every search waited up to a minute for its robots.txt."""
+    import asyncio
+    import time
+
+    from app.tools import web_fetch
+
+    async def hangs(url: str) -> web_fetch.Robots:
+        await asyncio.sleep(30)
+        raise AssertionError("waited for ever")
+
+    monkeypatch.setattr(web_fetch, "_robots", hangs)
+    monkeypatch.setattr(web_fetch, "ROBOTS_WAIT_S", 0.05)
+    monkeypatch.setattr(web_fetch, "_refusing", {})
+    started = time.monotonic()
+    await web_fetch.warm_robots(["https://www.ikea.gr/proioda/x/1/"])
+    assert time.monotonic() - started < 1
+    assert web_fetch.is_refusing("https://www.ikea.gr/proioda/x/2/")
